@@ -19,7 +19,7 @@ const STATUS_COLOR: Record<RiskStatus, string> = {
 };
 
 const STATUS_LABEL: Record<RiskStatus, string> = {
-  ALLOW: "Signal nominal",
+  ALLOW: "Risk within policy",
   WARN: "Anomaly under review",
   LOCK_VERIFY: "Locked — verification required",
 };

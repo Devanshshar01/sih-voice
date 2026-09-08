@@ -21,6 +21,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
     verified,
     verification,
     actionFeedback,
+    actionPending,
     liveTranscript,
     endCall,
     toggleMute,
@@ -33,6 +34,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
   } = session;
 
   const status = telemetry?.status ?? "ALLOW";
+  const displayStatus = verified ? "ALLOW" : status;
   const score = telemetry?.risk_score ?? 0;
   const acousticScore = telemetry?.acoustic_score ?? 0;
   const intentScore = telemetry?.intent_score ?? 0;
@@ -42,7 +44,19 @@ export default function CallDashboard({ session }: CallDashboardProps) {
   return (
     <div className="flex min-h-screen flex-col">
       <div className="flex-1 px-4 py-4 sm:px-6 sm:py-6">
-        <StatusBanner status={status} rationale={rationale} />
+        <StatusBanner status={displayStatus} rationale={rationale} verified={verified} />
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border border-ink-600 bg-ink-800/50 px-4 py-3 text-xs">
+          <div>
+            <p className="font-medium text-paper">Protected call monitor</p>
+            <p className="mt-1 text-mute">{meta?.audioMode === "live" ? "Listening to live microphone input" : "Running a controlled scenario for demonstration"}</p>
+          </div>
+          <div className="flex items-center gap-4 text-mute">
+            <span>Window <strong className="font-mono font-medium text-paper">2.0s</strong></span>
+            <span>Updates <strong className="font-mono font-medium text-paper">0.5s</strong></span>
+            <span className={verified ? "text-safe" : "text-signal"}>{verified ? "Override verified" : "Monitoring"}</span>
+          </div>
+        </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-4">
@@ -86,6 +100,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
             <WireTransferPanel
               locked={status === "LOCK_VERIFY" && !verified}
               feedback={actionFeedback}
+              pending={actionPending}
               onAttempt={attemptWireTransfer}
             />
           </div>

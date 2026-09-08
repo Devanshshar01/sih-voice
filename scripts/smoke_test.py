@@ -85,10 +85,11 @@ def test_cloned_voice_locks_action(client: TestClient) -> None:
     assert r.status_code == 403, r.text
     print("[ok] action correctly blocked:", r.json())
 
-    # Issue + submit a verification challenge, then confirm the action unlocks
-    from app.api.v1.verification import issue_challenge
-
-    code = issue_challenge(call_id)
+    # Request + submit a verification challenge, then confirm the action unlocks.
+    r = client.post("/api/v1/verification/request", json={"call_id": call_id})
+    assert r.status_code == 200, r.text
+    code = r.json()["code"]
+    assert r.json()["expires_in_seconds"] == 60
     r = client.post("/api/v1/verification/challenge", json={"call_id": call_id, "code": code})
     assert r.status_code == 200 and r.json()["success"] is True, r.text
     print("[ok] verification succeeded:", r.json())

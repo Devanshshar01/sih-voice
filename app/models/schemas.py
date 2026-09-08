@@ -3,7 +3,7 @@ Pydantic request/response schemas for the VoiceTrust API surface.
 Field shapes mirror the API design table in the prototype blueprint exactly,
 so frontend and backend can be built in parallel against this contract.
 """
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -25,7 +25,7 @@ class RiskTelemetry(BaseModel):
     acoustic_score: float = Field(..., ge=0.0, le=1.0)
     intent_score: float = Field(..., ge=0.0, le=1.0)
     status: str  # ALLOW | WARN | LOCK_VERIFY
-    rationale: List[str] = []
+    rationale: List[str] = Field(default_factory=list)
 
 
 class AudioAnalyzeResponse(BaseModel):
@@ -47,7 +47,17 @@ class CallRiskResponse(BaseModel):
 
 class VerificationChallengeRequest(BaseModel):
     call_id: str
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+class VerificationRequest(BaseModel):
+    call_id: str
+
+
+class VerificationRequestResponse(BaseModel):
     code: str
+    expires_in_seconds: int
+    delivery_channel: str
 
 
 class VerificationChallengeResponse(BaseModel):
@@ -58,8 +68,8 @@ class VerificationChallengeResponse(BaseModel):
 
 class CallActionRequest(BaseModel):
     call_id: str
-    action: str  # e.g. "WIRE_TRANSFER"
-    amount: Optional[float] = None
+    action: Literal["WIRE_TRANSFER"]
+    amount: Optional[float] = Field(default=None, gt=0, le=10_000_000)
 
 
 class CallActionResponse(BaseModel):

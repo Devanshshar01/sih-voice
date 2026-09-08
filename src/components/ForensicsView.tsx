@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Download, RotateCcw } from "lucide-react";
+import { CheckCircle2, Download, FileWarning, RotateCcw, ShieldAlert } from "lucide-react";
 import {
   CartesianGrid,
   Line,
@@ -30,6 +30,8 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
 
   const maxScore = telemetryHistory.reduce((max, p) => Math.max(max, p.risk_score), 0);
   const flaggedEvents = telemetryHistory.filter((p) => p.status !== "ALLOW");
+  const finalStatus = telemetryHistory[telemetryHistory.length - 1]?.status ?? "ALLOW";
+  const incidentDetected = maxScore >= 70;
 
   const handleExport = () => {
     const report = {
@@ -53,10 +55,11 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs text-mute">Post-call forensic overview</p>
-          <h1 className="mt-1 text-xl font-medium text-paper">{meta?.callerId ?? "Unknown caller"}</h1>
+          <p className="text-xs uppercase tracking-[0.14em] text-mute">Post-call evidence report</p>
+          <h1 className="mt-2 text-2xl font-semibold text-paper">{incidentDetected ? "Impersonation attempt contained" : "Call cleared"}</h1>
+          <p className="mt-2 text-sm text-paper-dim">{meta?.callerId ?? "Unknown caller"} <span className="text-mute">→</span> {meta?.recipientId ?? "Protected desk"}</p>
           <p className="mt-1 font-mono text-xs text-mute">{meta?.callId}</p>
         </div>
         <button
@@ -68,6 +71,14 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
         </button>
       </div>
 
+      <div className={`mt-6 flex items-start gap-3 border px-4 py-3 ${incidentDetected ? "border-danger/40 bg-danger-bg text-danger" : "border-safe/40 bg-safe-bg text-safe"}`}>
+        {incidentDetected ? <ShieldAlert size={18} className="mt-0.5 shrink-0" /> : <CheckCircle2 size={18} className="mt-0.5 shrink-0" />}
+        <div>
+          <p className="text-sm font-medium">{incidentDetected ? "Sensitive workflow was gated by VoiceTrust." : "No high-risk activity was detected."}</p>
+          <p className="mt-1 text-xs opacity-80">Final policy state: {finalStatus.replace("_", " ")} · Evidence is derived from {telemetryHistory.length} analysis windows.</p>
+        </div>
+      </div>
+
       <div className="mt-6 grid grid-cols-3 gap-3">
         <div className="panel p-3">
           <p className="text-xs text-mute">Duration</p>
@@ -76,7 +87,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
           </p>
         </div>
         <div className="panel p-3">
-          <p className="text-xs text-mute">Peak trust index</p>
+          <p className="text-xs text-mute">Peak risk score</p>
           <p
             className={`tabular mt-1 font-mono text-lg ${
               maxScore >= 70 ? "text-danger" : maxScore >= 40 ? "text-warn" : "text-safe"
@@ -120,9 +131,12 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
       </div>
 
       <div className="panel mt-4 p-4">
-        <p className="text-sm font-medium text-paper">Flagged events</p>
+        <div className="flex items-center gap-2">
+          <FileWarning size={15} className="text-warn" />
+          <p className="text-sm font-medium text-paper">Flagged events</p>
+        </div>
         {flaggedEvents.length === 0 ? (
-          <p className="mt-2 text-sm text-mute">No anomalies were flagged during this call.</p>
+          <p className="mt-3 text-sm text-mute">No anomalies were flagged during this call. The monitored workflow remained available.</p>
         ) : (
           <ul className="mt-3 divide-y divide-ink-600">
             {flaggedEvents.map((event, i) => (

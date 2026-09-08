@@ -16,6 +16,7 @@ export default function App() {
     <div className="min-h-screen bg-ink-900">
       <NavHeader
         connected={wsConnected}
+        ended={phase === "ended"}
         callerId={meta?.callerId}
         recipientId={meta?.recipientId}
         durationSeconds={phase === "active" ? durationSeconds : undefined}

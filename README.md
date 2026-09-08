@@ -75,6 +75,7 @@ scripts/
 | GET | `/api/v1/call/{call_id}/risk` | Current score + full risk timeline |
 | POST | `/api/v1/call/action` | Attempt a sensitive action; **403 if locked** |
 | POST | `/api/v1/call/{call_id}/terminate` | End the call, flush audit record |
+| POST | `/api/v1/verification/request` | Issue a time-limited step-up challenge |
 | POST | `/api/v1/verification/challenge` | Submit a step-up code to unlock a locked call |
 | POST | `/api/v1/audio/analyze` | One-shot classification of an uploaded sample |
 

@@ -7,7 +7,7 @@ services:
       - "8000:8000"
     environment:
       - VOICETRUST_DETECTOR_MODE=mock
-      - VOICETRUST_DATABASE_URL=sqlite:///./voicetrust.db
+      - VOICETRUST_DATABASE_URL=sqlite:////app/data/voicetrust.db
       - VOICETRUST_CORS_ORIGINS=*
     volumes:
       - voicetrust-data:/app/data

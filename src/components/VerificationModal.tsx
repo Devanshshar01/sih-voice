@@ -25,7 +25,10 @@ export default function VerificationModal({
   }, []);
 
   const remaining = verification.requestedAt
-    ? Math.max(0, verification.expiresInSeconds - Math.floor((now - verification.requestedAt) / 1000))
+    ? Math.min(
+        verification.expiresInSeconds,
+        Math.max(0, verification.expiresInSeconds - Math.floor((now - verification.requestedAt) / 1000))
+      )
     : null;
   const expired = remaining === 0;
   const showCodeEntry = verification.demoCode && !expired;

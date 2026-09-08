@@ -36,7 +36,7 @@ function ControlButton({
 
 export default function CallControls({ muted, onHold, onToggleMute, onToggleHold, onEndCall }: CallControlsProps) {
   return (
-    <div className="hairline-top flex items-center justify-between bg-ink-900 px-4 py-3">
+    <div className="hairline-top flex flex-wrap items-center justify-between gap-3 bg-ink-950 px-4 py-3 sm:px-6">
       <div className="flex gap-2">
         <ControlButton
           active={muted}
@@ -53,6 +53,7 @@ export default function CallControls({ muted, onHold, onToggleMute, onToggleHold
       </div>
       <button
         onClick={onEndCall}
+        aria-label="End monitored call"
         className="flex items-center gap-2 border border-danger/50 bg-danger-bg px-4 py-2.5 text-sm font-medium text-danger transition-colors hover:bg-danger/15"
       >
         <PhoneOff size={16} />

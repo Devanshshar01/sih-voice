@@ -4,6 +4,7 @@ import type { RiskStatus } from "../types";
 interface StatusBannerProps {
   status: RiskStatus;
   rationale: string[];
+  verified?: boolean;
 }
 
 const CONFIG: Record<RiskStatus, { icon: typeof ShieldCheck; label: string; className: string }> = {
@@ -24,14 +25,14 @@ const CONFIG: Record<RiskStatus, { icon: typeof ShieldCheck; label: string; clas
   },
 };
 
-export default function StatusBanner({ status, rationale }: StatusBannerProps) {
+export default function StatusBanner({ status, rationale, verified = false }: StatusBannerProps) {
   const { icon: Icon, label, className } = CONFIG[status];
 
   return (
     <div className={`flex items-start gap-3 border px-4 py-3 ${className}`}>
       <Icon size={18} className="mt-0.5 shrink-0" />
       <div className="min-w-0">
-        <p className="text-sm font-medium">{label}</p>
+        <p className="text-sm font-medium">{verified ? "Verified override active. Sensitive controls are unlocked." : label}</p>
         {rationale.length > 0 && (
           <p className="mt-0.5 truncate text-xs text-mute">{rationale[0]}</p>
         )}

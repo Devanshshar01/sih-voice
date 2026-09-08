@@ -2,6 +2,8 @@
 REST endpoints for call lifecycle: start a session, check the current risk
 snapshot, and gate sensitive actions behind the live risk score.
 """
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
 
@@ -80,7 +82,7 @@ def execute_action(payload: CallActionRequest):
 
 @router.post("/{call_id}/terminate")
 def terminate_call(call_id: str, db: DBSession = Depends(get_db)):
-    session = session_manager.end_session(call_id, status="TERMINATED_RISK")
+    session = session_manager.end_session(call_id, status="COMPLETED")
     if not session:
         raise HTTPException(status_code=404, detail="Call session not found.")
 
@@ -88,6 +90,7 @@ def terminate_call(call_id: str, db: DBSession = Depends(get_db)):
     if db_session:
         db_session.status = session.status
         db_session.max_risk_score = session.current_risk_score
+        db_session.end_time = db_session.end_time or datetime.now(timezone.utc)
         db.commit()
 
     return {"call_id": call_id, "status": session.status}

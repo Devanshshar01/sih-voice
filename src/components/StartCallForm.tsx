@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Mic, PlayCircle, ShieldAlert } from "lucide-react";
+import { Activity, ArrowRight, Check, Mic, PlayCircle, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { AudioMode } from "../types";
 
 interface StartCallFormProps {
@@ -35,87 +35,115 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
   const [audioMode, setAudioMode] = useState<AudioMode>("demo-cloned");
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
-      <div className="mb-8">
-        <p className="text-xs text-mute">Voice integrity console</p>
-        <h1 className="mt-1 text-2xl font-medium text-paper">Connect a call to monitor</h1>
-        <p className="mt-2 text-sm leading-relaxed text-paper-dim">
-          VoiceTrust analyzes the audio stream in real time and locks sensitive actions the
-          moment a cloned voice and an urgent request coincide.
-        </p>
-      </div>
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          onStart(callerId, recipientId, audioMode);
-        }}
-        className="space-y-5"
-      >
-        <div>
-          <label className="block text-xs text-mute" htmlFor="caller-id">
-            Caller ID
-          </label>
-          <input
-            id="caller-id"
-            value={callerId}
-            onChange={(e) => setCallerId(e.target.value)}
-            className="mt-1 w-full border border-ink-600 bg-ink-800 px-3 py-2 font-mono text-sm text-paper outline-none focus:border-signal"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-mute" htmlFor="recipient-id">
-            Receiving desk
-          </label>
-          <input
-            id="recipient-id"
-            value={recipientId}
-            onChange={(e) => setRecipientId(e.target.value)}
-            className="mt-1 w-full border border-ink-600 bg-ink-800 px-3 py-2 font-mono text-sm text-paper outline-none focus:border-signal"
-            required
-          />
-        </div>
-
-        <div>
-          <p className="text-xs text-mute">Audio source</p>
-          <div className="mt-2 space-y-2">
-            {AUDIO_OPTIONS.map(({ mode, label, description, icon: Icon }) => (
-              <button
-                type="button"
-                key={mode}
-                onClick={() => setAudioMode(mode)}
-                className={`flex w-full items-start gap-3 border px-3 py-2.5 text-left transition-colors ${
-                  audioMode === mode
-                    ? "border-signal/60 bg-signal-bg"
-                    : "border-ink-600 bg-ink-800 hover:border-ink-500"
-                }`}
-              >
-                <Icon size={16} className={`mt-0.5 shrink-0 ${audioMode === mode ? "text-signal" : "text-mute"}`} />
-                <span>
-                  <span className={`block text-sm ${audioMode === mode ? "text-paper" : "text-paper-dim"}`}>
-                    {label}
-                  </span>
-                  <span className="block text-xs text-mute">{description}</span>
-                </span>
-              </button>
-            ))}
+    <main className="min-h-screen overflow-hidden bg-ink-950">
+      <div className="mx-auto grid min-h-screen max-w-7xl lg:grid-cols-[1.05fr_0.95fr]">
+        <section className="relative flex flex-col justify-between border-b border-ink-700 px-6 py-8 sm:px-10 lg:border-b-0 lg:border-r lg:px-14 lg:py-12">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(79,195,247,0.14),transparent_35%),linear-gradient(145deg,#071018_0%,#050809_68%)]" />
+          <div className="relative">
+            <div className="flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-signal">
+              <span className="flex h-8 w-8 items-center justify-center border border-signal/40 bg-signal-bg">
+                <ShieldCheck size={16} />
+              </span>
+              VoiceTrust security console
+            </div>
+            <div className="mt-16 max-w-xl lg:mt-24">
+              <p className="text-sm font-medium text-safe">REAL-TIME VOICE INTEGRITY</p>
+              <h1 className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight text-paper sm:text-6xl">
+                Stop an impersonation attempt before money moves.
+              </h1>
+              <p className="mt-6 max-w-lg text-base leading-7 text-paper-dim sm:text-lg">
+                VoiceTrust scores acoustic and conversational signals while a call is live, then
+                pauses sensitive actions when the evidence crosses a risk threshold.
+              </p>
+            </div>
+            <div className="mt-12 grid max-w-xl gap-3 sm:grid-cols-3">
+              {[
+                ["01", "Listen", "Capture a live audio stream"],
+                ["02", "Score", "Fuse voice and intent signals"],
+                ["03", "Protect", "Verify before money moves"],
+              ].map(([number, title, description]) => (
+                <div key={number} className="border-t border-ink-600 pt-3">
+                  <p className="font-mono text-xs text-signal">{number}</p>
+                  <p className="mt-2 text-sm font-medium text-paper">{title}</p>
+                  <p className="mt-1 text-xs leading-5 text-mute">{description}</p>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+          <div className="relative mt-16 flex items-center gap-2 text-xs text-mute">
+            <Activity size={14} className="text-safe" />
+            Demo environment · metadata only · audio is never stored
+          </div>
+        </section>
 
-        {error && (
-          <p className="border border-danger/40 bg-danger-bg px-3 py-2 text-xs text-danger">{error}</p>
-        )}
+        <section className="flex items-center px-6 py-8 sm:px-10 lg:px-14">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              onStart(callerId.trim(), recipientId.trim(), audioMode);
+            }}
+            className="w-full max-w-lg animate-rise"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-mute">New monitored call</p>
+                <h2 className="mt-2 text-2xl font-semibold text-paper">Choose a scenario</h2>
+              </div>
+              <span className="border border-safe/30 bg-safe-bg px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-safe">
+                Judge demo
+              </span>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-paper-dim">
+              The attack scenario is preselected so the complete protection workflow is one click away.
+            </p>
 
-        <button
-          type="submit"
-          disabled={connecting}
-          className="w-full border border-signal/50 bg-signal-bg px-4 py-2.5 text-sm font-medium text-signal transition-colors hover:bg-signal/15 disabled:opacity-60"
-        >
-          {connecting ? "Connecting…" : "Start call"}
-        </button>
-      </form>
-    </div>
+            <div className="mt-8 space-y-3">
+              {AUDIO_OPTIONS.map(({ mode, label, description, icon: Icon }) => (
+                <button
+                  type="button"
+                  key={mode}
+                  onClick={() => setAudioMode(mode)}
+                  className={`group flex w-full items-start gap-4 border p-4 text-left transition-all ${
+                    audioMode === mode
+                      ? "border-signal/70 bg-signal-bg shadow-[inset_3px_0_0_#4fc3f7]"
+                      : "border-ink-600 bg-ink-800/60 hover:border-ink-500 hover:bg-ink-800"
+                  }`}
+                >
+                  <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center border ${audioMode === mode ? "border-signal/40 text-signal" : "border-ink-500 text-mute"}`}>
+                    <Icon size={17} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between gap-3">
+                      <span className={`text-sm font-medium ${audioMode === mode ? "text-paper" : "text-paper-dim"}`}>{label}</span>
+                      {audioMode === mode && <Check size={16} className="shrink-0 text-signal" />}
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-mute">{description}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="field-label" htmlFor="caller-id">Caller identity</label>
+                <input id="caller-id" value={callerId} onChange={(e) => setCallerId(e.target.value)} className="field-input" required maxLength={120} />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="recipient-id">Protected desk</label>
+                <input id="recipient-id" value={recipientId} onChange={(e) => setRecipientId(e.target.value)} className="field-input" required maxLength={120} />
+              </div>
+            </div>
+
+            {error && <p role="alert" className="mt-4 border border-danger/40 bg-danger-bg px-3 py-3 text-xs leading-5 text-danger">{error}</p>}
+
+            <button type="submit" disabled={connecting || !callerId.trim() || !recipientId.trim()} className="mt-6 flex w-full items-center justify-center gap-2 bg-signal px-4 py-3 text-sm font-semibold text-ink-950 transition-all hover:bg-[#83d9ff] disabled:cursor-not-allowed disabled:opacity-50">
+              {connecting ? "Opening secure monitor..." : "Start monitored call"}
+              {!connecting && <ArrowRight size={16} />}
+            </button>
+            <p className="mt-3 text-center text-[11px] leading-5 text-mute">The demo uses synthetic frames. Live microphone mode requests browser permission.</p>
+          </form>
+        </section>
+      </div>
+    </main>
   );
 }

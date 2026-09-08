@@ -76,6 +76,7 @@ export function useCallSession() {
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const [verification, setVerification] = useState<VerificationState>(initialVerification);
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
+  const [actionPending, setActionPending] = useState(false);
   const [serverRiskSnapshot, setServerRiskSnapshot] = useState<CallRiskResponse | null>(null);
   const [liveTranscript, setLiveTranscript] = useState("");
 
@@ -141,6 +142,7 @@ export function useCallSession() {
       setVerified(false);
       setVerification(initialVerification);
       setActionFeedback(null);
+      setActionPending(false);
       setServerRiskSnapshot(null);
       setLiveTranscript("");
       setMuted(false);
@@ -317,12 +319,17 @@ export function useCallSession() {
   const attemptWireTransfer = useCallback(
     async (amount: number) => {
       if (!meta) return;
-      const result = await attemptAction(meta.callId, "WIRE_TRANSFER", amount);
-      setActionFeedback({ ok: result.ok && result.executed, message: result.message });
-      if (actionFeedbackTimeoutRef.current !== null) {
-        window.clearTimeout(actionFeedbackTimeoutRef.current);
+      setActionPending(true);
+      try {
+        const result = await attemptAction(meta.callId, "WIRE_TRANSFER", amount);
+        setActionFeedback({ ok: result.ok && result.executed, message: result.message });
+        if (actionFeedbackTimeoutRef.current !== null) {
+          window.clearTimeout(actionFeedbackTimeoutRef.current);
+        }
+        actionFeedbackTimeoutRef.current = window.setTimeout(() => setActionFeedback(null), 6000);
+      } finally {
+        setActionPending(false);
       }
-      actionFeedbackTimeoutRef.current = window.setTimeout(() => setActionFeedback(null), 6000);
     },
     [meta]
   );
@@ -341,6 +348,7 @@ export function useCallSession() {
     analyser,
     verification,
     actionFeedback,
+    actionPending,
     serverRiskSnapshot,
     liveTranscript,
     startNewCall,
