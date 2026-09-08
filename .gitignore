@@ -3,6 +3,7 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+node_modules/
 .env
 *.db
 *.sqlite3
@@ -11,3 +12,4 @@ venv/
 .DS_Store
 dist/
 build/
+*.tsbuildinfo
