@@ -1,5 +1,5 @@
 """
-Minimal CLI to exercise the running VoiceTrust backend without a frontend --
+Minimal CLI to exercise the running SatyaVoice backend without a frontend --
 useful for a quick sanity check before wiring up the real dashboard.
 
 Start the server first:

@@ -88,7 +88,7 @@ class LightweightMLVoiceDetector(BaseVoiceDetector):
         if not self._model_path:
             raise RuntimeError(
                 "LightweightMLVoiceDetector requires a trained model_path. "
-                "Train one in Phase 3 and point VOICETRUST_MODEL_PATH at it."
+                "Train one in Phase 3 and point SATYAVOICE_MODEL_PATH at it."
             )
         self._model = joblib.load(self._model_path)
 

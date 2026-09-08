@@ -1,5 +1,5 @@
 """
-Central configuration for the VoiceTrust backend.
+Central configuration for the SatyaVoice backend.
 
 Every tunable knob (risk thresholds, fusion weights, audio window sizing)
 lives here so the team can retune the demo the night before judging without
@@ -8,9 +8,9 @@ touching business logic in core/ or services/.
 import os
 
 # ---- Server ----
-APP_NAME = "VoiceTrust API"
+APP_NAME = "SatyaVoice API"
 API_V1_PREFIX = "/api/v1"
-CORS_ORIGINS = os.getenv("VOICETRUST_CORS_ORIGINS", "*").split(",")
+CORS_ORIGINS = os.getenv("SATYAVOICE_CORS_ORIGINS", "*").split(",")
 
 # ---- Audio windowing (per prototype blueprint: 2.0s window, 0.5s hop) ----
 SAMPLE_RATE_HZ = 16000
@@ -36,7 +36,7 @@ class RiskStatus:
 
 
 # ---- Session lifecycle ----
-SESSION_TTL_SECONDS = int(os.getenv("VOICETRUST_SESSION_TTL", "3600"))
+SESSION_TTL_SECONDS = int(os.getenv("SATYAVOICE_SESSION_TTL", "3600"))
 TELEMETRY_INTERVAL_SECONDS = 0.5
 
 # ---- Verification ----
@@ -44,12 +44,12 @@ TOTP_CODE_LENGTH = 6
 TOTP_CHALLENGE_TIMEOUT_SECONDS = 60
 
 # ---- Database ----
-DATABASE_URL = os.getenv("VOICETRUST_DATABASE_URL", "sqlite:///./voicetrust.db")
+DATABASE_URL = os.getenv("SATYAVOICE_DATABASE_URL", "sqlite:///./satyavoice.db")
 
 # ---- Detector selection ----
 # "mock" -> deterministic / keyword-triggered scores (Phase 1, safe for live demo)
 # "ml"   -> classical feature extractor + trained sklearn classifier (Phase 2)
-VOICE_DETECTOR_MODE = os.getenv("VOICETRUST_DETECTOR_MODE", "mock")
+VOICE_DETECTOR_MODE = os.getenv("SATYAVOICE_DETECTOR_MODE", "mock")
 
 # ---- Intent keyphrases (Phase 1 lightweight matcher) ----
 HIGH_RISK_KEYPHRASES = [

@@ -1,6 +1,6 @@
 """
 Hybrid risk engine: fuses the acoustic and intent scores into a single 0-100
-composite Voice Trust Index and maps it to a policy decision.
+composite SatyaVoice risk score and maps it to a policy decision.
 
     R_total = min(100, floor(w_a * R_acoustic + w_i * R_intent))
 

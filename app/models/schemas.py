@@ -1,5 +1,5 @@
 """
-Pydantic request/response schemas for the VoiceTrust API surface.
+Pydantic request/response schemas for the SatyaVoice API surface.
 Field shapes mirror the API design table in the prototype blueprint exactly,
 so frontend and backend can be built in parallel against this contract.
 """

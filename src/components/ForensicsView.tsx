@@ -48,7 +48,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `voicetrust-incident-${meta?.callId ?? "unknown"}.json`;
+    link.download = `satyavoice-incident-${meta?.callId ?? "unknown"}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -74,7 +74,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
       <div className={`mt-6 flex items-start gap-3 border px-4 py-3 ${incidentDetected ? "border-danger/40 bg-danger-bg text-danger" : "border-safe/40 bg-safe-bg text-safe"}`}>
         {incidentDetected ? <ShieldAlert size={18} className="mt-0.5 shrink-0" /> : <CheckCircle2 size={18} className="mt-0.5 shrink-0" />}
         <div>
-          <p className="text-sm font-medium">{incidentDetected ? "Sensitive workflow was gated by VoiceTrust." : "No high-risk activity was detected."}</p>
+          <p className="text-sm font-medium">{incidentDetected ? "Sensitive workflow was gated by SatyaVoice." : "No high-risk activity was detected."}</p>
           <p className="mt-1 text-xs opacity-80">Final policy state: {finalStatus.replace("_", " ")} · Evidence is derived from {telemetryHistory.length} analysis windows.</p>
         </div>
       </div>

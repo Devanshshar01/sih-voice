@@ -43,7 +43,7 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
               <span className="flex h-8 w-8 items-center justify-center border border-signal/40 bg-signal-bg">
                 <ShieldCheck size={16} />
               </span>
-              VoiceTrust security console
+              SatyaVoice security console
             </div>
             <div className="mt-14 max-w-xl lg:mt-20">
               <p className="text-xs font-medium uppercase tracking-[0.14em] text-safe">REAL-TIME VOICE INTEGRITY</p>
@@ -51,7 +51,7 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
                 Stop an impersonation attempt before money moves.
               </h1>
               <p className="mt-5 max-w-lg text-sm leading-6 text-paper-dim sm:text-base">
-                VoiceTrust scores acoustic and conversational signals while a call is live, then
+                SatyaVoice scores acoustic and conversational signals while a call is live, then
                 pauses sensitive actions when the evidence crosses a risk threshold.
               </p>
             </div>

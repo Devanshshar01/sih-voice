@@ -1,4 +1,4 @@
-# VoiceTrust — Backend Scaffold
+# SatyaVoice — Backend Scaffold
 
 Real-time voice-cloning detection and adaptive impersonation prevention.
 Built for the SIH problem statement on AI-driven voice integrity verification.
@@ -94,7 +94,7 @@ WARN · 70–100 LOCK_VERIFY** (configurable in `app/config.py`).
 
 ## Detector modes (Phase 1 → Phase 2 swap)
 
-`VOICETRUST_DETECTOR_MODE` env var controls which detector `get_detector()`
+`SATYAVOICE_DETECTOR_MODE` env var controls which detector `get_detector()`
 returns:
 
 - `mock` (default) — deterministic, zero-dependency scores. Safe for the

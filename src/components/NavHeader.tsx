@@ -20,7 +20,7 @@ export default function NavHeader({ connected, ended = false, callerId, recipien
       <div className="flex items-center gap-4">
         <span className="flex items-center gap-2 text-sm font-semibold tracking-tight text-paper">
           <span className="flex h-7 w-7 items-center justify-center border border-signal/40 bg-signal-bg text-signal"><Shield size={14} /></span>
-          VoiceTrust
+          SatyaVoice
         </span>
         {callerId && (
           <>
