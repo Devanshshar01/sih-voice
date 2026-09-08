@@ -1,0 +1,31 @@
+"""
+SQLite connection setup.
+
+Active call state (ring buffers, live risk timeline) lives in memory --
+see core/session_manager.py. This module only persists the durable,
+post-call audit trail: derived scores and events, never raw audio.
+"""
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+
+from app import config
+
+connect_args = {"check_same_thread": False} if config.DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(config.DATABASE_URL, connect_args=connect_args)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+
+def init_db() -> None:
+    """Create tables if they don't exist yet. Called once on app startup."""
+    from app.db import models  # noqa: F401  (ensures models are registered on Base)
+    Base.metadata.create_all(bind=engine)
+
+
+def get_db():
+    """FastAPI dependency that yields a DB session and always closes it."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

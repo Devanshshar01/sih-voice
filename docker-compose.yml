@@ -1,0 +1,16 @@
+version: "3.9"
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - VOICETRUST_DETECTOR_MODE=mock
+      - VOICETRUST_DATABASE_URL=sqlite:///./voicetrust.db
+      - VOICETRUST_CORS_ORIGINS=*
+    volumes:
+      - voicetrust-data:/app/data
+
+volumes:
+  voicetrust-data:

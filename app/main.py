@@ -1,0 +1,41 @@
+"""
+FastAPI application entrypoint: instantiation, CORS, router registration,
+and startup/shutdown hooks (DB init + expired-session cleanup).
+"""
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app import config
+from app.api.v1 import analyze, call, stream, verification
+from app.core.session_manager import session_manager
+from app.db.database import init_db
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+    session_manager.purge_expired()
+
+
+app = FastAPI(title=config.APP_NAME, version="0.1.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=config.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(call.router, prefix=config.API_V1_PREFIX)
+app.include_router(stream.router, prefix=config.API_V1_PREFIX)
+app.include_router(verification.router, prefix=config.API_V1_PREFIX)
+app.include_router(analyze.router, prefix=config.API_V1_PREFIX)
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "service": config.APP_NAME}

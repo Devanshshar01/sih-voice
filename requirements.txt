@@ -1,0 +1,14 @@
+# --- Phase 1: core API + mock detector (safe to install right away) ---
+fastapi>=0.115,<0.116
+uvicorn[standard]>=0.30,<0.31
+pydantic>=2.9,<3
+sqlalchemy>=2.0,<2.1
+python-multipart>=0.0.9
+numpy>=1.26,<2
+httpx>=0.27          # used by TestClient and scripts/demo_client.py
+websockets>=12.0      # used by scripts/demo_client.py (real WS client)
+
+# --- Phase 2: real ML detector (install once you train a model) ---
+# librosa>=0.10
+# scikit-learn>=1.5
+# joblib>=1.4

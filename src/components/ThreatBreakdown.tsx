@@ -1,0 +1,55 @@
+import type { RiskStatus } from "../types";
+
+interface ThreatBreakdownProps {
+  acousticScore: number;
+  intentScore: number;
+  rationale: string[];
+  status: RiskStatus;
+}
+
+function VectorBar({ label, value, color }: { label: string; value: number; color: string }) {
+  const pct = Math.round(value * 100);
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between text-xs">
+        <span className="text-mute">{label}</span>
+        <span className="tabular font-mono text-paper">{pct}%</span>
+      </div>
+      <div className="h-1.5 w-full bg-ink-700">
+        <div
+          className="h-full transition-all duration-500 ease-out"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+export default function ThreatBreakdown({ acousticScore, intentScore, rationale, status }: ThreatBreakdownProps) {
+  const barColor = status === "LOCK_VERIFY" ? "#f0554a" : status === "WARN" ? "#f5a524" : "#4fc3f7";
+
+  return (
+    <div className="panel flex h-full flex-col p-4">
+      <h2 className="text-sm font-medium text-paper">Threat breakdown</h2>
+      <div className="mt-4 space-y-4">
+        <VectorBar label="Acoustic synthesis vector" value={acousticScore} color={barColor} />
+        <VectorBar label="Urgency / intent vector" value={intentScore} color={barColor} />
+      </div>
+
+      <div className="mt-5 flex-1 hairline-top pt-3">
+        <p className="text-xs text-mute">Rationale</p>
+        {rationale.length === 0 ? (
+          <p className="mt-2 text-sm text-mute">No signals to report yet.</p>
+        ) : (
+          <ul className="mt-2 space-y-1.5">
+            {rationale.map((line) => (
+              <li key={line} className="text-sm leading-snug text-paper-dim">
+                {line}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
