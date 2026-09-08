@@ -88,9 +88,6 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
                 <p className="text-xs uppercase tracking-[0.16em] text-mute">New monitored call</p>
                 <h2 className="mt-2 text-xl font-semibold text-paper">Choose a scenario</h2>
               </div>
-              <span className="border border-safe/30 bg-safe-bg px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-safe">
-                Judge demo
-              </span>
             </div>
             <p className="mt-3 text-sm leading-6 text-paper-dim">
               The attack scenario is preselected so the complete protection workflow is one click away.
