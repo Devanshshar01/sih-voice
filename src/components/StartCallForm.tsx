@@ -18,7 +18,7 @@ const AUDIO_OPTIONS: { mode: AudioMode; label: string; description: string; icon
   {
     mode: "demo-genuine",
     label: "Scripted demo — genuine call",
-    description: "Trust index stays low throughout, no injected artifacts.",
+    description: "Risk stays low throughout with no injected artifacts.",
     icon: PlayCircle,
   },
   {
@@ -35,10 +35,9 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
   const [audioMode, setAudioMode] = useState<AudioMode>("demo-cloned");
 
   return (
-    <main className="min-h-screen overflow-hidden bg-ink-950">
-      <div className="mx-auto grid min-h-screen max-w-7xl lg:grid-cols-[1.05fr_0.95fr]">
+    <main className="min-h-[100dvh] bg-ink-950">
+      <div className="mx-auto grid min-h-[100dvh] max-w-[1480px] lg:grid-cols-[0.9fr_1.1fr]">
         <section className="relative flex flex-col justify-between border-b border-ink-700 px-6 py-8 sm:px-10 lg:border-b-0 lg:border-r lg:px-14 lg:py-12">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(79,195,247,0.14),transparent_35%),linear-gradient(145deg,#071018_0%,#050809_68%)]" />
           <div className="relative">
             <div className="flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-signal">
               <span className="flex h-8 w-8 items-center justify-center border border-signal/40 bg-signal-bg">
@@ -46,17 +45,17 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
               </span>
               VoiceTrust security console
             </div>
-            <div className="mt-16 max-w-xl lg:mt-24">
-              <p className="text-sm font-medium text-safe">REAL-TIME VOICE INTEGRITY</p>
-              <h1 className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight text-paper sm:text-6xl">
+            <div className="mt-14 max-w-xl lg:mt-20">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-safe">REAL-TIME VOICE INTEGRITY</p>
+              <h1 className="mt-4 text-3xl font-semibold leading-tight tracking-tight text-paper sm:text-4xl">
                 Stop an impersonation attempt before money moves.
               </h1>
-              <p className="mt-6 max-w-lg text-base leading-7 text-paper-dim sm:text-lg">
+              <p className="mt-5 max-w-lg text-sm leading-6 text-paper-dim sm:text-base">
                 VoiceTrust scores acoustic and conversational signals while a call is live, then
                 pauses sensitive actions when the evidence crosses a risk threshold.
               </p>
             </div>
-            <div className="mt-12 grid max-w-xl gap-3 sm:grid-cols-3">
+            <div className="mt-10 grid max-w-xl gap-5 sm:grid-cols-3">
               {[
                 ["01", "Listen", "Capture a live audio stream"],
                 ["02", "Score", "Fuse voice and intent signals"],
@@ -76,7 +75,7 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
           </div>
         </section>
 
-        <section className="flex items-center px-6 py-8 sm:px-10 lg:px-14">
+        <section className="flex items-start px-6 py-10 sm:px-10 lg:items-center lg:px-14 lg:py-12">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -87,7 +86,7 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.16em] text-mute">New monitored call</p>
-                <h2 className="mt-2 text-2xl font-semibold text-paper">Choose a scenario</h2>
+                <h2 className="mt-2 text-xl font-semibold text-paper">Choose a scenario</h2>
               </div>
               <span className="border border-safe/30 bg-safe-bg px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-safe">
                 Judge demo

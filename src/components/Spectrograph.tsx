@@ -7,9 +7,9 @@ interface SpectrographProps {
 }
 
 const STATUS_COLOR: Record<RiskStatus, string> = {
-  ALLOW: "#4fc3f7",
-  WARN: "#f5a524",
-  LOCK_VERIFY: "#f0554a",
+  ALLOW: "#8bb6c8",
+  WARN: "#d5a766",
+  LOCK_VERIFY: "#db817b",
 };
 
 const BAR_COUNT = 48;

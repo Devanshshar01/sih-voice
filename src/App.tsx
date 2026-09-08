@@ -13,7 +13,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-ink-900">
+    <div className="flex min-h-screen flex-col bg-ink-900">
       <NavHeader
         connected={wsConnected}
         ended={phase === "ended"}
@@ -22,7 +22,7 @@ export default function App() {
         durationSeconds={phase === "active" ? durationSeconds : undefined}
       />
       {phase === "active" && <CallDashboard session={session} />}
-      {phase === "ended" && <ForensicsView session={session} />}
+      {phase === "ended" && <main className="flex-1"><ForensicsView session={session} /></main>}
     </div>
   );
 }

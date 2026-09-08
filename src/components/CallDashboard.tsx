@@ -42,8 +42,9 @@ export default function CallDashboard({ session }: CallDashboardProps) {
   const showVerification = status === "LOCK_VERIFY" && !verified;
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <div className="flex-1 px-4 py-4 sm:px-6 sm:py-6">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+        <div className="mx-auto max-w-[1440px]">
         <StatusBanner status={displayStatus} rationale={rationale} verified={verified} />
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border border-ink-600 bg-ink-800/50 px-4 py-3 text-xs">
@@ -58,9 +59,9 @@ export default function CallDashboard({ session }: CallDashboardProps) {
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
           <div className="space-y-4">
-            <div className="panel flex flex-col items-center justify-center p-6">
+            <div className="surface flex flex-col items-center justify-center px-5 py-6 sm:px-8 sm:py-8">
               {telemetry ? (
                 <TrustGauge score={score} status={status} />
               ) : (
@@ -68,23 +69,30 @@ export default function CallDashboard({ session }: CallDashboardProps) {
               )}
             </div>
 
-            <div>
-              <p className="mb-2 text-xs text-mute">Live signal</p>
+            <div className="surface px-5 py-5 sm:px-6">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="section-label">Signal activity</p>
+                  <p className="mt-1 text-sm text-paper-dim">Frequency trace from the monitored stream</p>
+                </div>
+                <span className="font-mono text-[11px] text-mute">16 kHz · mono</span>
+              </div>
               <Spectrograph analyser={analyser} status={status} />
             </div>
 
             {meta?.audioMode === "live" && (
-              <div className="panel p-4">
-                <label className="block text-xs text-mute" htmlFor="live-transcript">
-                  Conversation notes — feeds the intent analyzer (live transcription isn't wired in yet)
+              <div className="surface p-5 sm:p-6">
+                <label className="section-label" htmlFor="live-transcript">
+                  Conversation context
                 </label>
+                <p className="mt-1 text-sm text-paper-dim">Add a short note when the caller makes a sensitive request.</p>
                 <textarea
                   id="live-transcript"
                   value={liveTranscript}
                   onChange={(e) => updateLiveTranscript(e.target.value)}
                   rows={2}
                   placeholder="Type what the caller is asking for, as it happens…"
-                  className="mt-1 w-full resize-none border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-paper outline-none focus:border-signal"
+                  className="field-input mt-3 w-full resize-none font-sans"
                 />
               </div>
             )}
@@ -105,9 +113,14 @@ export default function CallDashboard({ session }: CallDashboardProps) {
             />
           </div>
         </div>
-      </div>
+        </div>
+      </main>
 
-      <CallControls muted={muted} onHold={onHold} onToggleMute={toggleMute} onToggleHold={toggleHold} onEndCall={endCall} />
+      <div className="shrink-0 border-t border-ink-700 bg-ink-900/95 px-4 py-3 backdrop-blur-sm sm:px-6">
+        <div className="mx-auto max-w-[1440px]">
+          <CallControls muted={muted} onHold={onHold} onToggleMute={toggleMute} onToggleHold={toggleHold} onEndCall={endCall} />
+        </div>
+      </div>
 
       {showVerification && (
         <VerificationModal

@@ -13,9 +13,9 @@ const CENTER = 100;
 const TRACK_RADIUS = 78;
 
 const STATUS_COLOR: Record<RiskStatus, string> = {
-  ALLOW: "#34d399",
-  WARN: "#f5a524",
-  LOCK_VERIFY: "#f0554a",
+  ALLOW: "#78b79a",
+  WARN: "#d5a766",
+  LOCK_VERIFY: "#db817b",
 };
 
 const STATUS_LABEL: Record<RiskStatus, string> = {
@@ -58,9 +58,9 @@ export default function TrustGauge({ score, status }: TrustGaugeProps) {
     <div className="relative flex flex-col items-center">
       <svg viewBox="0 0 200 160" className="w-full max-w-[280px]">
         {/* Zone track */}
-        <path d={describeArc(TRACK_RADIUS, START_ANGLE, zoneBoundaries.safeEnd)} fill="none" stroke="#1a4a3a" strokeWidth={10} strokeLinecap="butt" />
-        <path d={describeArc(TRACK_RADIUS, zoneBoundaries.safeEnd, zoneBoundaries.warnEnd)} fill="none" stroke="#4a3a17" strokeWidth={10} strokeLinecap="butt" />
-        <path d={describeArc(TRACK_RADIUS, zoneBoundaries.warnEnd, END_ANGLE)} fill="none" stroke="#4a2320" strokeWidth={10} strokeLinecap="butt" />
+        <path d={describeArc(TRACK_RADIUS, START_ANGLE, zoneBoundaries.safeEnd)} fill="none" stroke="#294238" strokeWidth={10} strokeLinecap="butt" />
+        <path d={describeArc(TRACK_RADIUS, zoneBoundaries.safeEnd, zoneBoundaries.warnEnd)} fill="none" stroke="#4a3f2c" strokeWidth={10} strokeLinecap="butt" />
+        <path d={describeArc(TRACK_RADIUS, zoneBoundaries.warnEnd, END_ANGLE)} fill="none" stroke="#4a3232" strokeWidth={10} strokeLinecap="butt" />
 
         {/* Active fill up to current score, in the live status color */}
         <path
@@ -106,8 +106,8 @@ export default function TrustGauge({ score, status }: TrustGaugeProps) {
         </g>
 
         {/* Readout */}
-        <text x={CENTER} y={128} textAnchor="middle" className="fill-mute" style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 9 }}>
-          Voice trust index
+        <text x={CENTER} y={128} textAnchor="middle" className="fill-mute" style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 9 }}>
+          Current risk score
         </text>
         <text
           x={CENTER}

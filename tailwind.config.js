@@ -5,41 +5,41 @@ export default {
     extend: {
       colors: {
         ink: {
-          950: "#050809",
-          900: "#070c10",
-          800: "#0f171d",
-          700: "#1b262e",
-          600: "#25333c",
-          500: "#324450",
+          950: "#080b0e",
+          900: "#0d1217",
+          800: "#151c23",
+          700: "#202a33",
+          600: "#2d3944",
+          500: "#42515d",
         },
         paper: {
-          DEFAULT: "#e7eef2",
-          dim: "#c3ced4",
+          DEFAULT: "#edf1f3",
+          dim: "#c7d0d6",
         },
         mute: {
-          DEFAULT: "#7c8d98",
-          dim: "#546069",
+          DEFAULT: "#8b99a3",
+          dim: "#64727c",
         },
         signal: {
-          DEFAULT: "#4fc3f7",
-          dim: "#2a8fbd",
-          bg: "rgba(79,195,247,0.10)",
+          DEFAULT: "#8bb6c8",
+          dim: "#5f8798",
+          bg: "rgba(139,182,200,0.10)",
         },
         safe: {
-          DEFAULT: "#34d399",
-          bg: "rgba(52,211,153,0.10)",
+          DEFAULT: "#78b79a",
+          bg: "rgba(120,183,154,0.10)",
         },
         warn: {
-          DEFAULT: "#f5a524",
-          bg: "rgba(245,165,36,0.10)",
+          DEFAULT: "#d5a766",
+          bg: "rgba(213,167,102,0.10)",
         },
         danger: {
-          DEFAULT: "#f0554a",
-          bg: "rgba(240,85,74,0.12)",
+          DEFAULT: "#db817b",
+          bg: "rgba(219,129,123,0.12)",
         },
       },
       fontFamily: {
-        sans: ["'Space Grotesk'", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["'IBM Plex Sans'", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["'IBM Plex Mono'", "ui-monospace", "'SFMono-Regular'", "monospace"],
       },
       boxShadow: {
