@@ -35,14 +35,22 @@ export default function VerificationModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm border border-danger/40 bg-ink-800">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="verification-modal-title"
+        aria-describedby="verification-modal-desc"
+        className="w-full max-w-sm border border-danger/40 bg-ink-800"
+      >
         <div className="flex items-center gap-2 border-b border-danger/30 bg-danger-bg px-5 py-4 text-danger">
           <ShieldAlert size={18} />
-          <h2 className="text-sm font-medium">Security override required</h2>
+          <h2 id="verification-modal-title" className="text-sm font-medium">
+            Security override required
+          </h2>
         </div>
 
         <div className="px-5 py-5">
-          <p className="text-sm text-paper-dim">
+          <p id="verification-modal-desc" className="text-sm text-paper-dim">
             Complete out-of-band verification to unlock this call's sensitive controls.
           </p>
 
@@ -72,6 +80,7 @@ export default function VerificationModal({
               </label>
               <input
                 id="totp-input"
+                autoFocus
                 inputMode="numeric"
                 maxLength={6}
                 value={verification.input}
