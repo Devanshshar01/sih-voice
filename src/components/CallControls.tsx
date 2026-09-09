@@ -22,6 +22,7 @@ function ControlButton({
   return (
     <button
       onClick={onClick}
+      aria-pressed={active}
       className={`flex items-center gap-2 border px-4 py-2.5 text-sm transition-colors ${
         active
           ? "border-signal/50 bg-signal-bg text-signal"
