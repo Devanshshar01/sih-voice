@@ -13,3 +13,6 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+
+public/models/*.onnx.data
+
