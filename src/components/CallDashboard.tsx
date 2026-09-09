@@ -23,6 +23,8 @@ export default function CallDashboard({ session }: CallDashboardProps) {
     actionFeedback,
     actionPending,
     liveTranscript,
+    browserOnnxStatus,
+    browserOnnxResult,
     endCall,
     toggleMute,
     toggleHold,
@@ -40,6 +42,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
   const intentScore = telemetry?.intent_score ?? 0;
   const rationale = telemetry?.rationale ?? [];
   const showVerification = status === "LOCK_VERIFY" && !verified;
+  const browserOnnxPercent = browserOnnxResult ? Math.round(browserOnnxResult.score * 100) : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -79,6 +82,26 @@ export default function CallDashboard({ session }: CallDashboardProps) {
               </div>
               <Spectrograph analyser={analyser} status={status} />
             </div>
+
+            {meta?.audioMode === "browser-onnx" && (
+              <div className="surface p-5 sm:p-6">
+                <p className="section-label">Browser-side ONNX proof-of-concept</p>
+                <p className="mt-1 text-sm text-paper-dim">
+                  This demo runs the real anti-spoof model in-browser with ONNX Runtime Web — a scoped offline proof that detection can work even without the backend pipeline being available.
+                </p>
+                <div className="mt-4 border border-ink-600 bg-ink-900/60 p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-mute">Local inference status</p>
+                  <p className="mt-2 text-sm text-paper">
+                    {browserOnnxStatus === "loading" && "Loading the ONNX model in the browser…"}
+                    {browserOnnxStatus === "ready" && browserOnnxResult && (
+                      <>Synthetic likelihood: <span className="font-semibold text-signal">{browserOnnxPercent}%</span> · label: {browserOnnxResult.label}</>
+                    )}
+                    {browserOnnxStatus === "error" && "Browser inference could not load. Refresh to retry."}
+                    {browserOnnxStatus === "idle" && "Waiting for the first audio frame…"}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {meta?.audioMode === "live" && (
               <div className="surface p-5 sm:p-6">

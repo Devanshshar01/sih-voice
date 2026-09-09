@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import config
-from app.api.v1 import analyze, call, stream, verification
+from app.api.v1 import analyze, call, forensics, speaker, stream, verification
 from app.core.session_manager import session_manager
 from app.db.database import init_db
 
@@ -31,9 +31,11 @@ app.add_middleware(
 )
 
 app.include_router(call.router, prefix=config.API_V1_PREFIX)
+app.include_router(speaker.router, prefix=config.API_V1_PREFIX)
 app.include_router(stream.router, prefix=config.API_V1_PREFIX)
 app.include_router(verification.router, prefix=config.API_V1_PREFIX)
 app.include_router(analyze.router, prefix=config.API_V1_PREFIX)
+app.include_router(forensics.router, prefix=config.API_V1_PREFIX)
 
 
 @app.get("/health")

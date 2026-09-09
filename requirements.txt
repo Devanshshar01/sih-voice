@@ -8,7 +8,16 @@ numpy>=2,<3
 httpx>=0.27          # used by TestClient and scripts/demo_client.py
 websockets>=12.0      # used by scripts/demo_client.py (real WS client)
 
-# --- Phase 2: real ML detector (install once you train a model) ---
-# librosa>=0.10
-# scikit-learn>=1.5
-# joblib>=1.4
+# --- Real detector runtime ---
+torch>=2.2
+transformers>=4.39,<5
+protobuf>=4.25
+faster-whisper>=1.1,<2
+
+# --- Phase 6 infra hardening ---
+celery>=5.4,<6
+redis>=5.0,<6
+psycopg[binary]>=3.1,<4
+
+# --- Phase 8 public-chain anchoring ---
+web3>=7,<8

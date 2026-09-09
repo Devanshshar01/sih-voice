@@ -34,6 +34,29 @@ class AudioAnalyzeResponse(BaseModel):
     explanation: str
 
 
+class SpeakerEnrollRequest(BaseModel):
+    speaker_id: str = Field(..., min_length=1)
+
+
+class SpeakerEnrollResponse(BaseModel):
+    speaker_id: str
+    embedding_dim: int
+    vault_size: int
+    match_threshold: float
+    method: str
+    checkpoint_status: str
+    enrolled: bool
+
+
+class SpeakerMatchResponse(BaseModel):
+    speaker_id: Optional[str] = None
+    speaker_match_score: float
+    matched: bool
+    vault_size: int
+    method: str
+    checkpoint_status: str
+
+
 class RiskTimelinePoint(BaseModel):
     t: int
     score: int

@@ -1,0 +1,10 @@
+{
+  "model_id": "Hemgg/Deepfake-audio-detection",
+  "sample_rate": 16000,
+  "labels": {
+    "0": "AIVoice",
+    "1": "HumanVoice"
+  },
+  "synthetic_index": 0,
+  "input_length": 16000
+}

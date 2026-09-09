@@ -9,6 +9,7 @@ import {
   terminateCall,
 } from "../lib/api";
 import { AUDIO_CHUNK_SAMPLES, LiveAudioCapture, buildDemoFrame } from "../lib/audioCapture";
+import { runAntiSpoofOnnxSample } from "../lib/onnxDetector";
 import type {
   AudioMode,
   CallMeta,
@@ -79,6 +80,8 @@ export function useCallSession() {
   const [actionPending, setActionPending] = useState(false);
   const [serverRiskSnapshot, setServerRiskSnapshot] = useState<CallRiskResponse | null>(null);
   const [liveTranscript, setLiveTranscript] = useState("");
+  const [browserOnnxStatus, setBrowserOnnxStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [browserOnnxResult, setBrowserOnnxResult] = useState<{ score: number; label: string } | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioCaptureRef = useRef<LiveAudioCapture | null>(null);
@@ -145,6 +148,8 @@ export function useCallSession() {
       setActionPending(false);
       setServerRiskSnapshot(null);
       setLiveTranscript("");
+      setBrowserOnnxStatus("idle");
+      setBrowserOnnxResult(null);
       setMuted(false);
       setOnHold(false);
       mutedRef.current = false;
@@ -166,11 +171,26 @@ export function useCallSession() {
             setDurationSeconds(Math.floor((Date.now() - startedAt) / 1000));
           }, 1000);
 
-          if (audioMode === "live") {
+          if (audioMode === "live" || audioMode === "browser-onnx") {
             try {
+              if (audioMode === "browser-onnx") {
+                setBrowserOnnxStatus("loading");
+              }
+
               const capture = new LiveAudioCapture();
               audioCaptureRef.current = capture;
               const analyserNode = await capture.start((chunk) => {
+                if (audioMode === "browser-onnx") {
+                  void runAntiSpoofOnnxSample(chunk)
+                    .then((result) => {
+                      setBrowserOnnxStatus("ready");
+                      setBrowserOnnxResult(result);
+                    })
+                    .catch(() => {
+                      setBrowserOnnxStatus("error");
+                    });
+                }
+
                 if (!mutedRef.current && !onHoldRef.current && ws.readyState === WebSocket.OPEN) {
                   ws.send(chunk.buffer);
                 }
@@ -351,6 +371,8 @@ export function useCallSession() {
     actionPending,
     serverRiskSnapshot,
     liveTranscript,
+    browserOnnxStatus,
+    browserOnnxResult,
     startNewCall,
     endCall,
     startOver,

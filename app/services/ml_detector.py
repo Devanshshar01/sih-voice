@@ -88,7 +88,7 @@ class LightweightMLVoiceDetector(BaseVoiceDetector):
         if not self._model_path:
             raise RuntimeError(
                 "LightweightMLVoiceDetector requires a trained model_path. "
-                "Train one in Phase 3 and point SATYAVOICE_MODEL_PATH at it."
+                "Train one in Phase 3 and point VOICETRUST_MODEL_PATH at it."
             )
         self._model = joblib.load(self._model_path)
 
@@ -125,7 +125,115 @@ class LightweightMLVoiceDetector(BaseVoiceDetector):
         return {"acoustic_score": score, "details": {**features, "mode": "ml"}}
 
 
-def get_detector(mode: str, model_path: Optional[str] = None) -> BaseVoiceDetector:
+class RealAntiSpoofDetector(BaseVoiceDetector):
+    """Lazy-loaded pretrained audio deepfake classifier.
+
+    The default checkpoint is a Wav2Vec2 classifier published on Hugging Face.
+    It is loaded only when real mode receives its first audio window so mock
+    mode remains lightweight and deterministic.
+    """
+
+    def __init__(
+        self,
+        model_id: str,
+        model_path: Optional[str] = None,
+        device: str = "cpu",
+        revision: str = "main",
+        sample_rate: int = 16000,
+    ):
+        self.model_id = model_path or model_id
+        self.device = device
+        self.revision = revision
+        self.sample_rate = sample_rate
+        self._processor = None
+        self._model = None
+
+    def _ensure_model_loaded(self) -> None:
+        if self._model is not None:
+            return
+
+        try:
+            import torch
+            from transformers import AutoModelForAudioClassification, Wav2Vec2FeatureExtractor
+        except ImportError as exc:
+            raise RuntimeError(
+                "Real detector mode requires torch and transformers. "
+                "Install requirements.txt before setting VOICETRUST_DETECTOR_MODE=real."
+            ) from exc
+
+        try:
+            self._processor = Wav2Vec2FeatureExtractor.from_pretrained(
+                self.model_id, revision=self.revision
+            )
+            self._model = AutoModelForAudioClassification.from_pretrained(
+                self.model_id, revision=self.revision
+            ).to(self.device)
+            self._model.eval()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Could not load real detector checkpoint '{self.model_id}': {exc}"
+            ) from exc
+
+    def predict(self, audio_window: np.ndarray) -> Dict[str, Any]:
+        self._ensure_model_loaded()
+        import torch
+
+        samples = np.asarray(audio_window, dtype=np.float32)
+        if samples.size == 0:
+            return {
+                "acoustic_score": 0.5,
+                "details": {
+                    "mode": "real",
+                    "model": self.model_id,
+                    "warning": "empty_audio_window",
+                },
+            }
+
+        inputs = self._processor(
+            samples,
+            sampling_rate=self.sample_rate,
+            return_tensors="pt",
+            padding=True,
+        )
+        inputs = {key: value.to(self.device) for key, value in inputs.items()}
+        with torch.inference_mode():
+            logits = self._model(**inputs).logits
+            probabilities = torch.softmax(logits, dim=-1)[0]
+
+        labels = getattr(self._model.config, "id2label", {})
+        synthetic_index = next(
+            (index for index, label in labels.items() if "ai" in label.lower() or "fake" in label.lower() or "spoof" in label.lower()),
+            0,
+        )
+        score = float(probabilities[int(synthetic_index)].item())
+        label = labels.get(int(torch.argmax(probabilities).item()), "unknown")
+        return {
+            "acoustic_score": round(score, 4),
+            "details": {
+                "mode": "real",
+                "model": self.model_id,
+                "revision": self.revision,
+                "predicted_label": label,
+                "labels": labels,
+                "sample_rate": self.sample_rate,
+            },
+        }
+
+
+def get_detector(
+    mode: str,
+    model_path: Optional[str] = None,
+    model_id: str = "Hemgg/Deepfake-audio-detection",
+    device: str = "cpu",
+    revision: str = "main",
+) -> BaseVoiceDetector:
+    if mode == "real":
+        return RealAntiSpoofDetector(
+            model_id=model_id,
+            model_path=model_path,
+            device=device,
+            revision=revision,
+        )
     if mode == "ml":
         return LightweightMLVoiceDetector(model_path=model_path)
     return MockVoiceDetector()

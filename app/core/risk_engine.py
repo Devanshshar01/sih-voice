@@ -21,14 +21,17 @@ def compute_risk(
     acoustic_score: float,
     intent_score: float,
     flagged_phrases: Optional[List[str]] = None,
+    speaker_score: float = 0.0,
 ) -> Dict[str, Any]:
     flagged_phrases = flagged_phrases or []
 
     effective_intent = 1.0 if flagged_phrases else intent_score
+    effective_speaker_score = max(0.0, min(1.0, speaker_score))
 
     raw = (config.ACOUSTIC_WEIGHT * acoustic_score * 100) + (
         config.INTENT_WEIGHT * effective_intent * 100
     )
+    raw += config.SPEAKER_WEIGHT * effective_speaker_score * 100
     risk_score = min(100, math.floor(raw))
 
     status, rationale = _classify(risk_score, acoustic_score, flagged_phrases)
@@ -37,6 +40,7 @@ def compute_risk(
         "risk_score": risk_score,
         "acoustic_score": round(acoustic_score, 4),
         "intent_score": round(effective_intent, 4),
+        "speaker_score": round(effective_speaker_score, 4),
         "status": status,
         "rationale": rationale,
     }

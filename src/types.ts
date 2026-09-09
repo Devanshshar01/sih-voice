@@ -45,8 +45,24 @@ export interface CallActionResult {
   message: string;
 }
 
+export interface ForensicsVerificationResponse {
+  evidence_id: string;
+  evidence_hash_integrity: boolean;
+  local_chain_integrity: boolean;
+  public_anchor_consistent: boolean;
+  evidence_hash: string;
+  local_chain_root: string | null;
+  anchor_status: string;
+  blockchain_network: string | null;
+  contract_address: string | null;
+  tx_hash: string | null;
+  anchor_timestamp: string | null;
+  failure_reason: string | null;
+  ledger_record_count: number;
+}
+
 /** Audio source driving the acoustic pipeline for this call. */
-export type AudioMode = "live" | "demo-genuine" | "demo-cloned";
+export type AudioMode = "live" | "demo-genuine" | "demo-cloned" | "browser-onnx";
 
 export type CallPhase = "idle" | "connecting" | "active" | "ended";
 

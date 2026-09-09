@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { CheckCircle2, Download, FileWarning, RotateCcw, ShieldAlert } from "lucide-react";
 import {
   CartesianGrid,
@@ -11,6 +11,9 @@ import {
   YAxis,
 } from "recharts";
 import type { UseCallSession } from "../hooks/useCallSession";
+import { registerForensicsEvidence, verifyForensicsEvidence } from "../lib/api";
+import { buildTechnicalEvidenceReport, createTechnicalEvidencePdf } from "../lib/forensicPdf";
+import type { ForensicsVerificationResponse } from "../types";
 
 interface ForensicsViewProps {
   session: UseCallSession;
@@ -18,6 +21,8 @@ interface ForensicsViewProps {
 
 export default function ForensicsView({ session }: ForensicsViewProps) {
   const { meta, telemetryHistory, serverRiskSnapshot, durationSeconds, startOver } = session;
+  const [verificationResult, setVerificationResult] = useState<ForensicsVerificationResponse | null>(null);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
 
   const chartData = useMemo(() => {
     if (telemetryHistory.length === 0) return [];
@@ -33,24 +38,55 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
   const finalStatus = telemetryHistory[telemetryHistory.length - 1]?.status ?? "ALLOW";
   const incidentDetected = maxScore >= 70;
 
-  const handleExport = () => {
-    const report = {
-      call_id: meta?.callId,
-      caller_id: meta?.callerId,
-      recipient_id: meta?.recipientId,
-      duration_seconds: durationSeconds,
-      max_risk_score: maxScore,
-      telemetry: telemetryHistory,
-      server_risk_snapshot: serverRiskSnapshot,
-      exported_at: new Date().toISOString(),
-    };
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+  const handleExport = async () => {
+    if (!meta) return;
+
+    const report = await buildTechnicalEvidenceReport({
+      callId: meta.callId,
+      callerId: meta.callerId,
+      recipientId: meta.recipientId,
+      durationSeconds,
+      maxRiskScore: maxScore,
+      exportedAt: new Date().toISOString(),
+      operatorIdentity: meta.callerId || "demo-operator",
+      telemetryHistory,
+      modelVersionMetadata: {
+        detector_mode: meta.audioMode,
+        audio_pipeline: serverRiskSnapshot
+          ? "WebSocket PCM + sliding windows + server-side risk snapshot"
+          : "WebSocket PCM + sliding windows",
+        server_risk_snapshot: serverRiskSnapshot,
+      },
+    });
+
+    try {
+      await registerForensicsEvidence(meta.callId, report);
+    } catch {
+      // Best-effort registration only: the export and local evidence package must remain usable even if the backend is unavailable.
+    }
+
+    const blob = await createTechnicalEvidencePdf(report);
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `satyavoice-incident-${meta?.callId ?? "unknown"}.json`;
+    link.download = `satyavoice-technical-integrity-${meta.callId}.pdf`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleVerify = async () => {
+    if (!meta) return;
+
+    try {
+      const result = await verifyForensicsEvidence(meta.callId);
+      setVerificationResult(result);
+      setVerificationError(null);
+    } catch (error) {
+      setVerificationError(
+        error instanceof Error ? error.message : "Verification could not be completed."
+      );
+      setVerificationResult(null);
+    }
   };
 
   return (
@@ -160,13 +196,42 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
         )}
       </div>
 
-      <button
-        onClick={handleExport}
-        className="mt-4 flex items-center gap-2 border border-ink-600 px-4 py-2.5 text-sm text-paper-dim transition-colors hover:border-signal/50 hover:text-signal"
-      >
-        <Download size={15} />
-        Export forensic report (JSON)
-      </button>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-2 border border-ink-600 px-4 py-2.5 text-sm text-paper-dim transition-colors hover:border-signal/50 hover:text-signal"
+        >
+          <Download size={15} />
+          Export technical integrity evidence package (PDF)
+        </button>
+        <button
+          onClick={handleVerify}
+          className="border border-ink-600 px-4 py-2.5 text-sm text-paper-dim transition-colors hover:border-signal/50 hover:text-signal"
+        >
+          Verify evidence chain
+        </button>
+      </div>
+
+      {verificationError && (
+        <p className="mt-3 text-sm text-danger">Verification error: {verificationError}</p>
+      )}
+
+      {verificationResult && (
+        <div className="panel mt-4 p-4">
+          <p className="text-sm font-medium text-paper">Verification result</p>
+          <div className="mt-3 grid gap-2 text-sm text-paper-dim">
+            <p>Evidence hash integrity: {verificationResult.evidence_hash_integrity ? "verified" : "mismatch"}</p>
+            <p>Local chain integrity: {verificationResult.local_chain_integrity ? "verified" : "mismatch"}</p>
+            <p>Public anchor consistency: {verificationResult.public_anchor_consistent ? "verified" : "not confirmed"}</p>
+            <p>Anchor status: {verificationResult.anchor_status}</p>
+            <p>Local chain root: {verificationResult.local_chain_root ?? "pending"}</p>
+            <p>Blockchain network: {verificationResult.blockchain_network ?? "unavailable"}</p>
+            <p>Contract address: {verificationResult.contract_address ?? "unavailable"}</p>
+            <p>Transaction hash: {verificationResult.tx_hash ?? "not confirmed"}</p>
+            <p>Anchor timestamp: {verificationResult.anchor_timestamp ?? "not confirmed"}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

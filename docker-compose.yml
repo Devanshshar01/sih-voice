@@ -6,9 +6,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - SATYAVOICE_DETECTOR_MODE=mock
-      - SATYAVOICE_DATABASE_URL=sqlite:////app/data/satyavoice.db
-      - SATYAVOICE_CORS_ORIGINS=*
+      - VOICETRUST_DETECTOR_MODE=mock
+      - VOICETRUST_DATABASE_URL=sqlite:////app/data/satyavoice.db
+      - VOICETRUST_CORS_ORIGINS=*
     volumes:
       - satyavoice-data:/app/data
 

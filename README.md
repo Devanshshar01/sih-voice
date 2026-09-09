@@ -92,28 +92,55 @@ If a high-risk financial/urgency keyphrase is detected in the transcript,
 can't be diluted by a calm-sounding voice. Thresholds: **0–39 ALLOW · 40–69
 WARN · 70–100 LOCK_VERIFY** (configurable in `app/config.py`).
 
-## Detector modes (Phase 1 → Phase 2 swap)
+## Detector modes
 
-`SATYAVOICE_DETECTOR_MODE` env var controls which detector `get_detector()`
+`VOICETRUST_DETECTOR_MODE` env var controls which detector `get_detector()`
 returns:
 
-- `mock` (default) — deterministic, zero-dependency scores. Safe for the
+- `mock` (default) — deterministic scores. Safe for the
   live demo; supports a `force_acoustic_score` hook over the WebSocket so
   the judge-demo "backup audio injection" toggle can trigger the cloned-
   voice scenario without depending on a live microphone.
-- `ml` — classical feature extraction (MFCCs, pitch variance, spectral
-  centroid/rolloff) + a trained scikit-learn classifier. Install the Phase 2
-  dependencies (commented out in `requirements.txt`) and train a model
-  before switching this on.
+- `real` — a pretrained Wav2Vec2 audio-classification checkpoint loaded lazily
+  from Hugging Face (`Hemgg/Deepfake-audio-detection`). Set
+  `VOICETRUST_MODEL_ID`, `VOICETRUST_MODEL_DEVICE`, and optionally
+  `VOICETRUST_MODEL_REVISION`. The checkpoint is Apache-2.0 and its model card
+  reports 95.45% accuracy on its own audiofolder evaluation; this is not an
+  independent SatyaVoice benchmark and is not IndicSynth-trained.
+- `ml` — legacy classical feature extraction + a trained scikit-learn
+  classifier, retained for compatibility but not used by the main Phase 1
+  path.
 
-Both implement the same `BaseVoiceDetector.predict()` contract, so nothing
-else in the pipeline needs to change when you swap modes.
+All detector implementations use the same `BaseVoiceDetector.predict()`
+contract, so the risk engine and streaming path do not change when modes are
+swapped.
+
+## Automatic transcription
+
+Set `VOICETRUST_ASR_MODE=real` to enable lazy faster-whisper transcription in
+the WebSocket pipeline. The default remains `manual`, which preserves the
+deterministic demo and accepts transcript text from the client. Configure:
+
+```text
+VOICETRUST_ASR_MODE=real
+VOICETRUST_ASR_MODEL_SIZE=base
+VOICETRUST_ASR_DEVICE=cpu
+VOICETRUST_ASR_COMPUTE_TYPE=int8
+VOICETRUST_ASR_LANGUAGE=hi
+```
+
+Supported language codes are passed through to Whisper, including `hi`, `bn`,
+`mr`, `ta`, `te`, and `en`. A client can also send a WebSocket text payload
+such as `{"language":"hi"}`. Explicit `transcript` text takes precedence over
+ASR for the current window. On the development CPU, `base` measured 1.69
+seconds and `small` measured 2.89 seconds for two seconds of silent audio, so
+`base` is the current default. These are local observations, not a sub-500 ms
+production benchmark.
 
 ## What's intentionally stubbed for later phases
 
-- **ASR/transcription**: `IntentAnalyzer.analyze_text()` expects a transcript
-  string today (sent as a WebSocket text frame). Wire in a local Whisper
-  model in `intent_analyzer.py` when GPU hardware is available.
+- **ASR/transcription**: real mode uses faster-whisper; manual mode remains
+  available for deterministic demos and explicit transcript overrides.
 - **Real TOTP/SMS delivery**: `verification.py` simulates the challenge
   in-process. Swap in Twilio Verify or an authenticator-app secret for
   anything beyond a demo.
@@ -123,6 +150,27 @@ else in the pipeline needs to change when you swap modes.
 - **Horizontal scaling**: `SessionManager` is an in-memory, single-process
   store — fine for the hackathon demo; move to Redis before running more
   than one worker.
+
+The real detector downloads its checkpoint on first use unless
+`VOICETRUST_MODEL_PATH` points to a local copy. The 378 MB checkpoint is not
+committed to this repository.
+
+## Phase 9 — On-device inference (scoped proof-of-concept)
+
+This repository now includes a browser-side proof-of-concept for the anti-spoof
+model:
+
+1. Run `python scripts/export_anti_spoof_onnx.py` to export the real
+   `Hemgg/Deepfake-audio-detection` checkpoint to ONNX and save the browser
+   metadata bundle under `public/models/`.
+2. The frontend loads `anti_spoof.onnx` through `onnxruntime-web` and runs a
+   local inference pass over microphone frames in the browser.
+3. Use the new `Browser-only ONNX inference (Phase 9 proof-of-concept)` mode
+   in the UI to demonstrate detection in an airplane-mode-style offline flow.
+
+Android SDK scaffolding is explicitly deferred as roadmap work. We are not
+attempting to build the Android wrapper or native SDK layer in this repository
+unless you ask for that separately.
 
 ## Privacy by design
 

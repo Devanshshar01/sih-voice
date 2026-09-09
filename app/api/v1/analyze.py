@@ -2,16 +2,25 @@
 Batch analysis endpoint for a single uploaded audio sample -- lets judges
 or teammates sanity-check the detector without spinning up a full call.
 """
+from __future__ import annotations
+
 import numpy as np
 from fastapi import APIRouter, File, Form, UploadFile
 
 from app import config
 from app.models.schemas import AudioAnalyzeResponse
 from app.services.ml_detector import get_detector
+from app.tasks import generate_forensic_report
 
 router = APIRouter(prefix="/audio", tags=["audio"])
 
-detector = get_detector(config.VOICE_DETECTOR_MODE)
+detector = get_detector(
+    config.VOICE_DETECTOR_MODE,
+    model_path=config.VOICE_MODEL_PATH or None,
+    model_id=config.VOICE_MODEL_ID,
+    device=config.VOICE_MODEL_DEVICE,
+    revision=config.VOICE_MODEL_REVISION,
+)
 
 
 @router.post("/analyze", response_model=AudioAnalyzeResponse)
@@ -27,11 +36,23 @@ async def analyze_audio(audio_file: UploadFile = File(...), language: str = Form
     classification = "AI_GENERATED" if score >= 0.5 else "HUMAN"
     confidence = score if classification == "AI_GENERATED" else 1 - score
 
+    task = generate_forensic_report.delay(
+        call_id="batch-analysis",
+        payload={
+            "summary": (
+                f"Batch analysis completed for {audio_file.filename or 'uploaded sample'}"
+            ),
+            "generated_at": None,
+        },
+    )
+
     return AudioAnalyzeResponse(
         classification=classification,
         confidence=round(confidence, 4),
         explanation=(
             f"Acoustic synthesis likelihood {score:.0%} "
-            f"based on the {result['details'].get('mode', 'mock')} detector."
+            f"based on the {result['details'].get('mode', 'mock')} detector "
+            f"({result['details'].get('model', 'deterministic demo')}). "
+            f"Background task queued: {task.id}."
         ),
     )

@@ -16,6 +16,12 @@ const AUDIO_OPTIONS: { mode: AudioMode; label: string; description: string; icon
     icon: Mic,
   },
   {
+    mode: "browser-onnx",
+    label: "Browser-only ONNX inference (Phase 9 proof-of-concept)",
+    description: "Runs the real anti-spoof model in-browser with ONNX Runtime Web, demonstrated in airplane-mode style offline execution.",
+    icon: ShieldCheck,
+  },
+  {
     mode: "demo-genuine",
     label: "Scripted demo — genuine call",
     description: "Risk stays low throughout with no injected artifacts.",

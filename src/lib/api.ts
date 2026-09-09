@@ -2,6 +2,7 @@ import type {
   CallActionResult,
   CallRiskResponse,
   CallStartResponse,
+  ForensicsVerificationResponse,
   VerificationChallengeResponse,
   VerificationRequestResponse,
 } from "../types";
@@ -74,6 +75,27 @@ export async function attemptAction(
     executed: Boolean(data?.executed),
     message: data?.message ?? data?.detail ?? "Unknown response from server.",
   };
+}
+
+export async function registerForensicsEvidence(
+  evidenceId: string,
+  payload: object
+): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/forensics/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ evidence_id: evidenceId, payload }),
+  });
+  return asJson<Record<string, unknown>>(res);
+}
+
+export async function verifyForensicsEvidence(
+  evidenceId: string
+): Promise<ForensicsVerificationResponse> {
+  const res = await fetch(`${API_BASE}/forensics/${evidenceId}/verify`, {
+    method: "POST",
+  });
+  return asJson<ForensicsVerificationResponse>(res);
 }
 
 export async function terminateCall(callId: string): Promise<void> {
