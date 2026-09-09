@@ -9,6 +9,10 @@ policy enforcement (ALLOW / WARN / LOCK_VERIFY), a step-up verification flow,
 and a privacy-preserving audit log (metadata only — **no raw audio is ever
 written to disk**).
 
+For deployment, the frontend expects `VITE_API_BASE_URL` and `VITE_WS_BASE_URL`,
+while the backend reads the `VOICETRUST_*` environment variables defined in
+[.env.example](.env.example).
+
 ## Quick start
 
 ```bash
