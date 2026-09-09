@@ -98,8 +98,9 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
                 <button
                   type="button"
                   key={mode}
+                  aria-pressed={audioMode === mode}
                   onClick={() => setAudioMode(mode)}
-                  className={`group flex w-full items-start gap-4 border p-4 text-left transition-all ${
+                  className={`group flex w-full items-start gap-4 border p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal ${
                     audioMode === mode
                       ? "border-signal/70 bg-signal-bg shadow-[inset_3px_0_0_#4fc3f7]"
                       : "border-ink-600 bg-ink-800/60 hover:border-ink-500 hover:bg-ink-800"

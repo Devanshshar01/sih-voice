@@ -41,7 +41,7 @@ export default function WireTransferPanel({ locked, pending, feedback, onAttempt
       <button
         onClick={() => onAttempt(amount)}
         disabled={pending || !Number.isFinite(amount) || amount <= 0}
-        className={`mt-4 flex w-full items-center justify-center gap-2 border px-4 py-2.5 text-sm font-medium transition-colors ${
+        className={`mt-4 flex w-full items-center justify-center gap-2 border px-4 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal disabled:cursor-not-allowed disabled:opacity-50 ${
           locked
             ? "border-danger/50 bg-danger-bg text-danger hover:bg-danger/15"
             : "border-signal/50 bg-signal-bg text-signal hover:bg-signal/15"
