@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Activity, ArrowRight, Check, Mic, PlayCircle, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Activity, ArrowRight, Check, Loader2, Mic, PlayCircle, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { AudioMode } from "../types";
 
 interface StartCallFormProps {
@@ -105,6 +105,7 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
                   type="button"
                   key={mode}
                   onClick={() => setAudioMode(mode)}
+                  aria-pressed={audioMode === mode}
                   className={`group flex w-full items-start gap-4 border p-4 text-left transition-all ${
                     audioMode === mode
                       ? "border-signal/70 bg-signal-bg shadow-[inset_3px_0_0_#4fc3f7]"
@@ -139,8 +140,17 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
             {error && <p role="alert" className="mt-4 border border-danger/40 bg-danger-bg px-3 py-3 text-xs leading-5 text-danger">{error}</p>}
 
             <button type="submit" disabled={connecting || !callerId.trim() || !recipientId.trim()} className="mt-6 flex w-full items-center justify-center gap-2 bg-signal px-4 py-3 text-sm font-semibold text-ink-950 transition-all hover:bg-[#83d9ff] disabled:cursor-not-allowed disabled:opacity-50">
-              {connecting ? "Opening secure monitor..." : "Start monitored call"}
-              {!connecting && <ArrowRight size={16} />}
+              {connecting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Opening secure monitor...
+                </>
+              ) : (
+                <>
+                  Start monitored call
+                  <ArrowRight size={16} />
+                </>
+              )}
             </button>
             <p className="mt-3 text-center text-[11px] leading-5 text-mute">The demo uses synthetic frames. Live microphone mode requests browser permission.</p>
           </form>
