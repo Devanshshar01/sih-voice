@@ -11,10 +11,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.config import HOP_SAMPLES, WINDOW_SAMPLES
+
+
+@pytest.fixture
+def client():
+    with TestClient(app) as c:
+        yield c
 
 # With an 8,000-sample push exactly matching the hop size, the first window
 # only becomes ready once the ring buffer reaches WINDOW_SAMPLES -- pushes

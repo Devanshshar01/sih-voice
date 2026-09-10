@@ -22,8 +22,7 @@ class SpeakerVault:
     """Store enrolled speaker embeddings and compare live samples by cosine similarity."""
 
     def __init__(self) -> None:
-        self.match_threshold = float(os.getenv("VOICETRUST_SPEAKER_MATCH_THRESHOLD", "0.75"))
-        self.embedding_dim = int(os.getenv("VOICETRUST_SPEAKER_EMBEDDING_DIM", "64"))
+        self.match_threshold = float(os.getenv("VOICETRUST_SPEAKER_MATCH_THRESHOLD", "0.80"))
         self.enabled = str(os.getenv("VOICETRUST_SPEAKER_VAULT_ENABLED", "true")).lower() in {
             "1",
             "true",
@@ -41,10 +40,14 @@ class SpeakerVault:
         self._checkpoint_status = "SpeechBrain not installed in the current environment."
 
         self._load_speechbrain_if_available()
+        self.embedding_dim = int(os.getenv("VOICETRUST_SPEAKER_EMBEDDING_DIM", "192" if self._speechbrain_available else "64"))
 
     def _load_speechbrain_if_available(self) -> None:
         try:
-            from speechbrain.pretrained import EncoderClassifier
+            try:
+                from speechbrain.inference.speaker import EncoderClassifier
+            except ImportError:
+                from speechbrain.pretrained import EncoderClassifier
         except Exception:
             return
 
@@ -124,11 +127,26 @@ class SpeakerVault:
     def _compute_embedding(self, audio_window: np.ndarray) -> np.ndarray:
         samples = np.asarray(audio_window, dtype=np.float32)
         if samples.size == 0:
-            return np.zeros(self.embedding_dim, dtype=np.float32)
+            dim = 192 if self._speechbrain_available else self.embedding_dim
+            return np.zeros(dim, dtype=np.float32)
 
         peak = float(np.max(np.abs(samples))) if samples.size else 0.0
         if peak > 0:
             samples = samples / peak
+
+        if self._speechbrain_available and self._speechbrain_model is not None:
+            try:
+                import torch
+                tensor = torch.from_numpy(samples).unsqueeze(0)
+                with torch.no_grad():
+                    emb = self._speechbrain_model.encode_batch(tensor)
+                    emb_np = emb.squeeze().cpu().numpy().astype(np.float32)
+                    norm = float(np.linalg.norm(emb_np))
+                    if norm > 0:
+                        emb_np = emb_np / norm
+                    return emb_np
+            except Exception:
+                pass
 
         # Use a deterministic spectral feature vector. This keeps the demo
         # working in environments where SpeechBrain is not installed yet.

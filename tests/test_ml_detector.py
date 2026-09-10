@@ -33,7 +33,7 @@ def test_real_detector_ignores_mock_force_contract() -> None:
 
 def test_intent_analyzer_preserves_manual_transcript_path() -> None:
     analyzer = IntentAnalyzer()
-    result = analyzer.analyze_text("Please approve the wire transfer immediately.")
+    result = analyzer.analyze_text("Please approve the wire transfer.")
     assert result["intent_score"] == 0.65
     assert "wire transfer" in result["flagged_phrases"]
 

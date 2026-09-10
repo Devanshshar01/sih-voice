@@ -116,7 +116,7 @@ SPEAKER_VAULT_ENABLED = os.getenv("VOICETRUST_SPEAKER_VAULT_ENABLED", "true").lo
     "on",
 }
 SPEAKER_MODEL = os.getenv("VOICETRUST_SPEAKER_MODEL", "speechbrain/spkrec-ecapa-voxceleb")
-SPEAKER_MATCH_THRESHOLD = float(os.getenv("VOICETRUST_SPEAKER_MATCH_THRESHOLD", "0.75"))
+SPEAKER_MATCH_THRESHOLD = float(os.getenv("VOICETRUST_SPEAKER_MATCH_THRESHOLD", "0.80"))
 SPEAKER_EMBEDDING_DIM = int(os.getenv("VOICETRUST_SPEAKER_EMBEDDING_DIM", "64"))
 
 # ---- Intent keyphrases (Phase 1 lightweight matcher) ----
