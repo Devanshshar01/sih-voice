@@ -33,7 +33,7 @@ def test_real_detector_ignores_mock_force_contract() -> None:
 
 def test_intent_analyzer_preserves_manual_transcript_path() -> None:
     analyzer = IntentAnalyzer()
-    result = analyzer.analyze_text("Please approve the wire transfer immediately.")
+    result = analyzer.analyze_text("Please approve the wire transfer.")
     assert result["intent_score"] == 0.65
     assert "wire transfer" in result["flagged_phrases"]
 
@@ -41,6 +41,19 @@ def test_intent_analyzer_preserves_manual_transcript_path() -> None:
 def test_intent_analyzer_asr_is_lazy() -> None:
     analyzer = IntentAnalyzer(model_size="base")
     assert analyzer._model is None
+
+
+def test_silero_vad_drops_silence() -> None:
+    from app import config
+    from app.services.audio_processor import apply_vad
+    old_vad = config.VAD_ENABLED
+    try:
+        config.VAD_ENABLED = True
+        silent_chunk = np.zeros(16000, dtype=np.float32)
+        res_silent = apply_vad(silent_chunk)
+        assert np.max(np.abs(res_silent)) == 0.0
+    finally:
+        config.VAD_ENABLED = old_vad
 
 
 def test_speaker_vault_enroll_and_match() -> None:

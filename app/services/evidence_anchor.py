@@ -34,6 +34,12 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _format_timestamp(dt: datetime) -> str:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat()
+
+
 class EvidenceAnchorService:
     """Service for registering Phase 7 evidence packages and verifying integrity."""
 
@@ -88,7 +94,7 @@ class EvidenceAnchorService:
 
         previous_record_hash = self._get_latest_chain_root()
         now = _utc_now()
-        timestamp = now.isoformat()
+        timestamp = _format_timestamp(now)
 
         record_hash = _sha256_hex(
             _canonical_json(
@@ -179,45 +185,56 @@ class EvidenceAnchorService:
         recomputed_hash = _sha256_hex(package.package_payload)
         evidence_hash_integrity = recomputed_hash == package.evidence_hash
 
-        ledger_records = (
+        target_record = (
             self.db.query(db_models.EvidenceLedgerRecord)
             .filter(db_models.EvidenceLedgerRecord.evidence_id == evidence_id)
-            .order_by(db_models.EvidenceLedgerRecord.record_id.asc())
-            .all()
+            .first()
         )
 
         local_chain_integrity = True
         expected_previous_hash = GENESIS_HASH
         expected_chain_root = None
+        record_count = 0
 
-        for record in ledger_records:
-            expected_record_hash = _sha256_hex(
-                _canonical_json(
-                    {
-                        "previous_record_hash": expected_previous_hash,
-                        "timestamp": record.timestamp.isoformat(),
-                        "schema_version": record.schema_version,
-                        "evidence_digest": record.evidence_digest,
-                    }
-                )
+        if target_record is not None:
+            ledger_records = (
+                self.db.query(db_models.EvidenceLedgerRecord)
+                .filter(db_models.EvidenceLedgerRecord.record_id <= target_record.record_id)
+                .order_by(db_models.EvidenceLedgerRecord.record_id.asc())
+                .all()
             )
-            expected_chain_root = _sha256_hex(
-                _canonical_json(
-                    {
-                        "record_hash": expected_record_hash,
-                        "previous_record_hash": expected_previous_hash,
-                    }
+            record_count = len(ledger_records)
+
+            for record in ledger_records:
+                expected_record_hash = _sha256_hex(
+                    _canonical_json(
+                        {
+                            "previous_record_hash": expected_previous_hash,
+                            "timestamp": _format_timestamp(record.timestamp),
+                            "schema_version": record.schema_version,
+                            "evidence_digest": record.evidence_digest,
+                        }
+                    )
                 )
-            )
+                expected_chain_root = _sha256_hex(
+                    _canonical_json(
+                        {
+                            "record_hash": expected_record_hash,
+                            "previous_record_hash": expected_previous_hash,
+                        }
+                    )
+                )
 
-            if record.record_hash != expected_record_hash:
-                local_chain_integrity = False
-            if record.chain_root_hash != expected_chain_root:
-                local_chain_integrity = False
-            if record.previous_record_hash != expected_previous_hash:
-                local_chain_integrity = False
+                if record.record_hash != expected_record_hash:
+                    local_chain_integrity = False
+                if record.chain_root_hash != expected_chain_root:
+                    local_chain_integrity = False
+                if record.previous_record_hash != expected_previous_hash:
+                    local_chain_integrity = False
 
-            expected_previous_hash = expected_chain_root
+                expected_previous_hash = expected_chain_root
+        else:
+            local_chain_integrity = False
 
         local_chain_integrity = local_chain_integrity and (
             package.local_chain_root == expected_chain_root
@@ -247,7 +264,7 @@ class EvidenceAnchorService:
             "tx_hash": package.anchor_tx_hash,
             "anchor_timestamp": package.anchor_timestamp.isoformat() if package.anchor_timestamp else None,
             "failure_reason": package.failure_reason,
-            "ledger_record_count": len(ledger_records),
+            "ledger_record_count": record_count,
         }
 
     def _get_latest_chain_root(self) -> str:

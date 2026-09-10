@@ -50,11 +50,44 @@ def normalize_audio(samples: np.ndarray, codec: Optional[str] = None) -> np.ndar
     return samples
 
 
+_silero_model = None
+_silero_get_speech_timestamps = None
+
+
+def _get_silero_vad():
+    global _silero_model, _silero_get_speech_timestamps
+    if _silero_model is not None:
+        return _silero_model, _silero_get_speech_timestamps
+
+    try:
+        from silero_vad import load_silero_vad, get_speech_timestamps
+        _silero_model = load_silero_vad()
+        _silero_get_speech_timestamps = get_speech_timestamps
+        return _silero_model, _silero_get_speech_timestamps
+    except Exception:
+        return None, None
+
+
 def apply_vad(samples: np.ndarray) -> np.ndarray:
-    """Drop frames that are effectively silent before detector scoring."""
+    """Drop frames that are effectively silent before detector scoring using Silero VAD."""
     if not config.VAD_ENABLED or samples.size == 0:
         return samples
 
+    model, get_timestamps = _get_silero_vad()
+    if model is not None and get_timestamps is not None:
+        try:
+            import torch
+            tensor = torch.from_numpy(samples.astype(np.float32))
+            timestamps = get_timestamps(tensor, model, sampling_rate=config.SAMPLE_RATE_HZ)
+            if not timestamps:
+                return np.zeros_like(samples, dtype=np.float32)
+            first_start = timestamps[0]["start"]
+            last_end = timestamps[-1]["end"]
+            return samples[first_start:last_end].astype(np.float32, copy=False)
+        except Exception:
+            pass
+
+    # Fallback to RMS energy thresholding if Silero VAD is unavailable
     rms = float(np.sqrt(np.mean(np.square(samples)))) if samples.size else 0.0
     if rms < config.VAD_ENERGY_THRESHOLD:
         return np.zeros_like(samples, dtype=np.float32)
