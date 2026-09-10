@@ -95,7 +95,7 @@ BLOCKCHAIN_GAS_LIMIT = int(os.getenv("VOICETRUST_BLOCKCHAIN_GAS_LIMIT", "300000"
 # "mock" -> deterministic / keyword-triggered scores (safe for live demo)
 # "real" -> verified Hugging Face audio anti-spoof classifier
 VOICE_DETECTOR_MODE = os.getenv("VOICETRUST_DETECTOR_MODE", "mock").lower()
-VOICE_MODEL_ID = os.getenv("VOICETRUST_MODEL_ID", "Hemgg/Deepfake-audio-detection")
+VOICE_MODEL_ID = os.getenv("VOICETRUST_MODEL_ID", "Gustking/wav2vec2-large-xlsr-deepfake-audio-classification")
 VOICE_MODEL_PATH = os.getenv("VOICETRUST_MODEL_PATH", "")
 VOICE_MODEL_DEVICE = os.getenv("VOICETRUST_MODEL_DEVICE", "cpu")
 VOICE_MODEL_REVISION = os.getenv("VOICETRUST_MODEL_REVISION", "main")
