@@ -18,6 +18,7 @@ faster-whisper>=1.1,<2
 celery>=5.4,<6
 redis>=5.0,<6
 psycopg[binary]>=3.1,<4
+psycopg2-binary>=2.9,<3
 
 # --- Phase 8 public-chain anchoring ---
 web3>=7,<8
