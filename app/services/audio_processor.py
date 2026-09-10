@@ -15,6 +15,27 @@ import numpy as np
 
 from app import config
 
+_SILERO_VAD_MODEL = None
+_SILERO_VAD_ERROR = None
+
+
+def _load_silero_vad_model():
+    """Lazy-load Silero VAD when the production stack is enabled."""
+    global _SILERO_VAD_MODEL, _SILERO_VAD_ERROR
+
+    if _SILERO_VAD_MODEL is not None or _SILERO_VAD_ERROR is not None:
+        return _SILERO_VAD_MODEL
+
+    try:
+        from silero_vad import load_silero_vad
+
+        _SILERO_VAD_MODEL = load_silero_vad()
+    except Exception as exc:  # pragma: no cover - runtime dependency guard
+        _SILERO_VAD_ERROR = exc
+        _SILERO_VAD_MODEL = None
+
+    return _SILERO_VAD_MODEL
+
 
 def decode_pcm_frame(raw_bytes: bytes) -> np.ndarray:
     """Decode a raw binary frame into a float32 numpy array in [-1, 1]."""
@@ -50,11 +71,8 @@ def normalize_audio(samples: np.ndarray, codec: Optional[str] = None) -> np.ndar
     return samples
 
 
-def apply_vad(samples: np.ndarray) -> np.ndarray:
-    """Drop frames that are effectively silent before detector scoring."""
-    if not config.VAD_ENABLED or samples.size == 0:
-        return samples
-
+def _fallback_apply_vad(samples: np.ndarray) -> np.ndarray:
+    """Legacy energy-threshold VAD for environments without Silero."""
     rms = float(np.sqrt(np.mean(np.square(samples)))) if samples.size else 0.0
     if rms < config.VAD_ENERGY_THRESHOLD:
         return np.zeros_like(samples, dtype=np.float32)
@@ -70,6 +88,50 @@ def apply_vad(samples: np.ndarray) -> np.ndarray:
     first_active = int(np.argmax(active_frames)) * step
     last_active = int(np.nonzero(active_frames)[0][-1]) * step + step
     return samples[first_active:last_active].astype(np.float32, copy=False)
+
+
+def apply_vad(samples: np.ndarray) -> np.ndarray:
+    """Use Silero VAD when enabled, with a safe fallback for local environments."""
+    if not config.VAD_ENABLED or samples.size == 0:
+        return samples
+
+    model = _load_silero_vad_model()
+    if model is None:
+        return _fallback_apply_vad(samples)
+
+    try:
+        from silero_vad import get_speech_timestamps
+
+        speech_timestamps = get_speech_timestamps(
+            samples,
+            model,
+            sampling_rate=config.SAMPLE_RATE_HZ,
+            threshold=0.5,
+            min_speech_duration_ms=250,
+            speech_pad_ms=50,
+            return_seconds=False,
+        )
+    except Exception:  # pragma: no cover - runtime fallback on dependency mismatch
+        return _fallback_apply_vad(samples)
+
+    if not speech_timestamps:
+        return np.zeros_like(samples, dtype=np.float32)
+
+    try:
+        segments = []
+        for ts in speech_timestamps:
+            start = int(ts.get("start", 0))
+            end = int(ts.get("end", len(samples)))
+            if end <= start:
+                continue
+            segments.append(samples[start:end])
+
+        if not segments:
+            return np.zeros_like(samples, dtype=np.float32)
+
+        return np.concatenate(segments).astype(np.float32, copy=False)
+    except Exception:  # pragma: no cover - fallback for unexpected timestamp shape
+        return _fallback_apply_vad(samples)
 
 
 class RingBuffer:

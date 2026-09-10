@@ -1,6 +1,19 @@
-# SatyaVoice Real Detector Model Card
+# SatyaVoice Detector Model Card
 
-## Model
+## Target stack
+
+The presentation target stack for SatyaVoice is:
+
+- **Anti-spoofing:** fine-tuned `Wav2Vec2-XLS-R (300M)`
+- **ASR:** faster-whisper `small`
+- **Speaker embedding:** ECAPA-TDNN
+- **VAD:** Silero VAD
+
+This file documents the current placeholder detector integration only. The
+fine-tuned XLS-R 300M anti-spoof checkpoint itself is intentionally deferred
+for later handoff and is not yet wired into production as the active detector.
+
+## Current placeholder model
 
 - **Model ID:** `Hemgg/Deepfake-audio-detection`
 - **Architecture:** `Wav2Vec2ForSequenceClassification`
@@ -13,10 +26,14 @@
 
 ## Integration
 
-SatyaVoice loads the checkpoint lazily through `transformers` when
-`VOICETRUST_DETECTOR_MODE=real`. The detector implements the existing
-`BaseVoiceDetector` contract and returns an `acoustic_score` in `[0, 1]`, where
-the score is the probability assigned to the model's `AIVoice` label.
+SatyaVoice loads the current placeholder checkpoint lazily through
+`transformers` when `VOICETRUST_DETECTOR_MODE=real`. The detector implements the
+existing `BaseVoiceDetector` contract and returns an `acoustic_score` in `[0, 1]`,
+where the score is the probability assigned to the model's `AIVoice` label.
+
+The production target is a later fine-tuned `facebook/wav2vec2-xls-r-300m`
+checkpoint that follows the same detector contract once the user completes the
+training/fine-tuning phase.
 
 Configuration:
 
@@ -89,8 +106,8 @@ No model weights or external dataset are committed to this repository.
 ## ASR companion component
 
 SatyaVoice optionally uses `faster-whisper` for transcription when
-`VOICETRUST_ASR_MODE=real`. The current default is the `base` model with CPU
-`int8` compute. On the development machine, a two-second silent window took
-1.69 seconds for `base` inference versus 2.89 seconds for `small`, excluding
-the one-time model load. These measurements are local CPU observations and do
-not establish production real-time performance.
+`VOICETRUST_ASR_MODE=real`. The project now targets the `small` model with
+CPU `int8` compute for the presentation stack. On the development machine,
+a two-second silent window took approximately 2.89 seconds for `small`
+inference, excluding the one-time model load. These measurements are local
+CPU observations and do not establish production real-time performance.

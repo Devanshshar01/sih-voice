@@ -92,8 +92,11 @@ BLOCKCHAIN_CHAIN_ID = int(os.getenv("VOICETRUST_BLOCKCHAIN_CHAIN_ID", "80002"))
 BLOCKCHAIN_GAS_LIMIT = int(os.getenv("VOICETRUST_BLOCKCHAIN_GAS_LIMIT", "300000"))
 
 # ---- Detector selection ----
-# "mock" -> deterministic / keyword-triggered scores (safe for live demo)
-# "real" -> verified Hugging Face audio anti-spoof classifier
+# Production target stack: a fine-tuned Wav2Vec2-XLS-R (300M) anti-spoof
+# checkpoint. The current default remains "mock" so the app can boot safely
+# during local development and deployment preparation. When the fine-tuned
+# detector checkpoint is ready, set VOICETRUST_DETECTOR_MODE=real and point
+# VOICETRUST_MODEL_ID at that checkpoint.
 VOICE_DETECTOR_MODE = os.getenv("VOICETRUST_DETECTOR_MODE", "mock").lower()
 VOICE_MODEL_ID = os.getenv("VOICETRUST_MODEL_ID", "Hemgg/Deepfake-audio-detection")
 VOICE_MODEL_PATH = os.getenv("VOICETRUST_MODEL_PATH", "")
@@ -101,14 +104,19 @@ VOICE_MODEL_DEVICE = os.getenv("VOICETRUST_MODEL_DEVICE", "cpu")
 VOICE_MODEL_REVISION = os.getenv("VOICETRUST_MODEL_REVISION", "main")
 
 # ---- Automatic speech recognition ----
-# "manual" preserves Phase 1 transcript behavior; "real" enables faster-whisper.
+# Target stack: faster-whisper small. Keep "manual" as a development default
+# for deterministic local testing, but the production presentation stack
+# expects `real` with the small model size.
 ASR_MODE = os.getenv("VOICETRUST_ASR_MODE", "manual").lower()
-ASR_MODEL_SIZE = os.getenv("VOICETRUST_ASR_MODEL_SIZE", "base")
+ASR_MODEL_SIZE = os.getenv("VOICETRUST_ASR_MODEL_SIZE", "small")
 ASR_DEVICE = os.getenv("VOICETRUST_ASR_DEVICE", "cpu")
 ASR_COMPUTE_TYPE = os.getenv("VOICETRUST_ASR_COMPUTE_TYPE", "int8")
 ASR_LANGUAGE = os.getenv("VOICETRUST_ASR_LANGUAGE", "")
 
 # ---- Speaker vault (Phase 3) ----
+# Target stack: ECAPA-TDNN. Keep the existing SpeechBrain checkpoint path as
+# the production speaker model and leave the deterministic fallback in place
+# only for environments where SpeechBrain is unavailable.
 SPEAKER_VAULT_ENABLED = os.getenv("VOICETRUST_SPEAKER_VAULT_ENABLED", "true").lower() in {
     "1",
     "true",

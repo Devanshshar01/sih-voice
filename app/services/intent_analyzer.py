@@ -215,7 +215,7 @@ class IntentAnalyzer:
     def __init__(
         self,
         keyphrases: Optional[List[str]] = None,
-        model_size: str = "base",
+        model_size: str = "small",
         device: str = "cpu",
         compute_type: str = "int8",
         sample_rate: int = 16000,

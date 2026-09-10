@@ -8,8 +8,10 @@ Updated for Phase 1 real detector integration.
 - Float32 PCM WebSocket streaming
 - Two-second sliding analysis windows with 0.5-second hops
 - Mock detector behind `VOICETRUST_DETECTOR_MODE=mock`
-- Real-mode lazy loading of `Hemgg/Deepfake-audio-detection`
-- Wav2Vec2 audio classification with `AIVoice`/`HumanVoice` labels
+- Current real-mode placeholder detector loading for `Hemgg/Deepfake-audio-detection`
+- Target-stack runtime contract alignment for the presentation: fine-tuned
+  Wav2Vec2-XLS-R (300M) anti-spoofing, faster-whisper `small`, Silero VAD,
+  and ECAPA-TDNN speaker matching
 - Existing acoustic + intent risk fusion
 - `ALLOW`, `WARN`, and `LOCK_VERIFY` policy states
 - Server-side sensitive-action blocking
@@ -46,13 +48,12 @@ Updated for Phase 1 real detector integration.
 
 On the development CPU, a two-second silent window measured approximately:
 
-- faster-whisper `base`: 1.69 seconds inference after a 25.20 second load
 - faster-whisper `small`: 2.89 seconds inference after a 67.15 second load
 
 These are local CPU measurements on a silent input, not production benchmarks.
-The current default is `base` because it is faster on this machine. GPU and
-deployment benchmarks are still required before making a real-time latency
-claim.
+The project is now configured to target `small` for the presentation stack, but
+GPU and deployment benchmarks are still required before making a real-time
+latency claim.
 
 ## Dataset and licensing caution
 

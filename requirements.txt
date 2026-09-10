@@ -13,6 +13,7 @@ torch>=2.2
 transformers>=4.39,<5
 protobuf>=4.25
 faster-whisper>=1.1,<2
+silero-vad>=6.2,<7
 
 # --- Phase 6 infra hardening ---
 celery>=5.4,<6

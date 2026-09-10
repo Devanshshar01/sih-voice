@@ -96,24 +96,37 @@ If a high-risk financial/urgency keyphrase is detected in the transcript,
 can't be diluted by a calm-sounding voice. Thresholds: **0–39 ALLOW · 40–69
 WARN · 70–100 LOCK_VERIFY** (configurable in `app/config.py`).
 
+## Target stack alignment
+
+The presentation stack for SatyaVoice is:
+
+- Anti-spoofing: fine-tuned Wav2Vec2-XLS-R (300M)
+- ASR: faster-whisper small
+- Speaker embedding: ECAPA-TDNN
+- Voice activity: Silero VAD
+- Dataset: IndicSpoof v0
+
+The current codebase now reflects that target on the configuration and runtime
+contract level, while keeping the tuned detector checkpoint itself as a future
+handoff item.
+
 ## Detector modes
 
 `VOICETRUST_DETECTOR_MODE` env var controls which detector `get_detector()`
 returns:
 
-- `mock` (default) — deterministic scores. Safe for the
-  live demo; supports a `force_acoustic_score` hook over the WebSocket so
-  the judge-demo "backup audio injection" toggle can trigger the cloned-
-  voice scenario without depending on a live microphone.
-- `real` — a pretrained Wav2Vec2 audio-classification checkpoint loaded lazily
-  from Hugging Face (`Hemgg/Deepfake-audio-detection`). Set
-  `VOICETRUST_MODEL_ID`, `VOICETRUST_MODEL_DEVICE`, and optionally
-  `VOICETRUST_MODEL_REVISION`. The checkpoint is Apache-2.0 and its model card
-  reports 95.45% accuracy on its own audiofolder evaluation; this is not an
-  independent SatyaVoice benchmark and is not IndicSynth-trained.
+- `mock` (default) — deterministic scores. Safe for local development and
+  deployment preparation; supports a `force_acoustic_score` hook over the
+  WebSocket so the demo can trigger cloned-voice scenarios without depending
+  on a live microphone.
+- `real` — the runtime is prepared to load a real audio anti-spoof checkpoint.
+  The target production stack for the presentation is a fine-tuned
+  Wav2Vec2-XLS-R (300M) classifier. Until that tuned checkpoint is available,
+  the current code still uses the existing default public model value as a
+  placeholder and should not be treated as the final production detector.
 - `ml` — legacy classical feature extraction + a trained scikit-learn
-  classifier, retained for compatibility but not used by the main Phase 1
-  path.
+  classifier, retained for compatibility but not part of the presentation
+  target stack.
 
 All detector implementations use the same `BaseVoiceDetector.predict()`
 contract, so the risk engine and streaming path do not change when modes are
@@ -127,7 +140,7 @@ deterministic demo and accepts transcript text from the client. Configure:
 
 ```text
 VOICETRUST_ASR_MODE=real
-VOICETRUST_ASR_MODEL_SIZE=base
+VOICETRUST_ASR_MODEL_SIZE=small
 VOICETRUST_ASR_DEVICE=cpu
 VOICETRUST_ASR_COMPUTE_TYPE=int8
 VOICETRUST_ASR_LANGUAGE=hi
@@ -143,7 +156,7 @@ production benchmark.
 
 ## What's intentionally stubbed for later phases
 
-- **ASR/transcription**: real mode uses faster-whisper; manual mode remains
+- **ASR/transcription**: real mode uses faster-whisper small; manual mode remains
   available for deterministic demos and explicit transcript overrides.
 - **Real TOTP/SMS delivery**: `verification.py` simulates the challenge
   in-process. Swap in Twilio Verify or an authenticator-app secret for
