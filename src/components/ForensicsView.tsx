@@ -90,10 +90,10 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+    <div className="console-grid mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.14em] text-mute">Post-call evidence report</p>
+          <p className="eyebrow">Incident closeout / evidence report</p>
           <h1 className="mt-2 text-2xl font-semibold text-paper">{incidentDetected ? "Impersonation attempt contained" : "Call cleared"}</h1>
           <p className="mt-2 text-sm text-paper-dim">{meta?.callerId ?? "Unknown caller"} <span className="text-mute">→</span> {meta?.recipientId ?? "Protected desk"}</p>
           <p className="mt-1 font-mono text-xs text-mute">{meta?.callId}</p>

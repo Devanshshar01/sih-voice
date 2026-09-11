@@ -8,6 +8,10 @@
   }
 
   html {
+    background: #071016;
+  }
+
+  html {
     color-scheme: dark;
   }
 
@@ -50,11 +54,20 @@
   }
 
   .panel {
-    @apply border border-ink-600 bg-ink-800/70;
+    @apply border border-ink-600/80 bg-ink-800/80 shadow-panel;
   }
 
   .surface {
-    @apply border border-ink-700 bg-ink-800/45;
+    @apply border border-ink-700/80 bg-ink-900/60;
+  }
+
+  .console-grid {
+    background-image: linear-gradient(rgba(139,182,200,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(139,182,200,0.035) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .eyebrow {
+    @apply text-[10px] font-semibold uppercase tracking-[0.18em] text-signal;
   }
 
   .field-label {
