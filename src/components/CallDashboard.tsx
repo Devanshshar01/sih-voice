@@ -45,12 +45,19 @@ export default function CallDashboard({ session }: CallDashboardProps) {
   const browserOnnxPercent = browserOnnxResult ? Math.round(browserOnnxResult.score * 100) : null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+    <div className="console-grid flex min-h-0 flex-1 flex-col">
+      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
         <div className="mx-auto max-w-[1440px]">
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <div>
+            <p className="eyebrow">Live protection workspace</p>
+            <h1 className="mt-1 text-xl font-semibold tracking-tight text-paper sm:text-2xl">Voice integrity monitor</h1>
+          </div>
+          <span className="hidden font-mono text-[11px] text-mute sm:block">POLICY / HIGH-VALUE TRANSFER</span>
+        </div>
         <StatusBanner status={displayStatus} rationale={rationale} verified={verified} />
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border border-ink-600 bg-ink-800/50 px-4 py-3 text-xs">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border border-ink-600/80 bg-ink-900/70 px-4 py-3 text-xs shadow-signal">
           <div>
             <p className="font-medium text-paper">Protected call monitor</p>
             <p className="mt-1 text-mute">{meta?.audioMode === "live" ? "Listening to live microphone input" : "Running a controlled scenario for demonstration"}</p>

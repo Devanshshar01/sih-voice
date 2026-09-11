@@ -37,7 +37,7 @@ function ControlButton({
 
 export default function CallControls({ muted, onHold, onToggleMute, onToggleHold, onEndCall }: CallControlsProps) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 bg-ink-950 px-0 py-0">
+    <div className="flex flex-wrap items-center justify-between gap-3 bg-ink-950/95 px-0 py-0">
       <div className="flex gap-2">
         <ControlButton
           active={muted}

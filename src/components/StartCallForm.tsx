@@ -42,7 +42,7 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
 
   return (
     <main className="min-h-[100dvh] bg-ink-950">
-      <div className="mx-auto grid min-h-[100dvh] max-w-[1480px] lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="console-grid mx-auto grid min-h-[100dvh] max-w-[1480px] lg:grid-cols-[0.9fr_1.1fr]">
         <section className="relative flex flex-col justify-between border-b border-ink-700 px-6 py-8 sm:px-10 lg:border-b-0 lg:border-r lg:px-14 lg:py-12">
           <div className="relative">
             <div className="flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-signal">
@@ -91,8 +91,8 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-mute">New monitored call</p>
-                <h2 className="mt-2 text-xl font-semibold text-paper">Choose a scenario</h2>
+              <p className="eyebrow">Secure intake / new session</p>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-paper">Choose a monitoring mode</h2>
               </div>
             </div>
             <p className="mt-3 text-sm leading-6 text-paper-dim">

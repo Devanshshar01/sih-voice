@@ -44,6 +44,8 @@ export default {
       },
       boxShadow: {
         none: "none",
+        panel: "0 16px 42px rgba(0,0,0,0.18)",
+        signal: "0 0 0 1px rgba(139,182,200,0.12), 0 10px 28px rgba(0,0,0,0.16)",
       },
       keyframes: {
         sweep: {
