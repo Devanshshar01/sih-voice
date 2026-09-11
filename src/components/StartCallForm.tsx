@@ -93,13 +93,15 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
               <div>
               <p className="eyebrow">Secure intake / new session</p>
               <h2 className="mt-2 text-xl font-semibold tracking-tight text-paper">Choose a monitoring mode</h2>
+              <p className="mt-2 max-w-lg text-sm leading-relaxed text-paper-dim">Start with a controlled scenario for a reliable demonstration, or connect live audio for operational monitoring.</p>
               </div>
             </div>
             <p className="mt-3 text-sm leading-6 text-paper-dim">
               The attack scenario is preselected so the complete protection workflow is one click away.
             </p>
 
-            <div className="mt-8 space-y-3">
+            <div className="section-rule mt-8">Monitoring input</div>
+            <div className="mt-3 space-y-3">
               {AUDIO_OPTIONS.map(({ mode, label, description, icon: Icon }) => (
                 <button
                   type="button"

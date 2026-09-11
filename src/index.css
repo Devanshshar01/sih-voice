@@ -18,6 +18,8 @@
   body {
     @apply bg-ink-900 text-paper antialiased;
     font-feature-settings: "kern" 1;
+    background-image: radial-gradient(circle at 50% -20%, rgba(139, 182, 200, 0.08), transparent 38%), linear-gradient(rgba(139, 182, 200, 0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(139, 182, 200, 0.025) 1px, transparent 1px);
+    background-size: auto, 32px 32px, 32px 32px;
   }
 
   ::selection {
@@ -54,7 +56,8 @@
   }
 
   .panel {
-    @apply border border-ink-600/80 bg-ink-800/80 shadow-panel;
+    @apply border border-ink-600/80 bg-ink-800/85 shadow-panel;
+    backdrop-filter: blur(14px);
   }
 
   .surface {
@@ -68,6 +71,15 @@
 
   .eyebrow {
     @apply text-[10px] font-semibold uppercase tracking-[0.18em] text-signal;
+  }
+
+  .section-rule {
+    @apply flex items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-mute;
+  }
+
+  .section-rule::after {
+    content: "";
+    @apply h-px flex-1 bg-ink-600;
   }
 
   .field-label {

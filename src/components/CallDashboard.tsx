@@ -45,15 +45,15 @@ export default function CallDashboard({ session }: CallDashboardProps) {
     <div className="console-grid flex min-h-0 flex-1 flex-col">
       <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
         <div className="mx-auto max-w-[1440px]">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <div className="mb-5 flex flex-col gap-3 border-b border-ink-700 pb-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="eyebrow">Active call / real-time risk operations</p>
               <h1 className="mt-1 text-2xl font-semibold tracking-tight text-paper sm:text-3xl">Voice integrity monitor</h1>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-paper-dim">Every decision is grounded in the acoustic signal, observed intent, and the evidence currently available in this session.</p>
             </div>
-            <div className="text-right text-xs text-mute">
-              <p className="font-mono text-paper">{meta?.callId ?? "CONNECTING"}</p>
-              <p className="mt-1">{meta?.audioMode === "live" ? "LIVE MICROPHONE" : "CONTROLLED SCENARIO"}</p>
+            <div className="flex items-center gap-2 text-left text-xs text-mute sm:text-right">
+              <span className="h-1.5 w-1.5 rounded-full bg-safe shadow-[0_0_8px_theme(colors.safe.DEFAULT)]" />
+              <div><p className="font-mono text-paper">{meta?.callId ?? "CONNECTING"}</p><p className="mt-1">{meta?.audioMode === "live" ? "LIVE MICROPHONE" : "CONTROLLED SCENARIO"}</p></div>
             </div>
           </div>
 
