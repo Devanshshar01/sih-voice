@@ -17,9 +17,11 @@ Base = declarative_base()
 
 
 def init_db() -> None:
-    """Create tables if they don't exist yet. Called once on app startup."""
+    """Create tables and apply versioned migrations. Called once on app startup."""
     from app.db import models  # noqa: F401  (ensures models are registered on Base)
     Base.metadata.create_all(bind=engine)
+    from app.db.migrations import run_migrations
+    run_migrations()
 
 
 def get_db():

@@ -48,8 +48,10 @@ async def run_scenario(scenario: str) -> None:
         else:
             await ws.send(json.dumps({"transcript": "Just checking on the quarterly budget report."}))
 
+        # 0.5 s hop-sized silent frames; the first 4.0 s window completes at
+        # the 8th frame, so run 10 frames to see two telemetry updates.
         chunk = np.zeros(8000, dtype=np.float32).tobytes()
-        for _ in range(8):
+        for _ in range(10):
             await ws.send(chunk)
             try:
                 telemetry = await asyncio.wait_for(ws.recv(), timeout=2.0)

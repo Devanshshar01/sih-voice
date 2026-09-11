@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
 
+from app import config
 from app.core.session_manager import session_manager
 from app.db import models as db_models
 from app.db.database import get_db
@@ -21,7 +22,9 @@ from app.models.schemas import (
 
 router = APIRouter(prefix="/call", tags=["call"])
 
-HIGH_RISK_THRESHOLD = 70
+# Action gating uses the central LOCK_VERIFY threshold from config — no magic
+# numbers here (see RiskFusionConfig in app/config.py).
+HIGH_RISK_THRESHOLD = config.RISK.LOCK_VERIFY_THRESHOLD
 
 
 @router.post("/start", response_model=CallStartResponse)

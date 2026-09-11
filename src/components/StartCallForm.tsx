@@ -10,15 +10,24 @@ interface StartCallFormProps {
 
 const AUDIO_OPTIONS: { mode: AudioMode; label: string; description: string; icon: typeof Mic }[] = [
   {
-    mode: "live",
-    label: "Live microphone",
-    description: "Capture and analyze this device's mic in real time.",
+    mode: "cloud",
+    label: "Cloud — full multimodal pipeline",
+    description:
+      "Streams microphone audio to the backend for anti-spoof, ASR, speaker, and policy fusion.",
     icon: Mic,
   },
   {
-    mode: "browser-onnx",
-    label: "Browser-only ONNX inference (Phase 9 proof-of-concept)",
-    description: "Runs the real anti-spoof model in-browser with ONNX Runtime Web, demonstrated in airplane-mode style offline execution.",
+    mode: "hybrid",
+    label: "Hybrid — local anti-spoof + cloud policy",
+    description:
+      "Anti-spoof runs in this browser (ONNX, off the UI thread); the backend still does ASR, speaker, and policy fusion on the audio stream.",
+    icon: ShieldCheck,
+  },
+  {
+    mode: "edge-local",
+    label: "Edge/local — raw audio never leaves this device",
+    description:
+      "Anti-spoof runs fully in-browser; only derived scores and telemetry are shared. ASR, speaker, and policy fusion are unavailable offline and shown as explicitly degraded.",
     icon: ShieldCheck,
   },
   {

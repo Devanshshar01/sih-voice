@@ -13,6 +13,9 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     CheckConstraint,
+    Boolean,
+    LargeBinary,
+    Index,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -55,6 +58,93 @@ class RiskEvent(Base):
     triggered_rule = Column(Text, nullable=True)
 
     session = relationship("Session", back_populates="risk_events")
+
+
+class SpeakerIdentity(Base):
+    """A persistent, versioned speaker enrollment (ECAPA-TDNN).
+
+    Privacy: only DERIVED embeddings and metadata are stored here — raw voice
+    recordings are never persisted. The ``centroid_embedding`` column keeps
+    the aggregated enrollment representation; per-sample embeddings live in
+    ``SpeakerEnrollmentSample``.
+
+    PostgreSQL/pgvector path: ``centroid_embedding`` and sample embeddings are
+    float32 byte blobs (BYTEA on PostgreSQL). A later migration can add a
+    ``vector(192)`` generated/managed column (or a separate pgvector table)
+    without touching any other schema contract — the byte layout is exactly
+    what pgvector's binary format expects, so ``pgvector`` adoption is a
+    schema addition, not a data rewrite.
+    """
+
+    __tablename__ = "speaker_identities"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # Logical identity: (tenant_id, speaker_id) is unique.
+    speaker_id = Column(String, nullable=False)
+    tenant_id = Column(String, nullable=False, default="default")
+    display_name = Column(String, nullable=True)
+
+    # Provenance of the stored representation — every embedding knows exactly
+    # which encoder, version, and normalization produced it.
+    model_identifier = Column(String, nullable=False)   # e.g. speechbrain/spkrec-ecapa-voxceleb
+    model_version = Column(String, nullable=False)      # e.g. ecapa-voxceleb-v1
+    normalization = Column(String, nullable=False)      # e.g. l2
+    embedding_dimension = Column(Integer, nullable=False)
+
+    # Aggregated enrollment representation (float32 bytes, L2-normalized).
+    centroid_embedding = Column(LargeBinary, nullable=False)
+    enrollment_sample_count = Column(Integer, nullable=False, default=1)
+    # Bumped every time the enrollment representation changes.
+    enrollment_version = Column(Integer, nullable=False, default=1)
+
+    # Soft delete / revocation support (privacy: reversible deletion keeps an
+    # audit trail; the embedding remains but the identity is never matched).
+    is_active = Column(Boolean, nullable=False, default=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    samples = relationship(
+        "SpeakerEnrollmentSample",
+        back_populates="identity",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        # SQLite/PostgreSQL-compatible composite uniqueness (partial-unique
+        # semantics for active rows are enforced in the vault layer, which
+        # must respect soft-deleted rows when re-creating a speaker_id).
+        Index("uq_speaker_identity", "tenant_id", "speaker_id", unique=True),
+        Index("ix_speaker_identity_active", "is_active"),
+    )
+
+
+class SpeakerEnrollmentSample(Base):
+    """One individual enrollment embedding (never raw audio)."""
+
+    __tablename__ = "speaker_enrollment_samples"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    identity_id = Column(
+        Integer, ForeignKey("speaker_identities.id"), nullable=False
+    )
+    embedding = Column(LargeBinary, nullable=False)  # float32 bytes
+    embedding_dimension = Column(Integer, nullable=False)
+    model_version = Column(String, nullable=False)
+    # Signal-quality metadata only (RMS/peak); never the waveform itself.
+    rms = Column(Float, nullable=True)
+    peak = Column(Float, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    identity = relationship("SpeakerIdentity", back_populates="samples")
+
+    __table_args__ = (
+        Index("ix_speaker_sample_identity", "identity_id", "is_active"),
+    )
 
 
 class EvidencePackage(Base):

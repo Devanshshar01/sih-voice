@@ -17,10 +17,10 @@ from app.main import app
 from app.config import HOP_SAMPLES, WINDOW_SAMPLES
 
 # With an 8,000-sample push exactly matching the hop size, the first window
-# only becomes ready once the ring buffer reaches WINDOW_SAMPLES -- pushes
-# before that produce no telemetry message, so we must not block on a
-# receive_json() until we know a message is actually coming.
-_FIRST_WINDOW_AT_PUSH = WINDOW_SAMPLES // HOP_SAMPLES  # e.g. 32000/8000 = 4
+# only becomes ready once the ring buffer reaches WINDOW_SAMPLES (4.0 s per
+# the SIH spec) -- pushes before that produce no telemetry message, so we
+# must not block on a receive_json() until we know a message is coming.
+_FIRST_WINDOW_AT_PUSH = WINDOW_SAMPLES // HOP_SAMPLES  # 64000/8000 = 8
 
 
 def _stream_silence_and_collect(ws, num_pushes: int, chunk_samples: int = HOP_SAMPLES) -> list:
@@ -31,6 +31,12 @@ def _stream_silence_and_collect(ws, num_pushes: int, chunk_samples: int = HOP_SA
         if i >= _FIRST_WINDOW_AT_PUSH:
             telemetry.append(ws.receive_json())
     return telemetry
+
+
+def test_window_geometry_is_sih_canonical() -> None:
+    """The backend must expose exactly the SIH windowing contract."""
+    assert WINDOW_SAMPLES == 64000, "Window must be 4.0 s at 16 kHz"
+    assert HOP_SAMPLES == 8000, "Hop must be 0.5 s at 16 kHz"
 
 
 def test_health(client: TestClient) -> None:
@@ -50,7 +56,7 @@ def test_genuine_call_stays_low_risk(client: TestClient) -> None:
 
     with client.websocket_connect(f"/api/v1/call/{call_id}/stream") as ws:
         ws.send_text('{"transcript": "Just checking on the quarterly budget report."}')
-        telemetry = _stream_silence_and_collect(ws, num_pushes=6)[-1]
+        telemetry = _stream_silence_and_collect(ws, num_pushes=10)[-1]
         print("[ok] final telemetry (genuine):", telemetry)
         assert telemetry["status"] == "ALLOW", "Genuine call should stay ALLOW"
 
@@ -72,7 +78,7 @@ def test_cloned_voice_locks_action(client: TestClient) -> None:
             '{"transcript": "This is urgent, please approve the wire transfer immediately.", '
             '"force_acoustic_score": 0.9}'
         )
-        telemetry = _stream_silence_and_collect(ws, num_pushes=6)[-1]
+        telemetry = _stream_silence_and_collect(ws, num_pushes=10)[-1]
         print("[ok] final telemetry (cloned):", telemetry)
         assert telemetry["status"] == "LOCK_VERIFY", "Cloned-voice scenario should escalate to LOCK_VERIFY"
         assert telemetry["risk_score"] >= 70
@@ -105,6 +111,7 @@ def test_cloned_voice_locks_action(client: TestClient) -> None:
 if __name__ == "__main__":
     with TestClient(app) as client:  # triggers FastAPI lifespan -> init_db()
         test_health(client)
+        test_window_geometry_is_sih_canonical()
         test_genuine_call_stays_low_risk(client)
         test_cloned_voice_locks_action(client)
     print("\nAll smoke tests passed.")
