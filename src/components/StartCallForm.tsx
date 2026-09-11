@@ -100,14 +100,16 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
               The attack scenario is preselected so the complete protection workflow is one click away.
             </p>
 
-            <div className="section-rule mt-8">Monitoring input</div>
-            <div className="mt-3 space-y-3">
+            <div id="monitoring-input-label" className="section-rule mt-8">Monitoring input</div>
+            <div className="mt-3 space-y-3" role="radiogroup" aria-labelledby="monitoring-input-label">
               {AUDIO_OPTIONS.map(({ mode, label, description, icon: Icon }) => (
                 <button
                   type="button"
                   key={mode}
+                  role="radio"
+                  aria-checked={audioMode === mode}
                   onClick={() => setAudioMode(mode)}
-                  className={`group flex w-full items-start gap-4 border p-4 text-left transition-all ${
+                  className={`group flex w-full items-start gap-4 border p-4 text-left transition-all focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950 focus-visible:outline-none ${
                     audioMode === mode
                       ? "border-signal/70 bg-signal-bg shadow-[inset_3px_0_0_#4fc3f7]"
                       : "border-ink-600 bg-ink-800/60 hover:border-ink-500 hover:bg-ink-800"
