@@ -37,7 +37,7 @@ export default function ThreatBreakdown({ acousticScore, intentScore, rationale,
         </div>
         <span className={`font-mono text-[10px] ${status === "LOCK_VERIFY" ? "text-danger" : status === "WARN" ? "text-warn" : "text-safe"}`}>{status.replace("_", " ")}</span>
       </div>
-      <div className="mt-4 space-y-4">
+      <div className="mt-4 space-y-4 border-t border-ink-700 pt-4">
         <VectorBar label="Acoustic synthesis vector" value={acousticScore} color={barColor} />
         <VectorBar label="Urgency / intent vector" value={intentScore} color={barColor} />
       </div>
