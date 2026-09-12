@@ -15,6 +15,16 @@ import type {
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000/api/v1";
 export const WS_BASE = (import.meta.env.VITE_WS_BASE_URL as string | undefined) ?? API_BASE.replace(/^http/, "ws");
 
+// Deployment API key (SIH demo/pilot): sent as X-API-Key on REST and as the
+// ?token= query param on the stream WebSocket (browsers cannot set headers on
+// WebSocket connections; the backend accepts both channels). Optional — when
+// unset, the backend must be running with auth open (development/demo mode).
+const API_KEY = (import.meta.env.VITE_API_KEY as string | undefined) ?? "";
+
+function authHeaders(): Record<string, string> {
+  return API_KEY ? { "X-API-Key": API_KEY } : {};
+}
+
 function connectionError(operation: string, err: unknown): Error {
   const detail = err instanceof Error ? err.message : String(err);
   return new Error(
@@ -28,7 +38,10 @@ function connectionError(operation: string, err: unknown): Error {
 async function request(operation: string, url: string, init?: RequestInit): Promise<Response> {
   let response: Response;
   try {
-    response = await fetch(url, init);
+    response = await fetch(url, {
+      ...init,
+      headers: { ...authHeaders(), ...(init?.headers ?? {}) },
+    });
   } catch (err) {
     // fetch() rejects on network/DNS/CORS-blocked failures; translate into a
     // message the operator can act on instead of a bare "Failed to fetch".
@@ -52,7 +65,7 @@ export async function startCall(callerId: string, recipientId: string): Promise<
     `${API_BASE}/call/start`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ caller_id: callerId, recipient_id: recipientId }),
     }
   );
@@ -60,7 +73,8 @@ export async function startCall(callerId: string, recipientId: string): Promise<
 }
 
 export function buildStreamUrl(callId: string): string {
-  return `${WS_BASE}/call/${callId}/stream`;
+  const tokenSuffix = API_KEY ? `?token=${encodeURIComponent(API_KEY)}` : "";
+  return `${WS_BASE}/call/${callId}/stream${tokenSuffix}`;
 }
 
 export async function fetchRisk(callId: string): Promise<CallRiskResponse> {
@@ -123,6 +137,7 @@ export async function registerForensicsEvidence(
 export async function verifyForensicsChain(): Promise<{ integrity: boolean; record_count: number; chain_tip: string | null; reason: string | null }> {
   const response = await request("verifying the ledger chain", `${API_BASE}/forensics/chain/verify`, {
     method: "POST",
+    headers: { ...authHeaders() },
   });
   return asJson("verifying the ledger chain", response);
 }
@@ -144,6 +159,7 @@ export async function verifyForensicsEvidence(
 ): Promise<ForensicsVerificationResponse> {
   const response = await request("verifying evidence", `${API_BASE}/forensics/${evidenceId}/verify`, {
     method: "POST",
+    headers: { ...authHeaders() },
   });
   return asJson<ForensicsVerificationResponse>("verifying evidence", response);
 }
