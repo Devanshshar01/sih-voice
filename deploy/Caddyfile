@@ -1,0 +1,23 @@
+# Automatic HTTPS reverse proxy for the SatyaVoice API.
+# Caddy obtains/renews Let's Encrypt certificates for $API_DOMAIN and
+# transparently proxies HTTP and WebSocket traffic to the uvicorn container.
+
+{$API_DOMAIN} {
+	encode zstd gzip
+
+	# WebSocket upgrades pass through automatically via reverse_proxy.
+	reverse_proxy api:8000
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+# ACME HTTP-01 challenge fallback on the bare host.
+:80 {
+	reverse_proxy api:8000
+}

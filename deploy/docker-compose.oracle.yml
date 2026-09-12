@@ -1,0 +1,80 @@
+# SatyaVoice — Oracle Cloud Always Free deployment (VPS with Docker + Caddy)
+#
+# Topology:
+#   [Browser on Vercel] --https/wss--> [Caddy :443, auto-TLS] --> [uvicorn :8000]
+#                                                          \----> [redis :6379]
+#   PostgreSQL: external (Neon free tier) via VOICETRUST_DATABASE_URL
+#
+# Usage on the VM:
+#   cp deploy/.env.oracle.example deploy/.env   # fill in the values
+#   docker compose -f deploy/docker-compose.oracle.yml --env-file deploy/.env up -d --build
+#
+# First-boot notes:
+#   * Caddy obtains a Let's Encrypt certificate automatically for $API_DOMAIN —
+#     the domain's DNS A record must point at the VM's public IP BEFORE start.
+#   * Ports 80 + 443 must be open in the Oracle VCN security list AND the OS
+#     firewall (see docs/deploy-oracle-vps.md).
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      VOICETRUST_ENV: production
+      VOICETRUST_CORS_ORIGINS: ${VOICETRUST_CORS_ORIGINS:?set in deploy/.env}
+      VOICETRUST_DATABASE_URL: ${VOICETRUST_DATABASE_URL:?set in deploy/.env}
+      VOICETRUST_REDIS_URL: redis://redis:6379/0
+      VOICETRUST_SESSION_STORE_BACKEND: redis
+      VOICETRUST_AUTH_API_KEYS: ${VOICETRUST_AUTH_API_KEYS:?set in deploy/.env}
+      VOICETRUST_DETECTOR_MODE: ${VOICETRUST_DETECTOR_MODE:-mock}
+      VOICETRUST_ASR_MODE: ${VOICETRUST_ASR_MODE:-manual}
+      VOICETRUST_MODEL_ID: ${VOICETRUST_MODEL_ID:-Hemgg/Deepfake-audio-detection}
+      VOICETRUST_ASR_MODEL_SIZE: ${VOICETRUST_ASR_MODEL_SIZE:-small}
+      VOICETRUST_ASR_DEVICE: ${VOICETRUST_ASR_DEVICE:-cpu}
+      VOICETRUST_ASR_COMPUTE_TYPE: ${VOICETRUST_ASR_COMPUTE_TYPE:-int8}
+      VOICETRUST_SPEAKER_VAULT_ENABLED: ${VOICETRUST_SPEAKER_VAULT_ENABLED:-true}
+      VOICETRUST_RATE_LIMIT_ENABLED: "true"
+      VOICETRUST_LOG_LEVEL: ${VOICETRUST_LOG_LEVEL:-INFO}
+      VOICETRUST_LOG_JSON: "true"
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+
+volumes:
+  redis-data:
+  caddy-data:
+  caddy-config:
