@@ -7,11 +7,38 @@ import type {
   VerificationRequestResponse,
 } from "../types";
 
+// API base is the single required connection variable. The WebSocket base is
+// DERIVED from it unless explicitly overridden — this prevents the common
+// deployed-frontend failure where the API points at production but the
+// WebSocket silently still points at ws://localhost:8000 (mixed content +
+// connection refused, which browsers often report as a CORS error).
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000/api/v1";
-export const WS_BASE = (import.meta.env.VITE_WS_BASE_URL as string | undefined) ?? "ws://localhost:8000/api/v1";
+export const WS_BASE = (import.meta.env.VITE_WS_BASE_URL as string | undefined) ?? API_BASE.replace(/^http/, "ws");
 
-async function asJson<T>(response: Response): Promise<T> {
-  const data = await response.json();
+function connectionError(operation: string, err: unknown): Error {
+  const detail = err instanceof Error ? err.message : String(err);
+  return new Error(
+    `Cannot reach the SatyaVoice backend while ${operation} (${detail}). ` +
+      `Configured API base: ${API_BASE}. Verify the backend is running and that ` +
+      `VITE_API_BASE_URL / VITE_WS_BASE_URL point at the deployed backend, and that ` +
+      `the backend's VOICETRUST_CORS_ORIGINS includes this site's origin.`
+  );
+}
+
+async function request(operation: string, url: string, init?: RequestInit): Promise<Response> {
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch (err) {
+    // fetch() rejects on network/DNS/CORS-blocked failures; translate into a
+    // message the operator can act on instead of a bare "Failed to fetch".
+    throw connectionError(operation, err);
+  }
+  return response;
+}
+
+async function asJson<T>(_operation: string, response: Response): Promise<T> {
+  const data = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = typeof data?.detail === "string" ? data.detail : response.statusText;
     throw new Error(detail);
@@ -20,12 +47,16 @@ async function asJson<T>(response: Response): Promise<T> {
 }
 
 export async function startCall(callerId: string, recipientId: string): Promise<CallStartResponse> {
-  const res = await fetch(`${API_BASE}/call/start`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ caller_id: callerId, recipient_id: recipientId }),
-  });
-  return asJson<CallStartResponse>(res);
+  const response = await request(
+    "starting the call",
+    `${API_BASE}/call/start`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ caller_id: callerId, recipient_id: recipientId }),
+    }
+  );
+  return asJson<CallStartResponse>("starting the call", response);
 }
 
 export function buildStreamUrl(callId: string): string {
@@ -33,29 +64,29 @@ export function buildStreamUrl(callId: string): string {
 }
 
 export async function fetchRisk(callId: string): Promise<CallRiskResponse> {
-  const res = await fetch(`${API_BASE}/call/${callId}/risk`);
-  return asJson<CallRiskResponse>(res);
+  const response = await request("loading the risk snapshot", `${API_BASE}/call/${callId}/risk`);
+  return asJson<CallRiskResponse>("loading the risk snapshot", response);
 }
 
 export async function requestVerificationCode(callId: string): Promise<VerificationRequestResponse> {
-  const res = await fetch(`${API_BASE}/verification/request`, {
+  const response = await request("requesting a verification code", `${API_BASE}/verification/request`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ call_id: callId }),
   });
-  return asJson<VerificationRequestResponse>(res);
+  return asJson<VerificationRequestResponse>("requesting a verification code", response);
 }
 
 export async function submitVerificationCode(
   callId: string,
   code: string
 ): Promise<VerificationChallengeResponse> {
-  const res = await fetch(`${API_BASE}/verification/challenge`, {
+  const response = await request("submitting the verification code", `${API_BASE}/verification/challenge`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ call_id: callId, code }),
   });
-  return asJson<VerificationChallengeResponse>(res);
+  return asJson<VerificationChallengeResponse>("submitting the verification code", response);
 }
 
 export async function attemptAction(
@@ -63,15 +94,15 @@ export async function attemptAction(
   action: string,
   amount?: number
 ): Promise<CallActionResult> {
-  const res = await fetch(`${API_BASE}/call/action`, {
+  const response = await request("attempting the protected action", `${API_BASE}/call/action`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ call_id: callId, action, amount }),
   });
-  const data = await res.json();
+  const data = await response.json().catch(() => null);
   return {
-    ok: res.ok,
-    status: res.status,
+    ok: response.ok,
+    status: response.status,
     executed: Boolean(data?.executed),
     message: data?.message ?? data?.detail ?? "Unknown response from server.",
   };
@@ -81,23 +112,23 @@ export async function registerForensicsEvidence(
   evidenceId: string,
   payload: object
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(`${API_BASE}/forensics/register`, {
+  const response = await request("registering evidence", `${API_BASE}/forensics/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ evidence_id: evidenceId, payload }),
   });
-  return asJson<Record<string, unknown>>(res);
+  return asJson<Record<string, unknown>>("registering evidence", response);
 }
 
 export async function verifyForensicsEvidence(
   evidenceId: string
 ): Promise<ForensicsVerificationResponse> {
-  const res = await fetch(`${API_BASE}/forensics/${evidenceId}/verify`, {
+  const response = await request("verifying evidence", `${API_BASE}/forensics/${evidenceId}/verify`, {
     method: "POST",
   });
-  return asJson<ForensicsVerificationResponse>(res);
+  return asJson<ForensicsVerificationResponse>("verifying evidence", response);
 }
 
 export async function terminateCall(callId: string): Promise<void> {
-  await fetch(`${API_BASE}/call/${callId}/terminate`, { method: "POST" });
+  await request("terminating the call", `${API_BASE}/call/${callId}/terminate`, { method: "POST" });
 }

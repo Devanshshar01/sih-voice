@@ -22,13 +22,29 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=config.APP_NAME, version="0.1.0", lifespan=lifespan)
 
+# CORS: VOICETRUST_CORS_ORIGINS is a comma-separated origin list. The default
+# "*" keeps local demos friction-free; production deployments should set it to
+# the exact frontend origin (e.g. https://satyavoice.vercel.app) — wildcard
+# origins cannot be combined with credentials.
+_credentials_enabled = config.CORS_ORIGINS != ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
-    allow_credentials=config.CORS_ORIGINS != ["*"],
+    allow_credentials=_credentials_enabled,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def _log_cors_config() -> None:
+    import logging
+
+    logging.getLogger("satyavoice").info(
+        "CORS enabled origins: %s (credentials=%s)",
+        config.CORS_ORIGINS,
+        _credentials_enabled,
+    )
 
 app.include_router(call.router, prefix=config.API_V1_PREFIX)
 app.include_router(speaker.router, prefix=config.API_V1_PREFIX)

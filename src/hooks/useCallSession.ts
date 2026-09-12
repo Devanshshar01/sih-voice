@@ -252,8 +252,10 @@ export function useCallSession() {
 
         const ws = new WebSocket(buildStreamUrl(startRes.call_id));
         wsRef.current = ws;
+        let everOpened = false;
 
         ws.onopen = async () => {
+          everOpened = true;
           setWsConnected(true);
           setPhase("active");
 
@@ -349,11 +351,26 @@ export function useCallSession() {
         };
 
         ws.onerror = () => {
-          setError("Connection to the call stream was interrupted.");
+          // Browsers never expose the WebSocket failure reason. The usual
+          // deployed-frontend causes: backend unreachable, TLS/HTTP mismatch
+          // (mixed content), or CORS/origin rejection. State the URL so the
+          // operator can act instead of guessing.
+          setError(
+            `Could not connect to the call stream at ${buildStreamUrl(startRes.call_id)}. ` +
+              `Check that the backend is running, that VITE_API_BASE_URL points at it ` +
+              `(ws:// vs wss:// must match the page protocol), and that the backend's ` +
+              `VOICETRUST_CORS_ORIGINS includes this site's origin.`
+          );
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
           setWsConnected(false);
+          // A close that never followed a successful open means the connection
+          // was refused — ws.onerror already reported the actionable cause; if
+          // an active call dropped, say so explicitly.
+          if (everOpened && !event.wasClean) {
+            setError(`Connection to the call stream was lost (code ${event.code}).`);
+          }
         };
       } catch (startError) {
         setError(startError instanceof Error ? startError.message : "Could not start the call.");
