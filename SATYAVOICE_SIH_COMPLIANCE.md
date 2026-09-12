@@ -40,7 +40,7 @@ Security posture is strong after this gate's fixes (WS auth, tenant binding, tra
 | 18 | Production DB/session architecture | **COMPLETE** | `app/config.py` env modes — production **requires** PostgreSQL, refuses SQLite, refuses mock detector/ASR defaults, requires CORS+auth; Redis session store (prod default) verified with fakeredis; memory store for dev/demo | `tests/test_deployment.py` 22 tests (boot gates, readiness fail-closed, Redis round-trip) | Postgres/Redis verified via contract tests + fakeredis, not live services in this sandbox |
 | 19 | Deterministic SIH demo mode | **COMPLETE** | `VOICETRUST_ENV=demo` — auth open, mock detector/manual ASR, SQLite, deterministic mock scores; smoke test `scripts/smoke_test.py` passes on a fresh DB every run | `tests/test_deployment.py` demo-mode boot tests; `scripts/smoke_test.py` ✅ | Demo scores are mock, not model-derived (by design; labeled as such in UI copy) |
 
-**Score: 9 COMPLETE · 8 PARTIAL · 1 MISSING · 4 NOT VERIFIED** — counted once per requirement (statuses above; a requirement can only contribute to one bucket; where evidence overlaps, the lower bound is reported).
+**Score: 9 COMPLETE · 5 PARTIAL · 1 MISSING · 4 NOT VERIFIED** (sums to 19; one status per requirement — where evidence overlaps, the lower bound is reported).
 
 ---
 
