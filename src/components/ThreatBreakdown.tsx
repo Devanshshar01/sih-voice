@@ -3,6 +3,8 @@ import type { RiskStatus } from "../types";
 interface ThreatBreakdownProps {
   acousticScore: number;
   intentScore: number;
+  identityMismatch?: number | null;
+  speakerSimilarity?: number | null;
   rationale: string[];
   status: RiskStatus;
 }
@@ -25,15 +27,41 @@ function VectorBar({ label, value, color }: { label: string; value: number; colo
   );
 }
 
-export default function ThreatBreakdown({ acousticScore, intentScore, rationale, status }: ThreatBreakdownProps) {
+export default function ThreatBreakdown({
+  acousticScore,
+  intentScore,
+  identityMismatch,
+  speakerSimilarity,
+  rationale,
+  status,
+}: ThreatBreakdownProps) {
   const barColor = status === "LOCK_VERIFY" ? "#f0554a" : status === "WARN" ? "#f5a524" : "#4fc3f7";
 
   return (
     <div className="panel flex h-full flex-col p-4">
-      <h2 className="text-sm font-medium text-paper">Threat breakdown</h2>
-      <div className="mt-4 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="eyebrow">Signal fusion</p>
+          <h2 className="mt-1 text-sm font-medium text-paper">Threat breakdown</h2>
+        </div>
+        <span className={`font-mono text-[10px] ${status === "LOCK_VERIFY" ? "text-danger" : status === "WARN" ? "text-warn" : "text-safe"}`}>{status.replace("_", " ")}</span>
+      </div>
+      <div className="mt-4 space-y-4 border-t border-ink-700 pt-4">
         <VectorBar label="Acoustic synthesis vector" value={acousticScore} color={barColor} />
         <VectorBar label="Urgency / intent vector" value={intentScore} color={barColor} />
+        {identityMismatch != null ? (
+          <VectorBar
+            label={
+              speakerSimilarity == null
+                ? "Identity mismatch (no reference — neutral)"
+                : `Identity mismatch (similarity ${Math.round(speakerSimilarity * 100)}%)`
+            }
+            value={identityMismatch}
+            color={barColor}
+          />
+        ) : (
+          <VectorBar label="Identity mismatch (no reference — neutral)" value={0} color={barColor} />
+        )}
       </div>
 
       <div className="mt-5 flex-1 hairline-top pt-3">

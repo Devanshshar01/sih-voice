@@ -16,11 +16,11 @@ function formatDuration(totalSeconds: number): string {
 
 export default function NavHeader({ connected, ended = false, callerId, recipientId, durationSeconds }: NavHeaderProps) {
   return (
-    <header className="hairline-bottom flex flex-wrap items-center justify-between gap-3 bg-ink-950 px-4 py-3 sm:px-6">
+    <header className="hairline-bottom flex flex-wrap items-center justify-between gap-3 bg-ink-950/95 px-4 py-3.5 backdrop-blur sm:px-6">
       <div className="flex items-center gap-4">
         <span className="flex items-center gap-2 text-sm font-semibold tracking-tight text-paper">
-          <span className="flex h-7 w-7 items-center justify-center border border-signal/40 bg-signal-bg text-signal"><Shield size={14} /></span>
-          SatyaVoice
+          <span className="flex h-7 w-7 items-center justify-center border border-signal/40 bg-signal-bg text-signal shadow-signal"><Shield size={14} /></span>
+          SatyaVoice <span className="font-mono text-[10px] font-normal text-mute">/ SOC-01</span>
         </span>
         {callerId && (
           <>

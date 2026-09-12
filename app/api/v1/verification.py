@@ -59,7 +59,7 @@ def request_challenge(payload: VerificationRequest):
     session = session_manager.get(payload.call_id)
     if not session:
         raise HTTPException(status_code=404, detail="Call session not found or expired.")
-    if session.current_risk_score < 70:
+    if session.current_risk_score <= config.RISK.LOCK_VERIFY_THRESHOLD:
         raise HTTPException(
             status_code=409,
             detail="Verification is only required after the call reaches a high-risk state.",

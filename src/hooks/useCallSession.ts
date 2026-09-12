@@ -9,12 +9,14 @@ import {
   terminateCall,
 } from "../lib/api";
 import { AUDIO_CHUNK_SAMPLES, LiveAudioCapture, buildDemoFrame } from "../lib/audioCapture";
-import { runAntiSpoofOnnxSample } from "../lib/onnxDetector";
+import { LocalAntiSpoofEngine } from "../lib/localInference";
+import { forbidsRawAudioUpload } from "../types";
 import type {
   AudioMode,
   CallMeta,
   CallPhase,
   CallRiskResponse,
+  LocalRisk,
   RiskTelemetry,
 } from "../types";
 
@@ -82,9 +84,12 @@ export function useCallSession() {
   const [liveTranscript, setLiveTranscript] = useState("");
   const [browserOnnxStatus, setBrowserOnnxStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [browserOnnxResult, setBrowserOnnxResult] = useState<{ score: number; label: string } | null>(null);
+  const [localRisk, setLocalRisk] = useState<LocalRisk | null>(null);
+  const [localModelError, setLocalModelError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioCaptureRef = useRef<LiveAudioCapture | null>(null);
+  const localEngineRef = useRef<LocalAntiSpoofEngine | null>(null);
   const demoIntervalRef = useRef<number | null>(null);
   const demoTimeoutsRef = useRef<number[]>([]);
   const durationIntervalRef = useRef<number | null>(null);
@@ -128,10 +133,16 @@ export function useCallSession() {
     }
     audioCaptureRef.current?.stop();
     audioCaptureRef.current = null;
+    localEngineRef.current?.dispose();
+    localEngineRef.current = null;
     setAnalyser(null);
     wsRef.current?.close();
     wsRef.current = null;
     setWsConnected(false);
+    setLocalRisk(null);
+    setLocalModelError(null);
+    setBrowserOnnxStatus("idle");
+    setBrowserOnnxResult(null);
   }, [clearDemoTimers]);
 
   useEffect(() => teardown, [teardown]);
@@ -150,10 +161,89 @@ export function useCallSession() {
       setLiveTranscript("");
       setBrowserOnnxStatus("idle");
       setBrowserOnnxResult(null);
+      setLocalRisk(null);
+      setLocalModelError(null);
       setMuted(false);
       setOnHold(false);
       mutedRef.current = false;
       onHoldRef.current = false;
+
+      // ---- Edge/local mode: derive-only. The call is registered so the
+      // dashboard and risk snapshot flow stay intact, but NO raw-audio
+      // WebSocket is ever opened and no audio chunk is transmitted. ----
+      if (forbidsRawAudioUpload(audioMode)) {
+        let callId = "edge-local";
+        try {
+          const startRes = await startCall(callerId, recipientId);
+          callId = startRes.call_id;
+        } catch {
+          // Fully offline: proceed without a backend call record; only
+          // local telemetry exists (capability explicitly degraded).
+        }
+        const startedAt = Date.now();
+        setMeta({ callId, callerId, recipientId, audioMode, startedAt });
+        setPhase("active");
+        setWsConnected(false);
+        wsRef.current = null;
+
+        durationIntervalRef.current = window.setInterval(() => {
+          setDurationSeconds(Math.floor((Date.now() - startedAt) / 1000));
+        }, 1000);
+
+        const engine = new LocalAntiSpoofEngine();
+        localEngineRef.current = engine;
+        setBrowserOnnxStatus("loading");
+        engine
+          .ensureLoaded()
+          .then(() => setBrowserOnnxStatus("ready"))
+          .catch((loadError: unknown) => {
+            setBrowserOnnxStatus("error");
+            setLocalModelError(
+              loadError instanceof Error ? loadError.message : "Local model failed to load."
+            );
+          });
+
+        const capture = new LiveAudioCapture();
+        audioCaptureRef.current = capture;
+        try {
+          const analyserNode = await capture.start((chunk) => {
+            if (!mutedRef.current && !onHoldRef.current && localEngineRef.current) {
+              void localEngineRef.current
+                .pushChunk(chunk)
+                .then((results) => {
+                  const latest = results[results.length - 1];
+                  if (!latest) return;
+                  const perf = localEngineRef.current?.getPerf();
+                  setLocalRisk({
+                    acousticScore: latest.score,
+                    label: latest.label,
+                    modelId: perf?.modelId ?? "unknown",
+                    modelLoadMs: perf?.loadMs ?? null,
+                    inferenceMs: latest.inferenceMs,
+                    p50Ms: perf?.p50Ms ?? null,
+                    p95Ms: perf?.p95Ms ?? null,
+                    inferenceCount: perf?.inferenceCount ?? 0,
+                    heapUsedMb: perf?.heapUsedMb ?? null,
+                    windowId: latest.windowId,
+                  });
+                })
+                .catch((inferError: unknown) => {
+                  setLocalModelError(
+                    inferError instanceof Error ? inferError.message : "Local inference failed."
+                  );
+                });
+            }
+          });
+          setAnalyser(analyserNode);
+        } catch (micError) {
+          setError(
+            micError instanceof Error
+              ? `Microphone access failed: ${micError.message}`
+              : "Microphone access failed."
+          );
+        }
+        return;
+      }
 
       try {
         const startRes = await startCall(callerId, recipientId);
@@ -162,8 +252,10 @@ export function useCallSession() {
 
         const ws = new WebSocket(buildStreamUrl(startRes.call_id));
         wsRef.current = ws;
+        let everOpened = false;
 
         ws.onopen = async () => {
+          everOpened = true;
           setWsConnected(true);
           setPhase("active");
 
@@ -171,26 +263,60 @@ export function useCallSession() {
             setDurationSeconds(Math.floor((Date.now() - startedAt) / 1000));
           }, 1000);
 
-          if (audioMode === "live" || audioMode === "browser-onnx") {
+          if (audioMode === "cloud" || audioMode === "hybrid") {
             try {
-              if (audioMode === "browser-onnx") {
+              const localEngine =
+                audioMode === "hybrid" ? new LocalAntiSpoofEngine() : null;
+              if (localEngine) {
+                localEngineRef.current = localEngine;
                 setBrowserOnnxStatus("loading");
+                localEngine
+                  .ensureLoaded()
+                  .then(() => setBrowserOnnxStatus("ready"))
+                  .catch((loadError: unknown) => {
+                    setBrowserOnnxStatus("error");
+                    setLocalModelError(
+                      loadError instanceof Error ? loadError.message : "Local model failed to load."
+                    );
+                    // Hybrid degrades to cloud semantics on local failure.
+                    localEngineRef.current = null;
+                  });
               }
 
               const capture = new LiveAudioCapture();
               audioCaptureRef.current = capture;
               const analyserNode = await capture.start((chunk) => {
-                if (audioMode === "browser-onnx") {
-                  void runAntiSpoofOnnxSample(chunk)
-                    .then((result) => {
+                if (localEngineRef.current) {
+                  void localEngineRef.current
+                    .pushChunk(chunk)
+                    .then((results) => {
+                      const latest = results[results.length - 1];
+                      if (!latest) return;
+                      const perf = localEngineRef.current?.getPerf();
                       setBrowserOnnxStatus("ready");
-                      setBrowserOnnxResult(result);
+                      setBrowserOnnxResult({ score: latest.score, label: latest.label });
+                      setLocalRisk({
+                        acousticScore: latest.score,
+                        label: latest.label,
+                        modelId: perf?.modelId ?? "unknown",
+                        modelLoadMs: perf?.loadMs ?? null,
+                        inferenceMs: latest.inferenceMs,
+                        p50Ms: perf?.p50Ms ?? null,
+                        p95Ms: perf?.p95Ms ?? null,
+                        inferenceCount: perf?.inferenceCount ?? 0,
+                        heapUsedMb: perf?.heapUsedMb ?? null,
+                        windowId: latest.windowId,
+                      });
                     })
-                    .catch(() => {
-                      setBrowserOnnxStatus("error");
+                    .catch((inferError: unknown) => {
+                      setLocalModelError(
+                        inferError instanceof Error ? inferError.message : "Local inference failed."
+                      );
                     });
                 }
 
+                // Cloud + hybrid stream raw audio to the backend; edge-local
+                // never reaches this branch (guarded above).
                 if (!mutedRef.current && !onHoldRef.current && ws.readyState === WebSocket.OPEN) {
                   ws.send(chunk.buffer);
                 }
@@ -225,11 +351,26 @@ export function useCallSession() {
         };
 
         ws.onerror = () => {
-          setError("Connection to the call stream was interrupted.");
+          // Browsers never expose the WebSocket failure reason. The usual
+          // deployed-frontend causes: backend unreachable, TLS/HTTP mismatch
+          // (mixed content), or CORS/origin rejection. State the URL so the
+          // operator can act instead of guessing.
+          setError(
+            `Could not connect to the call stream at ${buildStreamUrl(startRes.call_id)}. ` +
+              `Check that the backend is running, that VITE_API_BASE_URL points at it ` +
+              `(ws:// vs wss:// must match the page protocol), and that the backend's ` +
+              `VOICETRUST_CORS_ORIGINS includes this site's origin.`
+          );
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
           setWsConnected(false);
+          // A close that never followed a successful open means the connection
+          // was refused — ws.onerror already reported the actionable cause; if
+          // an active call dropped, say so explicitly.
+          if (everOpened && !event.wasClean) {
+            setError(`Connection to the call stream was lost (code ${event.code}).`);
+          }
         };
       } catch (startError) {
         setError(startError instanceof Error ? startError.message : "Could not start the call.");
@@ -373,6 +514,8 @@ export function useCallSession() {
     liveTranscript,
     browserOnnxStatus,
     browserOnnxResult,
+    localRisk,
+    localModelError,
     startNewCall,
     endCall,
     startOver,

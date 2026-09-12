@@ -8,6 +8,13 @@ numpy>=2,<3
 httpx>=0.27          # used by TestClient and scripts/demo_client.py
 websockets>=12.0      # used by scripts/demo_client.py (real WS client)
 
+# --- Optional codec normalization extensions (app/services/codec_normalizer.py) ---
+# Core families (PCM float32/s16, G.711 mu-law/A-law) need nothing extra.
+# Opus support additionally requires the native libopus shared library:
+# opuslib>=2.0.0
+# AMR-NB/AMR-WB require a native AMR decoder binding and are correctly
+# reported as unsupported until one is installed.
+
 # --- Real detector runtime ---
 torch>=2.2
 transformers>=4.39,<5

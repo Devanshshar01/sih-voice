@@ -10,15 +10,24 @@ interface StartCallFormProps {
 
 const AUDIO_OPTIONS: { mode: AudioMode; label: string; description: string; icon: typeof Mic }[] = [
   {
-    mode: "live",
-    label: "Live microphone",
-    description: "Capture and analyze this device's mic in real time.",
+    mode: "cloud",
+    label: "Cloud — full multimodal pipeline",
+    description:
+      "Streams microphone audio to the backend for anti-spoof, ASR, speaker, and policy fusion.",
     icon: Mic,
   },
   {
-    mode: "browser-onnx",
-    label: "Browser-only ONNX inference (Phase 9 proof-of-concept)",
-    description: "Runs the real anti-spoof model in-browser with ONNX Runtime Web, demonstrated in airplane-mode style offline execution.",
+    mode: "hybrid",
+    label: "Hybrid — local anti-spoof + cloud policy",
+    description:
+      "Anti-spoof runs in this browser (ONNX, off the UI thread); the backend still does ASR, speaker, and policy fusion on the audio stream.",
+    icon: ShieldCheck,
+  },
+  {
+    mode: "edge-local",
+    label: "Edge/local — raw audio never leaves this device",
+    description:
+      "Anti-spoof runs fully in-browser; only derived scores and telemetry are shared. ASR, speaker, and policy fusion are unavailable offline and shown as explicitly degraded.",
     icon: ShieldCheck,
   },
   {
@@ -42,7 +51,7 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
 
   return (
     <main className="min-h-[100dvh] bg-ink-950">
-      <div className="mx-auto grid min-h-[100dvh] max-w-[1480px] lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="console-grid mx-auto grid min-h-[100dvh] max-w-[1480px] lg:grid-cols-[0.9fr_1.1fr]">
         <section className="relative flex flex-col justify-between border-b border-ink-700 px-6 py-8 sm:px-10 lg:border-b-0 lg:border-r lg:px-14 lg:py-12">
           <div className="relative">
             <div className="flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-signal">
@@ -91,15 +100,17 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-mute">New monitored call</p>
-                <h2 className="mt-2 text-xl font-semibold text-paper">Choose a scenario</h2>
+              <p className="eyebrow">Secure intake / new session</p>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-paper">Choose a monitoring mode</h2>
+              <p className="mt-2 max-w-lg text-sm leading-relaxed text-paper-dim">Start with a controlled scenario for a reliable demonstration, or connect live audio for operational monitoring.</p>
               </div>
             </div>
             <p className="mt-3 text-sm leading-6 text-paper-dim">
               The attack scenario is preselected so the complete protection workflow is one click away.
             </p>
 
-            <div className="mt-8 space-y-3">
+            <div className="section-rule mt-8">Monitoring input</div>
+            <div className="mt-3 space-y-3">
               {AUDIO_OPTIONS.map(({ mode, label, description, icon: Icon }) => (
                 <button
                   type="button"

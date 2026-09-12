@@ -26,6 +26,27 @@ class RiskTelemetry(BaseModel):
     intent_score: float = Field(..., ge=0.0, le=1.0)
     status: str  # ALLOW | WARN | LOCK_VERIFY
     rationale: List[str] = Field(default_factory=list)
+    # Identity evidence: raw similarity to the enrolled reference (None when
+    # no reference exists) and the derived risk term (1 - similarity).
+    speaker_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    identity_mismatch: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    hard_trigger: Optional[bool] = None
+    degraded: Optional[dict] = None
+    fusion: Optional[dict] = None
+    # Contextual ASR/intent evidence (SIH multilingual phase). Optional so
+    # legacy frames without these keys stay valid.
+    transcript: Optional[str] = None
+    detected_language: Optional[str] = None
+    intent_risks: Optional[List[dict]] = None
+    # VAD stage telemetry (SIH Phase 1). Present on every streaming message.
+    vad_active: Optional[bool] = None
+    vad_coverage: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    vad_backend: Optional[str] = None
+    vad_skipped: Optional[bool] = None
+    malformed_frames: Optional[int] = None
+    # Per-window stage timings (ms) and rolling p50/p95 per stage.
+    latency_ms: Optional[dict] = None
+    latency_stats: Optional[dict] = None
 
 
 class AudioAnalyzeResponse(BaseModel):
@@ -36,6 +57,10 @@ class AudioAnalyzeResponse(BaseModel):
 
 class SpeakerEnrollRequest(BaseModel):
     speaker_id: str = Field(..., min_length=1)
+    # Optional tenant/user scoping (persistent vault). Defaults keep the
+    # original single-tenant contract working unchanged.
+    tenant_id: str = Field(default="default", min_length=1)
+    display_name: Optional[str] = None
 
 
 class SpeakerEnrollResponse(BaseModel):
@@ -46,15 +71,29 @@ class SpeakerEnrollResponse(BaseModel):
     method: str
     checkpoint_status: str
     enrolled: bool
+    # Persistent vault additions (optional fields keep old clients working).
+    tenant_id: str = "default"
+    sample_count: int = 1
+    enrollment_version: int = 1
+    model_version: str = ""
 
 
 class SpeakerMatchResponse(BaseModel):
     speaker_id: Optional[str] = None
-    speaker_match_score: float
+    # None when the vault has no reference: identity evidence is unknown
+    # (neutral in fusion), not a zero-similarity mismatch.
+    speaker_match_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     matched: bool
     vault_size: int
     method: str
     checkpoint_status: str
+    # Verification contract additions: the threshold and model version that
+    # produced the decision (auditability without exposing embeddings).
+    threshold: Optional[float] = None
+    model_version: Optional[str] = None
+    # True when enrollments exist but were enrolled with a different encoder
+    # version, so no similarity was computed.
+    model_version_mismatch: Optional[bool] = None
 
 
 class RiskTimelinePoint(BaseModel):

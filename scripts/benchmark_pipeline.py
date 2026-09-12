@@ -82,7 +82,7 @@ def benchmark_once(
     transport_ms = (time.perf_counter() - transport_start) * 1000.0
 
     preprocessing_start = time.perf_counter()
-    samples = apply_vad(samples)
+    samples, _vad_telemetry = apply_vad(samples)
     ring_buffer.push(samples)
     windows = ring_buffer.pop_ready_windows()
     if not windows:

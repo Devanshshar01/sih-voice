@@ -6,7 +6,9 @@ Updated for Phase 1 real detector integration.
 
 - Browser Web Audio API/AudioWorklet capture
 - Float32 PCM WebSocket streaming
-- Two-second sliding analysis windows with 0.5-second hops
+- Four-second sliding analysis windows with 0.5-second hops (SIH spec: 64,000-sample window / 8,000-sample hop at 16 kHz)
+- Codec normalization layer: PCM float32/s16le and G.711 μ-law/A-law decode natively; Opus requires opuslib + native libopus; AMR-NB/WB require a native AMR binding and are reported as unsupported until installed
+- Silero VAD preprocessing stage (enabled by default) with per-window speech-coverage telemetry and a documented energy-threshold fallback
 - Mock detector behind `VOICETRUST_DETECTOR_MODE=mock`
 - Current real-mode placeholder detector loading for `Hemgg/Deepfake-audio-detection`
 - Target-stack runtime contract alignment for the presentation: fine-tuned
@@ -35,7 +37,7 @@ Updated for Phase 1 real detector integration.
 - Indian-language production accuracy
 - EER, false-positive rate, or false-negative rate for SatyaVoice
 - Sub-500 ms real-model end-to-end latency
-- Silero VAD
+- Opus or AMR decode in the default runtime (capability-gated with documented dependencies)
 - ECAPA-TDNN speaker matching or cross-session vault
 - On-device WebAssembly inference
 - Android SDK
