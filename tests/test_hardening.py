@@ -244,7 +244,6 @@ class TestRiskEventThrottle:
 # Race-condition guard: terminated calls cannot be unlocked or act
 # ---------------------------------------------------------------------------
 
-
 class TestTerminatedCallRace:
     def _client(self):
         from app.main import app
@@ -282,3 +281,97 @@ class TestTerminatedCallRace:
         # read-only within TTL and hits the status guard (409). Either way the
         # action must NOT be executed.
         assert r.status_code in (404, 409)
+
+
+# ---------------------------------------------------------------------------
+# Verification endpoints: tenant binding + brute-force resistance
+# ---------------------------------------------------------------------------
+
+
+class TestVerificationTenantBinding:
+    def test_foreign_tenant_cannot_request_challenge(self, client, authed):
+        from app.core.session_manager import session_manager
+
+        call_id = _start_call(client, authed("a"))
+        session_manager.get(call_id).current_risk_score = 90
+        r = client.post("/api/v1/verification/request", json={"call_id": call_id}, headers=authed("b"))
+        assert r.status_code == 404  # indistinguishable from missing
+
+    def test_owner_tenant_can_request_challenge(self, client, authed):
+        from app.core.session_manager import session_manager
+
+        call_id = _start_call(client, authed("a"))
+        session_manager.get(call_id).current_risk_score = 90
+        r = client.post("/api/v1/verification/request", json={"call_id": call_id}, headers=authed("a"))
+        assert r.status_code == 200
+
+    def test_foreign_tenant_cannot_submit_challenge(self, client, authed):
+        from app.core.session_manager import session_manager
+
+        call_id = _start_call(client, authed("a"))
+        session = session_manager.get(call_id)
+        session.current_risk_score = 90
+        code = client.post("/api/v1/verification/request", json={"call_id": call_id}, headers=authed("a")).json()["code"]
+        r = client.post("/api/v1/verification/challenge", json={"call_id": call_id, "code": code}, headers=authed("b"))
+        assert r.status_code == 404
+        # The session was never unlocked by the foreign tenant.
+        assert session_manager.get(call_id).verified is False
+
+
+class TestChallengeBruteForce:
+    def test_bounded_attempts_invalidate_challenge(self, client):
+        from app.api.v1.verification import MAX_CHALLENGE_ATTEMPTS, _active_challenges
+        from app.core.session_manager import session_manager
+
+        r = client.post("/api/v1/call/start", json={"caller_id": "a", "recipient_id": "b"})
+        call_id = r.json()["call_id"]
+        session_manager.get(call_id).current_risk_score = 90
+        code = client.post("/api/v1/verification/request", json={"call_id": call_id}).json()["code"]
+
+        wrong = "000000" if code != "000000" else "000001"
+        for _ in range(MAX_CHALLENGE_ATTEMPTS):
+            res = client.post("/api/v1/verification/challenge", json={"call_id": call_id, "code": wrong}).json()
+            assert res["success"] is False
+
+        # After MAX_CHALLENGE_ATTEMPTS wrong codes the challenge is dead —
+        # even the CORRECT code no longer unlocks.
+        res = client.post("/api/v1/verification/challenge", json={"call_id": call_id, "code": code}).json()
+        assert res["success"] is False
+        assert call_id not in _active_challenges
+
+    def test_correct_code_on_first_try_succeeds(self, client):
+        from app.core.session_manager import session_manager
+
+        r = client.post("/api/v1/call/start", json={"caller_id": "a", "recipient_id": "b"})
+        call_id = r.json()["call_id"]
+        session_manager.get(call_id).current_risk_score = 90
+        code = client.post("/api/v1/verification/request", json={"call_id": call_id}).json()["code"]
+        res = client.post("/api/v1/verification/challenge", json={"call_id": call_id, "code": code}).json()
+        assert res["success"] is True
+
+
+# ---------------------------------------------------------------------------
+# Auth middleware: health probes and CORS preflights bypass auth
+# ---------------------------------------------------------------------------
+
+
+class TestAuthMiddlewareBypasses:
+    def test_health_open_when_auth_required(self, client, authed):
+        # Liveness/readiness probes must never require an API key.
+        assert client.get("/health").status_code == 200
+        assert client.get("/health/live").status_code == 200
+        assert client.get("/health/ready").status_code == 200
+
+    def test_preflight_open_when_auth_required(self, client, authed):
+        # Browsers never attach X-API-Key to a CORS preflight; rejecting it
+        # would break every credentialed production request.
+        r = client.options(
+            "/api/v1/call/start",
+            headers={
+                "Origin": "https://frontend.example.com",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        assert r.status_code == 200
+        assert "access-control-allow-origin" in r.headers

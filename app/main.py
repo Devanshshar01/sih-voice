@@ -9,6 +9,8 @@ Production fails fast at import if required configuration is missing
 """
 from contextlib import asynccontextmanager
 
+import json
+
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text as _sqltext
@@ -66,8 +68,17 @@ async def _attach_auth_for_rate_limiting(request, call_next):
     Runs inside the rate-limit middleware; invalid keys are rejected here
     (before route handlers) with 401, keeping the auth dependency the single
     source of truth for route-level protection.
+
+    Bypasses (production-critical, verified by tests):
+      * OPTIONS preflight — browsers never attach X-API-Key to a preflight;
+        rejecting it here would break every CORS request in production.
+      * /health* — liveness/readiness probes (k8s, load balancers, the
+        Docker healthcheck) must stay dependency-free and unauthenticated.
     """
     from app.core.auth import api_key_auth
+
+    if request.method == "OPTIONS" or request.url.path.startswith("/health"):
+        return await call_next(request)
 
     if config.AUTH_REQUIRED:
         try:
@@ -76,7 +87,7 @@ async def _attach_auth_for_rate_limiting(request, call_next):
             status = getattr(exc, "status_code", 500)
             detail = getattr(exc, "detail", "Authentication failed.")
             return Response(
-                content=f'{{"detail": "{detail}"}}',
+                content=json.dumps({"detail": detail}),
                 status_code=status,
                 media_type="application/json",
             )
