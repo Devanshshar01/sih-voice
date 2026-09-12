@@ -1,5 +1,11 @@
-gradio>=4.0,<5
-torch>=2.2
-transformers>=4.39,<5
+# HF base image already provides these:
+# - gradio==6.27.0 (with oauth and mcp)
+# - torch==2.13.0
+# - spaces==0.51.3
+# - uvicorn>=0.14.0
+# - websockets>=10.4
+
+# Additional dependencies we need:
+transformers>=4.39.0
 speechbrain>=0.5.15
-numpy>=2,<3
+numpy>=1.24.0,<2.0  # Must be <2.0 for torch 2.13.0 compatibility

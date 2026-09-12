@@ -1,3 +1,13 @@
+---
+title: SatyaVoice ZeroGPU Inference Space
+emoji: 🤗
+colorFrom: blue
+colorTo: green
+sdk: gradio
+app_file: app.py
+pinned: false
+---
+
 # SatyaVoice ZeroGPU Inference Space
 
 This Hugging Face Space provides an API for anti-spoof detection and speaker embedding extraction, designed to be used by the SatyaVoice backend.
