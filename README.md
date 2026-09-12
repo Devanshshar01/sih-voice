@@ -294,9 +294,9 @@ production benchmark.
 - **WAV/MP3 decoding** in `/api/v1/audio/analyze`: currently assumes raw
   float32 PCM bytes for simplicity — add `soundfile`/`pydub` decoding before
   accepting arbitrary judge-supplied files.
-- **Horizontal scaling**: `SessionManager` is an in-memory, single-process
-  store — fine for the hackathon demo; move to Redis before running more
-  than one worker.
+- **Horizontal scaling**: development/demo use the in-memory session store —
+  fine for the hackathon demo. Production defaults to the Redis-backed store
+  (active calls survive worker restarts and are shared across workers).
 
 The real detector downloads its checkpoint on first use unless
 `VOICETRUST_MODEL_PATH` points to a local copy. The 378 MB checkpoint is not
@@ -416,3 +416,176 @@ Raw audio only ever exists in a volatile in-memory ring buffer
 Only derived metadata — scores, timestamps, triggered rules — reaches
 SQLite (`db/models.py`), matching the Privacy and Compliance requirements in
 the problem statement.
+
+## Forensic evidence, chain of custody & blockchain anchoring
+
+### Canonical evidence package (`app/services/evidence_package.py`)
+
+A flagged call closes into a versioned (`forensic-v1`), backend-authored
+evidence package containing: call/session ID, timestamps, model provenance
+(detector mode, model IDs/revisions, artifact hashes, risk-config
+fingerprint), codec, language(s), per-window identifiers with acoustic
+scores, speaker similarity + identity mismatch, transcript **hashes** (never
+text), contextual intent findings, fused risk score, action taken,
+verification result, and disposition. Raw audio and full transcripts are
+never part of the package.
+
+```
+evidence_hash = SHA-256(canonical_json(package))     # deterministic, key-order independent
+ledger record = H(prev_root ‖ timestamp_hashed ‖ schema_version ‖ evidence_digest)
+chain_root    = H(record_hash ‖ prev_root)           # cumulative tip
+```
+
+### Chain of custody (`app/services/evidence_anchor.py`)
+
+* The ledger is **global and append-only**: every record links to the
+  previous record's chain root across ALL packages in registration order.
+* Registration is **idempotent** — re-submitting an identical package returns
+  the original registration (`duplicate: true`) and never appends a record.
+* `verify_evidence_package` checks payload-hash integrity + the package's
+  link into the global chain. `verify_full_chain` independently walks the
+  entire ledger from GENESIS and reports the first broken record — the
+  tamper-evidence primitive an auditor runs without trusting bookkeeping.
+* The hashed timestamp is stored **verbatim** (`timestamp_hashed`) — immune
+  to SQLite/PostgreSQL datetime round-trip normalization (migration `0002`).
+
+### Forensic PDF (`app/services/forensic_pdf.py`)
+
+`GET /api/v1/forensics/{evidence_id}/report.pdf` renders a deterministic,
+multi-page PDF **exclusively from the immutable stored package** — incident
+overview, model/version information, risk summary, per-window detection
+timeline, evidence hash table, chain/anchor status, and a scope-and-
+limitations disclaimer. No creation timestamps or randomness → the same
+stored package renders byte-identical PDFs (test-enforced). The frontend
+export button registers the canonical package and downloads the backend PDF,
+with a legacy client-side fallback if the backend is unreachable.
+
+### Smart contract (`contracts/AnchorRoot.sol`)
+
+* **Authorization**: only the owner or explicitly authorized anchors may
+  submit roots (`onlyAuthorized`); ownership is transferable/renounceable.
+* **Append-only**: roots accumulate in an array with a `RootAnchored` event
+  carrying the anchor index — history is never overwritten (the legacy
+  mutable `latestRoot` model silently destroyed prior anchors).
+* **Duplicate rejection**: an evidence root anchors exactly once.
+* Reads: `isAnchored(root)`, `getAnchor(i)`, `anchorCount()`, plus the
+  backward-compatible `latestRoot()/latestAnchor()` views.
+
+### Independent verification
+
+```
+python scripts/verify_evidence.py                 # full ledger + all packages
+python scripts/verify_evidence.py <evidence_id>   # one package in detail
+```
+
+API: `POST /api/v1/forensics/chain/verify` (full ledger walk),
+`POST /api/v1/forensics/{id}/verify`, `GET /api/v1/forensics/{id}/package`
+(the stored package, hashes only), and the PDF endpoint above. When Polygon
+Amoy is configured, verification includes a read-only on-chain check via
+`verify_root` (no private key required — auditors can confirm without
+anchoring rights).
+
+### What this evidence layer establishes — and what it does not
+
+It establishes: that the recorded derived evidence (scores, similarity,
+transcript digests, intent findings) has not been altered after registration;
+the order of events; and that a specific chain root was witnessed on a public
+chain at a specific block time.
+
+It does **not** establish: that the underlying analysis is correct, that the
+source call is authentic, that anyone identified committed fraud, or that any
+of this is **legally admissible** — admissibility (e.g. IT Act §65B
+certification in India) is determined by courts and qualified legal process,
+not by this application. The disclaimer ships inside every generated PDF.
+
+## Deployment (multi-user readiness)
+
+### Environment modes
+
+`VOICETRUST_ENV` selects the mode; the app **fails fast at boot** if a mode's
+requirements are unmet:
+
+| | development (default) | demo | production |
+|---|---|---|---|
+| Database | SQLite (default) | SQLite | **PostgreSQL required** |
+| Detector / ASR | `mock` / `manual` | `mock` / `manual` | **`real` / `real`** (overridable) |
+| CORS | `*` | `*` | **explicit origins required** |
+| Auth | open (single `default` tenant) | open | **API keys required** |
+| Session store | memory | memory | **Redis** |
+| Rate limiting | off | off | **on** |
+| Logs | console text | console text | **JSON** |
+
+### Local setup (development)
+
+```bash
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload    # http://localhost:8000/health
+npm install && npm run dev                 # frontend (points at localhost)
+```
+
+No env vars required. Mock detector, manual ASR, SQLite, auth open.
+
+### Demo setup (deterministic judging)
+
+Same as development; use `VOICETRUST_ENV=demo` to make the intent explicit,
+plus the scenario overrides the frontend already provides (demo-genuine /
+demo-cloned). Optionally `VOICETRUST_CELERY_EAGER=true` to run background
+tasks inline without Redis.
+
+### Production setup
+
+```bash
+VOICETRUST_ENV=production
+VOICETRUST_CORS_ORIGINS=https://your-frontend.example.com
+VOICETRUST_DATABASE_URL=postgresql+psycopg://user:pass@db-host:5432/satyavoice
+VOICETRUST_AUTH_API_KEYS="tenant-a:sk_live_xxx,tenant-b:sk_live_yyy"
+VOICETRUST_REDIS_URL=redis://redis-host:6379/0
+# Model defaults: VOICETRUST_DETECTOR_MODE=real VOICETRUST_ASR_MODE=real
+```
+
+Or `docker compose --profile prod up --build` (Postgres + Redis + backend
+wired together; required variables are enforced with `:?` placeholders).
+
+### Required environment variables (production)
+
+| Variable | Purpose |
+|---|---|
+| `VOICETRUST_ENV` | `production` |
+| `VOICETRUST_CORS_ORIGINS` | Exact frontend origins, comma-separated |
+| `VOICETRUST_DATABASE_URL` | PostgreSQL URL (SQLite is refused) |
+| `VOICETRUST_AUTH_API_KEYS` | `tenant_id:key` pairs; keys come as `X-API-Key` |
+| `VOICETRUST_REDIS_URL` | Session store + rate limiting + Celery broker |
+| `VOICETRUST_DETECTOR_MODE` / `VOICETRUST_ASR_MODE` | `real` by default; point `VOICETRUST_MODEL_ID` / model path at the checkpoints |
+
+Optional: `VOICETRUST_BLOCKCHAIN_*` (Polygon Amoy anchoring),
+`VOICETRUST_RATE_LIMIT_*` (defaults: 120 req/min per tenant),
+`VOICETRUST_MAX_AUDIO_UPLOAD_BYTES` (default 8 MiB), `VOICETRUST_WS_*`
+(frame size/rate/total caps), `VOICETRUST_LOG_LEVEL` / `VOICETRUST_LOG_JSON`.
+
+### Security & observability model
+
+* **Auth**: `X-API-Key` header → tenant derived from the key (never from
+  client input); cross-tenant enrollment/matching is a hard 403. All routers
+  (calls, speaker, forensics, verification, analyze) are protected.
+* **Rate limiting**: sliding window per tenant (Redis-backed in production,
+  in-process otherwise); health endpoints exempt.
+* **Request IDs**: every response carries `X-Request-ID`; all structured logs
+  correlate by it (plus call_id / tenant_id / model_version / stage /
+  latency where relevant).
+* **Input limits**: audio upload ≤ 8 MiB (413), JSON body cap, WebSocket
+  frame-size/rate/total-transfer caps with close code 4409.
+* **Privacy**: raw audio and biometric embeddings never enter logs (the JSON
+  formatter is allowlist-based and test-enforced).
+* **Health**: `GET /health` (liveness), `GET /health/live`,
+  `GET /health/ready` — checks DB, detector stack, and Redis when the
+  session store requires it; returns 503 with per-check status when degraded.
+
+### Deployment assumptions
+
+* One API process per container; scale by running multiple containers —
+  they share state only through PostgreSQL + Redis (never SQLite/memory).
+* The streaming decision path never touches Celery; Celery workers handle
+  evidence anchoring and heavy report generation only.
+* TLS terminates at the ingress/proxy in front of uvicorn.
+* The real detector/ASR checkpoints are downloaded on first use (or
+  pre-baked via `VOICETRUST_MODEL_PATH`) — they are not in the image.

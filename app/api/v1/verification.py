@@ -9,10 +9,11 @@ import random
 import time
 from typing import Dict, Tuple
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app import config
 from app.config import RiskStatus
+from app.core.auth import AuthContext, require_auth
 from app.core.session_manager import session_manager
 from app.models.schemas import VerificationChallengeRequest, VerificationChallengeResponse
 from app.models.schemas import (
@@ -55,9 +56,9 @@ def _validate_code(call_id: str, code: str) -> bool:
 
 
 @router.post("/request", response_model=VerificationRequestResponse)
-def request_challenge(payload: VerificationRequest):
+def request_challenge(payload: VerificationRequest, auth: AuthContext = Depends(require_auth)):
     session = session_manager.get(payload.call_id)
-    if not session:
+    if not session or session.status != "ACTIVE":
         raise HTTPException(status_code=404, detail="Call session not found or expired.")
     if session.current_risk_score <= config.RISK.LOCK_VERIFY_THRESHOLD:
         raise HTTPException(
@@ -74,9 +75,13 @@ def request_challenge(payload: VerificationRequest):
 
 
 @router.post("/challenge", response_model=VerificationChallengeResponse)
-def submit_challenge(payload: VerificationChallengeRequest):
+def submit_challenge(payload: VerificationChallengeRequest, auth: AuthContext = Depends(require_auth)):
     session = session_manager.get(payload.call_id)
-    if not session:
+    if not session or session.status != "ACTIVE":
+        # A terminated call must never be unlocked, even if a challenge was
+        # already in flight when it ended (race: HIGH_RISK → terminate →
+        # challenge response arrives). In Redis-backed mode an ended session
+        # remains readable within its TTL, so the status guard is required.
         raise HTTPException(status_code=404, detail="Call session not found or expired.")
 
     if _validate_code(payload.call_id, payload.code):

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
 
 from app import config
+from app.core.auth import AuthContext, require_auth
 from app.core.session_manager import session_manager
 from app.db import models as db_models
 from app.db.database import get_db
@@ -28,14 +29,23 @@ HIGH_RISK_THRESHOLD = config.RISK.LOCK_VERIFY_THRESHOLD
 
 
 @router.post("/start", response_model=CallStartResponse)
-def start_call(payload: CallStartRequest, db: DBSession = Depends(get_db)):
-    session = session_manager.create_session(payload.caller_id, payload.recipient_id)
+def start_call(
+    payload: CallStartRequest,
+    db: DBSession = Depends(get_db),
+    auth: AuthContext = Depends(require_auth),
+):
+    # Tenant binding: the call belongs to the tenant that created it. Every
+    # later access (REST + WebSocket) is authorized against this tenant.
+    session = session_manager.create_session(
+        payload.caller_id, payload.recipient_id, tenant_id=auth.tenant_id
+    )
 
     db.add(
         db_models.Session(
             call_id=session.call_id,
             caller_id=payload.caller_id,
             recipient_id=payload.recipient_id,
+            tenant_id=session.tenant_id,
             status="ACTIVE",
         )
     )
@@ -49,9 +59,9 @@ def start_call(payload: CallStartRequest, db: DBSession = Depends(get_db)):
 
 
 @router.get("/{call_id}/risk", response_model=CallRiskResponse)
-def get_risk(call_id: str):
+def get_risk(call_id: str, auth: AuthContext = Depends(require_auth)):
     session = session_manager.get(call_id)
-    if not session:
+    if not session or session.tenant_id != auth.tenant_id:
         raise HTTPException(status_code=404, detail="Call session not found or expired.")
 
     timeline = [
@@ -66,10 +76,14 @@ def get_risk(call_id: str):
 
 
 @router.post("/action", response_model=CallActionResponse)
-def execute_action(payload: CallActionRequest):
+def execute_action(payload: CallActionRequest, auth: AuthContext = Depends(require_auth)):
     session = session_manager.get(payload.call_id)
-    if not session:
+    if not session or session.tenant_id != auth.tenant_id:
         raise HTTPException(status_code=404, detail="Call session not found or expired.")
+    if session.status != "ACTIVE":
+        # Terminated/completed calls cannot execute financial actions even if
+        # they were verified before termination (race-condition guard).
+        raise HTTPException(status_code=409, detail=f"Call is {session.status}; actions are no longer permitted.")
 
     if session.current_risk_score >= HIGH_RISK_THRESHOLD and not session.verified:
         raise HTTPException(
@@ -84,7 +98,16 @@ def execute_action(payload: CallActionRequest):
 
 
 @router.post("/{call_id}/terminate")
-def terminate_call(call_id: str, db: DBSession = Depends(get_db)):
+def terminate_call(
+    call_id: str,
+    db: DBSession = Depends(get_db),
+    auth: AuthContext = Depends(require_auth),
+):
+    # Authorize BEFORE mutating: end_session would otherwise terminate
+    # another tenant's call even though the response is a 404.
+    existing = session_manager.get(call_id)
+    if not existing or existing.tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=404, detail="Call session not found.")
     session = session_manager.end_session(call_id, status="COMPLETED")
     if not session:
         raise HTTPException(status_code=404, detail="Call session not found.")

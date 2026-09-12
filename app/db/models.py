@@ -29,6 +29,8 @@ class Session(Base):
     call_id = Column(String, primary_key=True)
     caller_id = Column(String, nullable=False)
     recipient_id = Column(String, nullable=False)
+    # Owning tenant (from the API key that created the call) — BOLA defense.
+    tenant_id = Column(String, nullable=False, default="default", server_default="default", index=True)
     start_time = Column(DateTime(timezone=True), server_default=func.now())
     end_time = Column(DateTime(timezone=True), nullable=True)
     status = Column(String, nullable=False, default="ACTIVE")
@@ -187,6 +189,11 @@ class EvidenceLedgerRecord(Base):
     evidence_id = Column(String, ForeignKey("evidence_packages.evidence_id"), nullable=False)
     record_hash = Column(String, nullable=False)
     previous_record_hash = Column(String, nullable=False)
+    # Verbatim timestamp string exactly as included in record_hash. Stored
+    # alongside the parsed ``timestamp`` because SQLite (and some PostgreSQL
+    # modes) normalize datetimes on round-trip — re-deriving the hashed
+    # string from the parsed value breaks verification. See migrations 0002.
+    timestamp_hashed = Column(String, nullable=False, default="")
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     schema_version = Column(String, nullable=False, default="phase7-v1")
     evidence_digest = Column(String, nullable=False)

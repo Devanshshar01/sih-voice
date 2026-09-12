@@ -5,9 +5,10 @@ or teammates sanity-check the detector without spinning up a full call.
 from __future__ import annotations
 
 import numpy as np
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app import config
+from app.core.auth import AuthContext, require_auth
 from app.models.schemas import AudioAnalyzeResponse
 from app.services.ml_detector import get_detector
 from app.tasks import generate_forensic_report
@@ -24,8 +25,14 @@ detector = get_detector(
 
 
 @router.post("/analyze", response_model=AudioAnalyzeResponse)
-async def analyze_audio(audio_file: UploadFile = File(...), language: str = Form("en-IN")):
+async def analyze_audio(
+    audio_file: UploadFile = File(...),
+    language: str = Form("en-IN"),
+    auth: AuthContext = Depends(require_auth),
+):
     raw = await audio_file.read()
+    if len(raw) > config.MAX_AUDIO_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Audio payload exceeds the configured size limit.")
     # Phase 1 assumes raw PCM float32 bytes for simplicity. Swap in a proper
     # WAV/MP3 decoder (soundfile/pydub) before wiring this up to arbitrary
     # judge-supplied files.

@@ -12,8 +12,9 @@ Both return the same shape: {"acoustic_score": float 0-1, "details": {...}}.
 from __future__ import annotations
 
 import hashlib
+import threading
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
@@ -220,6 +221,10 @@ class RealAntiSpoofDetector(BaseVoiceDetector):
         }
 
 
+_DETECTOR_CACHE: Dict[Tuple[str, Optional[str], str, str, str], BaseVoiceDetector] = {}
+_CACHE_LOCK = threading.Lock()
+
+
 def get_detector(
     mode: str,
     model_path: Optional[str] = None,
@@ -227,13 +232,26 @@ def get_detector(
     device: str = "cpu",
     revision: str = "main",
 ) -> BaseVoiceDetector:
-    if mode == "real":
-        return RealAntiSpoofDetector(
-            model_id=model_id,
-            model_path=model_path,
-            device=device,
-            revision=revision,
-        )
-    if mode == "ml":
-        return LightweightMLVoiceDetector(model_path=model_path)
-    return MockVoiceDetector()
+    """Process-wide detector factory (cached singleton per configuration).
+
+    Each instance holds its own HF pipeline and GPU/CPU memory; per-call-site
+    instantiation (stream, analyze, tasks) multiplied resident model copies.
+    """
+    key = (mode, model_path, model_id, device, revision)
+    with _CACHE_LOCK:
+        cached = _DETECTOR_CACHE.get(key)
+        if cached is not None:
+            return cached
+        if mode == "real":
+            detector: BaseVoiceDetector = RealAntiSpoofDetector(
+                model_id=model_id,
+                model_path=model_path,
+                device=device,
+                revision=revision,
+            )
+        elif mode == "ml":
+            detector = LightweightMLVoiceDetector(model_path=model_path)
+        else:
+            detector = MockVoiceDetector()
+        _DETECTOR_CACHE[key] = detector
+        return detector

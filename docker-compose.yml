@@ -1,16 +1,69 @@
 version: "3.9"
 
+# Development/demo profile (default): SQLite + mock detectors, single
+# container, no external dependencies. `docker compose up --build`
 services:
   backend:
     build: .
     ports:
       - "8000:8000"
     environment:
+      - VOICETRUST_ENV=development
       - VOICETRUST_DETECTOR_MODE=mock
+      - VOICETRUST_ASR_MODE=manual
       - VOICETRUST_DATABASE_URL=sqlite:////app/data/satyavoice.db
       - VOICETRUST_CORS_ORIGINS=*
+      - VOICETRUST_SESSION_STORE_BACKEND=memory
     volumes:
       - satyavoice-data:/app/data
 
+  # Production-shaped profile: `docker compose --profile prod up --build`
+  # PostgreSQL + Redis + API keys + strict CORS + real model modes.
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["prod"]
+    environment:
+      POSTGRES_USER: satyavoice
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: satyavoice
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U satyavoice"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["prod"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend-prod:
+    build: .
+    profiles: ["prod"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment: &backend_prod_env
+      VOICETRUST_ENV: production
+      VOICETRUST_CORS_ORIGINS: ${VOICETRUST_CORS_ORIGINS:?set VOICETRUST_CORS_ORIGINS}
+      VOICETRUST_DATABASE_URL: postgresql+psycopg://satyavoice:${POSTGRES_PASSWORD}@postgres:5432/satyavoice
+      VOICETRUST_SESSION_STORE_BACKEND: redis
+      VOICETRUST_REDIS_URL: redis://redis:6379/0
+      VOICETRUST_AUTH_API_KEYS: ${VOICETRUST_AUTH_API_KEYS:?set VOICETRUST_AUTH_API_KEYS}
+      VOICETRUST_DETECTOR_MODE: ${VOICETRUST_DETECTOR_MODE:-real}
+      VOICETRUST_ASR_MODE: ${VOICETRUST_ASR_MODE:-real}
+      VOICETRUST_RATE_LIMIT_ENABLED: "true"
+
 volumes:
   satyavoice-data:
+  pgdata:

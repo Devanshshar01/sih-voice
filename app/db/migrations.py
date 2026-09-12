@@ -46,10 +46,57 @@ def _apply_0001() -> None:
     )
 
 
+def _apply_0002() -> None:
+    """Add evidence_ledger_records.timestamp_hashed (verbatim hashed timestamp)."""
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text as _text
+
+    inspector = sa_inspect(engine)
+    columns = {col["name"] for col in inspector.get_columns("evidence_ledger_records")}
+    if "timestamp_hashed" in columns:
+        # Fresh database: create_all already built the table WITH the column
+        # from the current ORM models — the ALTER would duplicate it.
+        return
+
+    with engine.begin() as conn:
+        # SQLite supports ADD COLUMN; PostgreSQL 9.6+ does too.
+        conn.execute(
+            _text(
+                "ALTER TABLE evidence_ledger_records "
+                "ADD COLUMN timestamp_hashed VARCHAR NOT NULL DEFAULT ''"
+            )
+        )
+
+
+def _apply_0003() -> None:
+    """Add sessions.tenant_id (BOLA defense: calls are tenant-bound)."""
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text as _text
+
+    inspector = sa_inspect(engine)
+    columns = {col["name"] for col in inspector.get_columns("sessions")}
+    if "tenant_id" in columns:
+        return
+
+    with engine.begin() as conn:
+        conn.execute(
+            _text(
+                "ALTER TABLE sessions "
+                "ADD COLUMN tenant_id VARCHAR NOT NULL DEFAULT 'default'"
+            )
+        )
+        try:
+            conn.execute(_text("CREATE INDEX ix_sessions_tenant_id ON sessions (tenant_id)"))
+        except Exception:  # index may already exist; non-fatal
+            pass
+
+
 # Ordered schema history. NEVER reorder or renumber applied entries;
 # append-only, so an existing database replays only new entries.
 MIGRATIONS: List[Migration] = [
     ("0001_speaker_identity_tables", _apply_0001),
+    ("0002_evidence_ledger_timestamp_hashed", _apply_0002),
+    ("0003_sessions_tenant_id", _apply_0003),
 ]
 
 

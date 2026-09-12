@@ -5,7 +5,7 @@ Active call state (ring buffers, live risk timeline) lives in memory --
 see core/session_manager.py. This module only persists the durable,
 post-call audit trail: derived scores and events, never raw audio.
 """
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text as _sqltext
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 from app import config
@@ -31,3 +31,13 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def check_db_ready() -> bool:
+    """Lightweight readiness probe (SELECT 1). Never raises."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(_sqltext("SELECT 1"))
+        return True
+    except Exception:
+        return False

@@ -17,6 +17,14 @@ class BaseAnchorAdapter:
     def anchor_root(self, root_hash: str, evidence_id: str) -> dict[str, Any]:
         raise NotImplementedError
 
+    def verify_root(self, root_hash: str) -> dict[str, Any]:
+        """Independently confirm a root exists on the public chain.
+
+        Read-only (no transaction, no key material required) so verification
+        works even when anchoring credentials are unavailable.
+        """
+        raise NotImplementedError
+
 
 class NoopAnchorAdapter(BaseAnchorAdapter):
     def anchor_root(self, root_hash: str, evidence_id: str) -> dict[str, Any]:
@@ -26,10 +34,19 @@ class NoopAnchorAdapter(BaseAnchorAdapter):
             "contract_address": config.BLOCKCHAIN_CONTRACT_ADDRESS,
             "tx_hash": None,
             "block_number": None,
+            "anchor_index": None,
             "anchor_timestamp": None,
             "failure_reason": (
                 "Polygon Amoy anchoring is disabled or unavailable; local forensic evidence remains available."
             ),
+        }
+
+    def verify_root(self, root_hash: str) -> dict[str, Any]:
+        return {
+            "verified": False,
+            "network": config.BLOCKCHAIN_NETWORK,
+            "contract_address": config.BLOCKCHAIN_CONTRACT_ADDRESS,
+            "failure_reason": "Public-chain anchoring is not configured; nothing to verify on-chain.",
         }
 
 
@@ -44,10 +61,17 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
             {
                 "inputs": [{"internalType": "bytes32", "name": "rootHash", "type": "bytes32"}],
                 "name": "anchor",
-                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "outputs": [{"internalType": "uint256", "name": "anchorIndex", "type": "uint256"}],
                 "stateMutability": "nonpayable",
                 "type": "function",
-            }
+            },
+            {
+                "inputs": [{"internalType": "bytes32", "name": "rootHash", "type": "bytes32"}],
+                "name": "isAnchored",
+                "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+                "stateMutability": "view",
+                "type": "function",
+            },
         ]
 
     def anchor_root(self, root_hash: str, evidence_id: str) -> dict[str, Any]:
@@ -127,19 +151,29 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
             tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
             receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
 
-            if receipt.status != 1:
-                return {
-                    "status": "failed",
-                    "network": config.BLOCKCHAIN_NETWORK,
-                    "contract_address": self.contract_address,
-                    "tx_hash": web3.to_hex(tx_hash),
-                    "block_number": receipt.blockNumber,
-                    "anchor_timestamp": None,
-                    "failure_reason": "Polygon Amoy transaction was mined but returned a failed status.",
-                }
+            if receipt.status != 1:            return {
+                "status": "failed",
+                "network": config.BLOCKCHAIN_NETWORK,
+                "contract_address": self.contract_address,
+                "tx_hash": web3.to_hex(tx_hash),
+                "block_number": receipt.blockNumber,
+                "anchor_index": None,
+                "anchor_timestamp": None,
+                "failure_reason": "Polygon Amoy transaction was mined but returned a failed status.",
+            }
 
             block = web3.eth.get_block(receipt.blockNumber)
             block_timestamp = datetime.fromtimestamp(block["timestamp"], timezone.utc)
+
+            # Read the append index from the RootAnchored event so the
+            # on-chain position can be cross-checked during verification.
+            anchor_index = None
+            try:
+                event_logs = contract.events.RootAnchored().get_logs(fromBlock=receipt.blockNumber)
+                if event_logs:
+                    anchor_index = int(event_logs[-1]["args"]["anchorIndex"])
+            except Exception:  # event decoding is best-effort; anchoring still succeeded
+                pass
 
             return {
                 "status": "anchored",
@@ -147,6 +181,7 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
                 "contract_address": self.contract_address,
                 "tx_hash": web3.to_hex(tx_hash),
                 "block_number": receipt.blockNumber,
+                "anchor_index": anchor_index,
                 "anchor_timestamp": block_timestamp,
                 "failure_reason": None,
             }
@@ -157,6 +192,7 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
                 "contract_address": self.contract_address,
                 "tx_hash": None,
                 "block_number": None,
+                "anchor_index": None,
                 "anchor_timestamp": None,
                 "failure_reason": f"Polygon Amoy contract reverted: {exc}",
             }
@@ -167,8 +203,60 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
                 "contract_address": self.contract_address,
                 "tx_hash": None,
                 "block_number": None,
+                "anchor_index": None,
                 "anchor_timestamp": None,
                 "failure_reason": f"Polygon Amoy submission failed: {exc}",
+            }
+
+    def verify_root(self, root_hash: str) -> dict[str, Any]:
+        """Read-only on-chain verification of an anchored root.
+
+        Requires only an RPC URL + contract address (no private key), so an
+        auditor can independently confirm an anchor without anchoring rights.
+        """
+        if not self.rpc_url or not self.contract_address:
+            return {
+                "verified": False,
+                "network": config.BLOCKCHAIN_NETWORK,
+                "contract_address": self.contract_address,
+                "failure_reason": "Polygon Amoy RPC URL or contract address is not configured.",
+            }
+        try:
+            from web3 import Web3
+        except Exception as exc:  # pragma: no cover - runtime dependency guard
+            return {
+                "verified": False,
+                "network": config.BLOCKCHAIN_NETWORK,
+                "contract_address": self.contract_address,
+                "failure_reason": f"web3 runtime dependencies are not installed: {exc}",
+            }
+
+        try:
+            normalized_root = root_hash if root_hash.startswith("0x") else f"0x{root_hash}"
+            if len(normalized_root) != 66:
+                return {
+                    "verified": False,
+                    "network": config.BLOCKCHAIN_NETWORK,
+                    "contract_address": self.contract_address,
+                    "failure_reason": f"Expected a 32-byte root hash in hex format, received '{root_hash}'.",
+                }
+
+            web3 = Web3(Web3.HTTPProvider(self.rpc_url))
+            contract = web3.eth.contract(address=self.contract_address, abi=self.abi)
+            verified = bool(contract.functions.isAnchored(Web3.to_bytes(hexstr=normalized_root)).call())
+            return {
+                "verified": verified,
+                "network": config.BLOCKCHAIN_NETWORK,
+                "contract_address": self.contract_address,
+                "root_hash": normalized_root,
+                "failure_reason": None if verified else "Root is not present in the contract's append-only anchor list.",
+            }
+        except Exception as exc:
+            return {
+                "verified": False,
+                "network": config.BLOCKCHAIN_NETWORK,
+                "contract_address": self.contract_address,
+                "failure_reason": f"On-chain verification failed: {exc}",
             }
 
 

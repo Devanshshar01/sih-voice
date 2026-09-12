@@ -16,6 +16,13 @@ from typing import Dict, List, Optional
 from app.config import REDIS_URL, SESSION_STORE_BACKEND, SESSION_TTL_SECONDS
 from app.services.audio_processor import RingBuffer
 
+# Maximum retained risk-timeline points per call (128 points ~= 64 s of
+# windows at the 0.5 s hop). Bounds per-connection memory and Redis payload.
+RISK_TIMELINE_MAX = 128
+# Minimum interval between Redis risk-state syncs for one call (lifecycle
+# events bypass this via force=True).
+RISK_SYNC_INTERVAL_SECONDS = 5.0
+
 
 @dataclass
 class CallSession:
@@ -30,13 +37,29 @@ class CallSession:
     status: str = "ACTIVE"
     verified: bool = False
     forced_acoustic_score: Optional[float] = None
+    # Owning tenant (from the API key that created the call). WebSocket and
+    # REST access to this call is authorized against it (BOLA defense).
+    tenant_id: str = "default"
+    # Peak risk score; risk_timeline is bounded (see RISK_TIMELINE_MAX).
+    max_risk_score: int = 0
 
     def touch(self) -> None:
         self.last_seen = time.time()
 
     def record_risk_point(self, point: Dict) -> None:
+        """Append one risk snapshot.
+
+        Bounded: retains the most recent RISK_TIMELINE_MAX points. Unbounded
+        growth here would let a long-running malicious client grow RAM per
+        connection and bloat every Redis sync payload (the whole timeline is
+        serialized on each sync).
+        """
         self.risk_timeline.append(point)
+        if len(self.risk_timeline) > RISK_TIMELINE_MAX:
+            del self.risk_timeline[: len(self.risk_timeline) - RISK_TIMELINE_MAX]
         self.current_risk_score = point["risk_score"]
+        if point["risk_score"] > self.max_risk_score:
+            self.max_risk_score = point["risk_score"]
 
     def is_expired(self) -> bool:
         return (time.time() - self.last_seen) > SESSION_TTL_SECONDS
@@ -47,6 +70,11 @@ class SessionManager:
 
     def __init__(self):
         self._sessions: Dict[str, CallSession] = {}
+        self._active_streams: Dict[str, bool] = {}
+        self._last_sync: Dict[str, float] = {}
+        # Recently ended sessions (call_id -> end time) so WS authorization
+        # can distinguish 'never existed' from 'ended' and reject replays.
+        self._ended: Dict[str, float] = {}
         self._redis_available = SESSION_STORE_BACKEND == "redis"
         self._redis_client = None
         if self._redis_available:
@@ -58,15 +86,32 @@ class SessionManager:
             except Exception:
                 self._redis_available = False
 
-    def create_session(self, caller_id: str, recipient_id: str) -> CallSession:
+    def create_session(
+        self,
+        caller_id: str,
+        recipient_id: str,
+        tenant_id: str = "default",
+    ) -> CallSession:
         call_id = str(uuid.uuid4())
-        session = CallSession(call_id=call_id, caller_id=caller_id, recipient_id=recipient_id)
+        session = CallSession(
+            call_id=call_id,
+            caller_id=caller_id,
+            recipient_id=recipient_id,
+            tenant_id=tenant_id,
+        )
         self._sessions[call_id] = session
         if self._redis_available:
             self._store_session(call_id, session)
         return session
 
     def get(self, call_id: str) -> Optional[CallSession]:
+        # Recently ended calls are treated as absent in BOTH stores so that
+        # termination semantics are identical under Redis (where the payload
+        # would otherwise remain readable within TTL) and memory (where it is
+        # purged). This makes the terminate/unlock race unexploitable at the
+        # API layer.
+        if call_id in self._ended:
+            return None
         if self._redis_available:
             session = self._load_session(call_id)
             if session is None:
@@ -87,10 +132,24 @@ class SessionManager:
         if session:
             session.status = status
             if self._redis_available:
-                self._delete_session(call_id)
+                self._store_session(call_id, session)
+            # Hold ended sessions in memory briefly for authorization checks;
+            # they are purged with expired sessions.
+            self._ended[call_id] = time.time()
         return session
 
-    def sync_session(self, session: CallSession) -> None:
+    def sync_session(self, session: CallSession, force: bool = False) -> None:
+        """Persist session state.
+
+        ``force`` is used for lifecycle transitions (create/end/verify). Risk
+        updates sync at most every RISK_SYNC_INTERVAL_SECONDS — a per-window
+        Redis write (2/s per call, whole timeline each time) is unnecessary
+        chatter for state that only matters at call end.
+        """
+        now = time.time()
+        if not force and (now - self._last_sync.get(session.call_id, 0.0)) < RISK_SYNC_INTERVAL_SECONDS:
+            return
+        self._last_sync[session.call_id] = now
         if self._redis_available:
             self._store_session(session.call_id, session)
         else:
@@ -104,6 +163,12 @@ class SessionManager:
         for cid in expired:
             self.end_session(cid, status="COMPLETED")
 
+        # Drop ended-session authorization markers after their TTL.
+        cutoff = time.time() - SESSION_TTL_SECONDS
+        for cid in [c for c, t in self._ended.items() if t < cutoff]:
+            self._ended.pop(cid, None)
+            self._last_sync.pop(cid, None)
+
     def _store_session(self, call_id: str, session: CallSession) -> None:
         if self._redis_client is None:
             return
@@ -111,15 +176,17 @@ class SessionManager:
             "call_id": session.call_id,
             "caller_id": session.caller_id,
             "recipient_id": session.recipient_id,
+            "tenant_id": session.tenant_id,
             "created_at": session.created_at,
             "last_seen": session.last_seen,
             "current_risk_score": session.current_risk_score,
+            "max_risk_score": session.max_risk_score,
             "status": session.status,
             "verified": session.verified,
             "forced_acoustic_score": session.forced_acoustic_score,
             "risk_timeline": session.risk_timeline,
         }
-        self._redis_client.setex(f"call:{call_id}", SESSION_TTL_SECONDS, json.dumps(payload))
+        self._redis_client.setex(f"call:{call_id}", SESSION_TTL_SECONDS, json.dumps(payload, default=str))
 
     def _load_session(self, call_id: str) -> Optional[CallSession]:
         if self._redis_client is None:
@@ -132,9 +199,11 @@ class SessionManager:
             call_id=data["call_id"],
             caller_id=data["caller_id"],
             recipient_id=data["recipient_id"],
+            tenant_id=data.get("tenant_id", "default"),
             created_at=data.get("created_at", time.time()),
             last_seen=data.get("last_seen", time.time()),
             current_risk_score=data.get("current_risk_score", 0),
+            max_risk_score=data.get("max_risk_score", 0),
             status=data.get("status", "ACTIVE"),
             verified=data.get("verified", False),
             forced_acoustic_score=data.get("forced_acoustic_score"),
@@ -145,6 +214,21 @@ class SessionManager:
     def _delete_session(self, call_id: str) -> None:
         if self._redis_client is not None:
             self._redis_client.delete(f"call:{call_id}")
+
+    # ------------------------------------------------------------------
+    # Per-call stream locking (single WS connection per call).
+    # In-memory: the WS terminates on this process (sticky LB routing or
+    # single-worker required for the streaming path).
+    # ------------------------------------------------------------------
+    def acquire_stream(self, call_id: str) -> bool:
+        if self._active_streams.get(call_id):
+            return False
+        self._active_streams[call_id] = True
+        return True
+
+    def release_stream(self, call_id: str) -> None:
+        self._active_streams.pop(call_id, None)
+        self._last_sync.pop(call_id, None)
 
 
 session_manager = SessionManager()

@@ -8,10 +8,42 @@ touching business logic in core/ or services/.
 import os
 from dataclasses import dataclass
 
+# ---------------------------------------------------------------------------
+# Environment modes
+# ---------------------------------------------------------------------------
+# development — localhost, SQLite, mock detectors, permissive CORS, auth open
+# demo        — like development but intentionally reproducible for judging
+# production  — PostgreSQL required, mock AI refused, strict CORS, auth enforced
+#
+# Production refuses mock AI: a deployment that would present deterministic
+# demo scores as real decisions is worse than one that fails fast at boot.
+ENV_MODE = os.getenv("VOICETRUST_ENV", "development").strip().lower()
+if ENV_MODE not in {"development", "demo", "production"}:
+    raise RuntimeError(
+        f"VOICETRUST_ENV must be one of development|demo|production (got '{ENV_MODE}')."
+    )
+
+IS_PRODUCTION = ENV_MODE == "production"
+IS_DEMO = ENV_MODE == "demo"
+IS_DEVELOPMENT = ENV_MODE == "development"
+
 # ---- Server ----
 APP_NAME = "SatyaVoice API"
 API_V1_PREFIX = "/api/v1"
-CORS_ORIGINS = os.getenv("VOICETRUST_CORS_ORIGINS", "*").split(",")
+# Secure CORS defaults per mode: dev/demo stay permissive for localhost; only
+# production defaults to a deny-list that requires explicit origins.
+_CORS_DEFAULTS = {
+    "development": "*",
+    "demo": "*",
+    "production": "",  # empty default -> startup fails unless origins are set
+}
+_CORS_RAW = os.getenv("VOICETRUST_CORS_ORIGINS", _CORS_DEFAULTS[ENV_MODE]).strip()
+if IS_PRODUCTION and not _CORS_RAW:
+    raise RuntimeError(
+        "VOICETRUST_CORS_ORIGINS is required in production (comma-separated "
+        "frontend origins; wildcard '*' is not allowed with credentials)."
+    )
+CORS_ORIGINS = [o.strip() for o in _CORS_RAW.split(",") if o.strip()] or ["*"]
 
 # ---- Canonical audio configuration (single source of truth) ----
 # These constants implement the SIH 2026 presentation specification exactly:
@@ -152,19 +184,97 @@ TOTP_CODE_LENGTH = 6
 TOTP_CHALLENGE_TIMEOUT_SECONDS = 60
 
 # ---- Database ----
-DATABASE_URL = os.getenv("VOICETRUST_DATABASE_URL", "sqlite:///./satyavoice.db")
+# Development/demo: SQLite by default. Production: PostgreSQL required — the
+# process refuses to boot on SQLite in production (single-file DBs cannot
+# serve multi-worker deployments safely).
+_DATABASE_URL_ENV = os.getenv("VOICETRUST_DATABASE_URL", "")
+if not _DATABASE_URL_ENV:
+    if IS_PRODUCTION:
+        raise RuntimeError(
+            "VOICETRUST_DATABASE_URL is required in production and must be a "
+            "PostgreSQL URL (postgresql://... or postgresql+psycopg://...)."
+        )
+    DATABASE_URL = "sqlite:///./satyavoice.db"
+else:
+    DATABASE_URL = _DATABASE_URL_ENV
+if IS_PRODUCTION and DATABASE_URL.startswith("sqlite"):
+    raise RuntimeError(
+        "SQLite is not a supported production database. Point "
+        "VOICETRUST_DATABASE_URL at PostgreSQL for multi-worker deployments."
+    )
 DATABASE_ECHO = os.getenv("VOICETRUST_DATABASE_ECHO", "false").lower() in {
     "1",
     "true",
     "yes",
     "on",
 }
-SESSION_STORE_BACKEND = os.getenv("VOICETRUST_SESSION_STORE_BACKEND", "sqlite").lower()
+# Session store: memory keeps local demo friction-free; production defaults to
+# Redis so active calls survive worker restarts and are shared across workers.
+SESSION_STORE_BACKEND = os.getenv(
+    "VOICETRUST_SESSION_STORE_BACKEND", "redis" if IS_PRODUCTION else "memory"
+).lower()
 REDIS_URL = os.getenv("VOICETRUST_REDIS_URL", "redis://localhost:6379/0")
 
 # ---- Background tasks (Celery + Redis) ----
+# Only non-latency-critical work (evidence anchoring, PDF/report generation)
+# is routed through Celery — never the streaming decision path.
 CELERY_BROKER_URL = os.getenv("VOICETRUST_CELERY_BROKER_URL", REDIS_URL)
 CELERY_RESULT_BACKEND = os.getenv("VOICETRUST_CELERY_RESULT_BACKEND", REDIS_URL)
+CELERY_TASK_ALWAYS_EAGER = os.getenv("VOICETRUST_CELERY_EAGER", "").lower() in {
+    "1", "true", "yes", "on"
+}
+
+# ---- AI modes per environment ----
+# Production defaults refuse mock behavior: a deployment presenting
+# deterministic demo scores as real decisions fails fast at boot instead.
+def _ai_mode(env_var: str, dev_default: str, production_default: str) -> str:
+    value = os.getenv(env_var, "")
+    if value:
+        return value.strip().lower()
+    return production_default if IS_PRODUCTION else dev_default
+
+
+VOICE_DETECTOR_MODE = _ai_mode("VOICETRUST_DETECTOR_MODE", "mock", "real")
+ASR_MODE = _ai_mode("VOICETRUST_ASR_MODE", "manual", "real")
+
+# ---- Authentication (API keys per tenant) ----
+# Format: comma-separated "tenant_id:key" pairs, e.g. "acme:sk_live_x,contoso:sk_live_y".
+# An empty value disables auth (development/demo only). Production REQUIRES it:
+# a multi-user deployment without auth boundaries is not production-grade.
+AUTH_API_KEYS = os.getenv("VOICETRUST_AUTH_API_KEYS", "")
+if IS_PRODUCTION and not AUTH_API_KEYS.strip():
+    raise RuntimeError(
+        "VOICETRUST_AUTH_API_KEYS is required in production (comma-separated "
+        '"tenant_id:key" pairs). The API cannot be exposed unauthenticated.'
+    )
+AUTH_REQUIRED = IS_PRODUCTION or bool(AUTH_API_KEYS.strip())
+AUTH_HEADER = "X-API-Key"
+
+# ---- Rate limiting ----
+# Sliding-window per API key (or client IP when auth is open). Redis-backed in
+# production; in-process fallback otherwise.
+RATE_LIMIT_ENABLED = os.getenv("VOICETRUST_RATE_LIMIT_ENABLED", str(IS_PRODUCTION)).lower() in {
+    "1", "true", "yes", "on"
+}
+RATE_LIMIT_REQUESTS = int(os.getenv("VOICETRUST_RATE_LIMIT_REQUESTS", "120"))
+RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("VOICETRUST_RATE_LIMIT_WINDOW_SECONDS", "60"))
+RATE_LIMIT_REDIS_URL = os.getenv("VOICETRUST_RATE_LIMIT_REDIS_URL", REDIS_URL)
+
+# ---- Request payload limits ----
+MAX_AUDIO_UPLOAD_BYTES = int(os.getenv("VOICETRUST_MAX_AUDIO_UPLOAD_BYTES", str(8 * 1024 * 1024)))
+MAX_JSON_BODY_BYTES = int(os.getenv("VOICETRUST_MAX_JSON_BODY_BYTES", str(256 * 1024)))
+
+# ---- WebSocket abuse protection ----
+WS_MAX_FRAME_BYTES = int(os.getenv("VOICETRUST_WS_MAX_FRAME_BYTES", str(256 * 1024)))
+WS_MAX_TOTAL_BYTES_PER_CALL = int(os.getenv("VOICETRUST_WS_MAX_TOTAL_BYTES", str(500 * 1024 * 1024)))
+# Max binary frames per second a client may push (a real 0.5s-hop client needs ~2/s).
+WS_MAX_FRAMES_PER_SECOND = int(os.getenv("VOICETRUST_WS_MAX_FRAMES_PER_SECOND", "50"))
+
+# ---- Structured logging ----
+LOG_LEVEL = os.getenv("VOICETRUST_LOG_LEVEL", "INFO" if IS_PRODUCTION else "DEBUG")
+LOG_JSON = os.getenv("VOICETRUST_LOG_JSON", str(IS_PRODUCTION)).lower() in {
+    "1", "true", "yes", "on"
+}
 
 # ---- Evidence anchoring (Phase 8) ----
 EVIDENCE_SCHEMA_VERSION = os.getenv("VOICETRUST_EVIDENCE_SCHEMA_VERSION", "phase7-v1")
@@ -183,21 +293,19 @@ BLOCKCHAIN_GAS_LIMIT = int(os.getenv("VOICETRUST_BLOCKCHAIN_GAS_LIMIT", "300000"
 
 # ---- Detector selection ----
 # Production target stack: a fine-tuned Wav2Vec2-XLS-R (300M) anti-spoof
-# checkpoint. The current default remains "mock" so the app can boot safely
-# during local development and deployment preparation. When the fine-tuned
-# detector checkpoint is ready, set VOICETRUST_DETECTOR_MODE=real and point
-# VOICETRUST_MODEL_ID at that checkpoint.
-VOICE_DETECTOR_MODE = os.getenv("VOICETRUST_DETECTOR_MODE", "mock").lower()
+# checkpoint. Defaults are mode-aware (see the env-modes block above):
+# development/demo default to "mock"; production defaults to "real" and
+# refuses mock. Set VOICETRUST_DETECTOR_MODE=real and point VOICETRUST_MODEL_ID
+# at the fine-tuned checkpoint when it is ready.
 VOICE_MODEL_ID = os.getenv("VOICETRUST_MODEL_ID", "Hemgg/Deepfake-audio-detection")
 VOICE_MODEL_PATH = os.getenv("VOICETRUST_MODEL_PATH", "")
 VOICE_MODEL_DEVICE = os.getenv("VOICETRUST_MODEL_DEVICE", "cpu")
 VOICE_MODEL_REVISION = os.getenv("VOICETRUST_MODEL_REVISION", "main")
 
 # ---- Automatic speech recognition ----
-# Target stack: faster-whisper small. Keep "manual" as a development default
-# for deterministic local testing, but the production presentation stack
-# expects `real` with the small model size.
-ASR_MODE = os.getenv("VOICETRUST_ASR_MODE", "manual").lower()
+# Target stack: faster-whisper small. Mode-aware default (see env-modes):
+# development keeps "manual" for deterministic local testing; production
+# defaults to "real" with the small model size.
 ASR_MODEL_SIZE = os.getenv("VOICETRUST_ASR_MODEL_SIZE", "small")
 ASR_DEVICE = os.getenv("VOICETRUST_ASR_DEVICE", "cpu")
 ASR_COMPUTE_TYPE = os.getenv("VOICETRUST_ASR_COMPUTE_TYPE", "int8")

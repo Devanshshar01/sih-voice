@@ -23,7 +23,8 @@ working without a live microphone.
 """
 import json
 import time
-from typing import Any, Dict, Optional
+from collections import deque
+from typing import Any, Deque, Dict, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session as DBSession
@@ -113,19 +114,66 @@ def _run_speaker_blocking(window) -> Dict[str, Any]:
     return speaker_vault.match(window)
 
 
-def _persist_risk_event(db: DBSession, call_id: str, result: dict) -> None:
+# Risk-event persistence throttle (streaming hot path): material change or
+# max RISK_EVENT_MIN_INTERVAL_SECONDS between writes, whichever first.
+RISK_EVENT_SCORE_DELTA = 10
+RISK_EVENT_MIN_INTERVAL_SECONDS = 5.0
+
+
+def _accept_client_transcript() -> bool:
+    """Whether a client-supplied transcript may drive intent analysis.
+
+    Honored only when the backend is NOT running real ASR (demo/manual
+    modes). In production (ASR_MODE == "real") a client transcript would
+    spoof the intent-evidence channel, so it is ignored and the pipeline
+    always uses server-side ASR output.
+    """
+    return config.ASR_MODE != "real"
+
+
+def _persist_risk_event(
+    db: DBSession,
+    call_id: str,
+    result: dict,
+    last_state: Dict[str, Any],
+) -> None:
+    """Persist one risk event, throttled for the streaming hot path.
+
+    Called for every 0.5 s window (2/s per call). An unconditional
+    INSERT+SELECT+commit per window dominated DB write volume at concurrency,
+    so persistence fires on material change (status flip, >=RISK_EVENT_SCORE_DELTA
+    score jump) or at most every RISK_EVENT_MIN_INTERVAL_SECONDS. The in-memory
+    session timeline remains complete; peaks are preserved via max_risk_score.
+    """
+    now = time.time()
+    status = result["status"]
+    score = result["risk_score"]
+    changed = (
+        status != last_state.get("status")
+        or abs(score - last_state.get("score", -1)) >= RISK_EVENT_SCORE_DELTA
+    )
+    due = (now - last_state.get("t", 0.0)) >= RISK_EVENT_MIN_INTERVAL_SECONDS
+    if not (changed or due):
+        return
+    last_state.update({"status": status, "score": score, "t": now})
+
     db.add(
         db_models.RiskEvent(
             call_id=call_id,
             acoustic_score=result["acoustic_score"],
             intent_score=result["intent_score"],
-            combined_risk_score=result["risk_score"],
-            triggered_rule=result["status"],
+            combined_risk_score=score,
+            triggered_rule=status,
         )
     )
     session_row = db.query(db_models.Session).filter_by(call_id=call_id).first()
-    if session_row and result["risk_score"] > session_row.max_risk_score:
-        session_row.max_risk_score = result["risk_score"]
+    if session_row:
+        if score > session_row.max_risk_score:
+            session_row.max_risk_score = score
+        # Keep the persisted tenant binding consistent (sessions created before
+        # the tenant column may hold the default).
+        if session_row.tenant_id != result.get("tenant_id"):
+            session_row.tenant_id = result.get("tenant_id", session_row.tenant_id)
     db.commit()
 
 
@@ -148,6 +196,46 @@ async def stream_audio(websocket: WebSocket, call_id: str):
         await websocket.close(code=4404)
         return
 
+    # ---- Authorization (BOLA defense) ----
+    # The WS has no HTTP-middleware auth, so the key is read from the query
+    # string or the Sec-WebSocket-Protocol header. The caller's tenant must
+    # match the tenant that created the call.
+    tenant_id = "default"
+    if config.AUTH_REQUIRED:
+        supplied = websocket.query_params.get("token") or ""
+        # Browsers cannot set headers on WebSocket; Sec-WebSocket-Protocol is
+        # the standard fallback channel for the key.
+        if not supplied:
+            protocols = websocket.headers.get("sec-websocket-protocol", "")
+            for part in protocols.split(","):
+                name, _, value = part.strip().partition(".")
+                if name == "auth" and value:
+                    supplied = value
+                    break
+        if not supplied:
+            await websocket.close(code=4401)
+            return
+        from app.core.auth import api_key_auth
+
+        resolved = api_key_auth.tenant_for_key(supplied)
+        if resolved is None:
+            await websocket.close(code=4401)
+            return
+        tenant_id = resolved
+        if tenant_id != session.tenant_id:
+            # Wrong tenant for this call_id: indistinguishable from missing.
+            await websocket.close(code=4404)
+            return
+
+    # ---- Single connection per call ----
+    if not session_manager.acquire_stream(call_id):
+        await websocket.close(code=4408)
+        return
+
+    # ---- Abuse protection state ----
+    total_bytes = 0
+    frame_timestamps: Deque[float] = deque(maxlen=config.WS_MAX_FRAMES_PER_SECOND * 2)
+
     await websocket.accept()
     latest_transcript = ""
     manual_transcript = False
@@ -165,6 +253,8 @@ async def stream_audio(websocket: WebSocket, call_id: str):
     last_risk_result: Optional[Dict[str, Any]] = None
     malformed_frames = 0
     last_codec_ms = 0.0
+    # Hot-path DB-write throttle state (see _persist_risk_event).
+    risk_event_state: Dict[str, Any] = {"status": None, "score": -1, "t": 0.0}
 
     try:
         while True:
@@ -192,8 +282,9 @@ async def stream_audio(websocket: WebSocket, call_id: str):
                         await websocket.close(code=4402)
                         break
                 if "transcript" in payload:
-                    latest_transcript = payload.get("transcript", "")
-                    manual_transcript = True
+                    if _accept_client_transcript():
+                        latest_transcript = payload.get("transcript", "")
+                        manual_transcript = True
                 if payload.get("language"):
                     stream_language = payload["language"]
                 if config.VOICE_DETECTOR_MODE == "mock" and "force_acoustic_score" in payload:
@@ -203,6 +294,29 @@ async def stream_audio(websocket: WebSocket, call_id: str):
             raw_bytes = message.get("bytes")
             if raw_bytes is None:
                 continue
+
+            # ---- WebSocket abuse protection ----
+            # Frame size cap: a legitimate 0.5s PCM hop at 16 kHz is ~32 KB;
+            # anything near the cap is either misconfigured or hostile.
+            if len(raw_bytes) > config.WS_MAX_FRAME_BYTES:
+                await websocket.send_json({"error": "Frame too large.", "limit_bytes": config.WS_MAX_FRAME_BYTES})
+                await websocket.close(code=4409)
+                break
+            total_bytes += len(raw_bytes)
+            # Total-transfer cap per call: bounds a single connection's cost.
+            if total_bytes > config.WS_MAX_TOTAL_BYTES_PER_CALL:
+                await websocket.send_json({"error": "Transfer quota exceeded for this call."})
+                await websocket.close(code=4409)
+                break
+            # Frame-rate cap: a real client pushes ~2 frames/s (0.5 s hop).
+            now = time.time()
+            frame_timestamps.append(now)
+            if len(frame_timestamps) == frame_timestamps.maxlen and (
+                now - frame_timestamps[0]
+            ) < 1.0:
+                await websocket.send_json({"error": "Frame rate too high."})
+                await websocket.close(code=4409)
+                break
 
             session.touch()
 
@@ -321,9 +435,10 @@ async def stream_audio(websocket: WebSocket, call_id: str):
                 risk_result["latency_stats"] = LATENCY_STATS.snapshot()
 
                 last_risk_result = dict(risk_result)
+                risk_result["tenant_id"] = session.tenant_id
                 session.record_risk_point(risk_result)
                 session_manager.sync_session(session)
-                _persist_risk_event(db, call_id, risk_result)
+                _persist_risk_event(db, call_id, risk_result, risk_event_state)
 
                 await websocket.send_json(risk_result)
 
@@ -332,3 +447,4 @@ async def stream_audio(websocket: WebSocket, call_id: str):
     finally:
         db.close()
         session.ring_buffer.reset()
+        session_manager.release_stream(call_id)
