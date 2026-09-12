@@ -1,5 +1,12 @@
 # Deploying SatyaVoice on Hugging Face Spaces (Docker)
 
+> ⚠️ **STATUS (2026): HF Docker Spaces now require a PAID plan.** Free
+> accounts only get Gradio/Static SDKs, which cannot properly host a raw
+> FastAPI + WebSocket backend. Prefer the Oracle VPS path
+> (`docs/deploy-oracle-vps.md`) if a card is available, or Render free
+> (no card, mock mode + edge mode) otherwise. This guide is retained for
+> Pro users.
+
 Free, no credit card, 16 GB RAM / 2 vCPU. WebSockets supported.
 Trade-offs: sleeps after ~48 h idle (~1–2 min wake), HTTP only via HF's
 TLS (fine — `wss://` works through their proxy), no Redis (session store
