@@ -2,11 +2,11 @@ import { useMemo, useState, type ReactNode } from "react";
 import { CheckCircle2, ClipboardCheck, Download, FileWarning, Fingerprint, LockKeyhole, RotateCcw, ShieldAlert, UserRound, Waves } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { UseCallSession } from "../hooks/useCallSession";
-import { registerForensicsEvidence, verifyForensicsEvidence } from "../lib/api";
-import { buildTechnicalEvidenceReport, createTechnicalEvidencePdf } from "../lib/forensicPdf";
-import type { ForensicsVerificationResponse } from "../types";
+import { fetchForensicReportPdf, registerForensicsEvidence, verifyForensicsEvidence } from "../lib/api";
+import { buildCanonicalEvidencePackage, createTechnicalEvidencePdf, buildTechnicalEvidenceReport } from "../lib/forensicPdf";
+import type { ForensicsVerificationResponse } from "../types";interface ForensicsViewProps { session: UseCallSession }
 
-interface ForensicsViewProps { session: UseCallSession }
+
 
 const formatTime = (timestamp?: number) => timestamp ? new Date(timestamp * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—";
 const shortHash = (value: string | null | undefined) => value ? `${value.slice(0, 16)}…${value.slice(-12)}` : "PENDING / NOT AVAILABLE";
@@ -39,8 +39,41 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
 
   const handleExport = async () => {
     if (!meta) return;
+
+    // 1. Build and register the CANONICAL evidence package (backend authors,
+    //    hashes, and stores it; duplicates are idempotent).
+    const canonical = await buildCanonicalEvidencePackage({
+      callId: meta.callId,
+      callerId: meta.callerId,
+      recipientId: meta.recipientId,
+      durationSeconds,
+      telemetryHistory,
+      audioMode: meta.audioMode,
+      actionTaken: incidentDetected ? "protected_action_gated" : "none",
+      verificationResult: session.verified ? "challenge_succeeded" : null,
+    });
+    let registered: Record<string, unknown> | null = null;
+    try {
+      registered = await registerForensicsEvidence(meta.callId, canonical);
+    } catch { /* PDF export remains usable if registration is unavailable. */ }
+
+    // 2. Export the BACKEND-rendered PDF from the immutable stored package.
+    const evidenceId = (registered?.evidence_id as string | undefined) ?? meta.callId;
+    if (registered) {
+      try {
+        const blob = await fetchForensicReportPdf(evidenceId);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `satyavoice-forensic-report-${meta.callId}.pdf`;
+        link.click();
+        URL.revokeObjectURL(url);
+        return;
+      } catch { /* fall through to the legacy client-side PDF below. */ }
+    }
+
+    // 3. Offline/backend-unavailable fallback: legacy client-side PDF.
     const report = await buildTechnicalEvidenceReport({ callId: meta.callId, callerId: meta.callerId, recipientId: meta.recipientId, durationSeconds, maxRiskScore: maxScore, exportedAt: new Date().toISOString(), operatorIdentity: meta.callerId || "demo-operator", telemetryHistory, modelVersionMetadata: { detector_mode: meta.audioMode, audio_pipeline: serverRiskSnapshot ? "WebSocket PCM + sliding windows + server-side risk snapshot" : "WebSocket PCM + sliding windows", server_risk_snapshot: serverRiskSnapshot } });
-    try { await registerForensicsEvidence(meta.callId, report); } catch { /* Export remains usable if registration is unavailable. */ }
     const blob = await createTechnicalEvidencePdf(report); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `satyavoice-forensic-incident-${meta.callId}.pdf`; link.click(); URL.revokeObjectURL(url);
   };
 

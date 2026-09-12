@@ -1,5 +1,161 @@
 import type { RiskTelemetry } from "../types";
 
+/** Canonical forensic package input (mirrors app/services/evidence_package.py). */
+export interface CanonicalEvidencePackageInput {
+  schema_version: "forensic-v1";
+  package_format: string;
+  call_id: string;
+  caller_id: string;
+  recipient_id: string;
+  duration_seconds: number;
+  generated_at: string;
+  codec: string;
+  detected_languages: string[];
+  model_provenance: {
+    detector_mode: string;
+    acoustic_model_id: string;
+    acoustic_model_revision: string;
+    asr_model: string;
+    speaker_model: string;
+    speaker_model_version: string;
+    model_artifact_hashes: Record<string, string>;
+    risk_config_fingerprint: string;
+  };
+  windows: Array<{
+    window_index: number;
+    timestamp: number;
+    relative_time_seconds: number;
+    risk_score: number;
+    acoustic_score: number;
+    intent_score: number;
+    speaker_similarity: number | null;
+    identity_mismatch: number | null;
+    status: string;
+    transcript_hash: string | null;
+    language: string | null;
+    codec: string | null;
+    vad_active: boolean | null;
+    rationale: string[];
+    intent_findings: Array<{
+      category: string;
+      confidence: number;
+      severity: string;
+      speech_act: string;
+      matched_phrase: string;
+      language: string;
+    }>;
+  }>;
+  peak_risk_score: number;
+  fused_risk_score: number;
+  action_taken: string;
+  verification_result: string | null;
+  disposition: string;
+  intent_findings: Array<{
+    category: string;
+    confidence: number;
+    severity: string;
+    speech_act: string;
+    matched_phrase: string;
+    language: string;
+  }>;
+}
+
+/**
+ * Build the canonical evidence package INPUT from live telemetry.
+ *
+ * This is a transport convenience only: the backend validates, completes,
+ * hashes, and stores the package. Raw transcripts are converted to SHA-256
+ * digests here — transcript text never enters the canonical package.
+ */
+export async function buildCanonicalEvidencePackage({
+  callId,
+  callerId,
+  recipientId,
+  durationSeconds,
+  telemetryHistory,
+  audioMode,
+  actionTaken,
+  verificationResult,
+}: {
+  callId: string;
+  callerId: string;
+  recipientId: string;
+  durationSeconds: number;
+  telemetryHistory: RiskTelemetry[];
+  audioMode: string;
+  actionTaken: string;
+  verificationResult: string | null;
+}): Promise<CanonicalEvidencePackageInput> {
+  const timeZero = telemetryHistory[0]?.timestamp ?? Date.now() / 1000;
+
+  const windows = await Promise.all(
+    telemetryHistory.map(async (point, index) => ({
+      window_index: index,
+      timestamp: point.timestamp,
+      relative_time_seconds: Number(Math.max(0, point.timestamp - timeZero).toFixed(3)),
+      risk_score: point.risk_score,
+      acoustic_score: point.acoustic_score,
+      intent_score: point.intent_score,
+      speaker_similarity: point.speaker_score ?? null,
+      identity_mismatch: point.identity_mismatch ?? null,
+      status: point.status,
+      transcript_hash: point.transcript ? await sha256Hex(point.transcript) : null,
+      language: point.detected_language ?? null,
+      codec: null,
+      vad_active: point.vad_active ?? null,
+      rationale: point.rationale ?? [],
+      intent_findings: (point.intent_risks ?? []).map((r) => ({
+        category: r.category,
+        confidence: r.confidence,
+        severity: r.severity,
+        speech_act: r.speech_act,
+        matched_phrase: r.matched_phrase,
+        language: r.language,
+      })),
+    }))
+  );
+
+  // Consolidate dedup intent findings across windows (category + phrase).
+  const seenFindings = new Map<string, CanonicalEvidencePackageInput["intent_findings"][number]>();
+  for (const w of windows) {
+    for (const f of w.intent_findings) {
+      const key = `${f.category}:${f.matched_phrase.toLowerCase()}`;
+      if (!seenFindings.has(key)) seenFindings.set(key, f);
+    }
+  }
+
+  return {
+    schema_version: "forensic-v1",
+    package_format: "satyavoice-technical-integrity-evidence-package",
+    call_id: callId,
+    caller_id: callerId,
+    recipient_id: recipientId,
+    duration_seconds: durationSeconds,
+    generated_at: new Date().toISOString(),
+    codec: "pcm",
+    detected_languages: Array.from(
+      new Set(windows.map((w) => w.language).filter((l): l is string => Boolean(l)))
+    ),
+    model_provenance: {
+      detector_mode: audioMode,
+      acoustic_model_id: "",
+      acoustic_model_revision: "",
+      asr_model: "",
+      speaker_model: "",
+      speaker_model_version: "",
+      model_artifact_hashes: {},
+      risk_config_fingerprint: "",
+    },
+    windows,
+    peak_risk_score: telemetryHistory.reduce((m, p) => Math.max(m, p.risk_score), 0),
+    fused_risk_score: telemetryHistory[telemetryHistory.length - 1]?.risk_score ?? 0,
+    action_taken: actionTaken,
+    verification_result: verificationResult,
+    disposition: "closed",
+    intent_findings: Array.from(seenFindings.values()),
+  };
+}
+
 export interface PolicyTransition {
   from: string;
   to: string;

@@ -120,6 +120,25 @@ export async function registerForensicsEvidence(
   return asJson<Record<string, unknown>>("registering evidence", response);
 }
 
+export async function verifyForensicsChain(): Promise<{ integrity: boolean; record_count: number; chain_tip: string | null; reason: string | null }> {
+  const response = await request("verifying the ledger chain", `${API_BASE}/forensics/chain/verify`, {
+    method: "POST",
+  });
+  return asJson("verifying the ledger chain", response);
+}
+
+/** Fetch the backend-rendered forensic PDF (from the immutable stored package). */
+export async function fetchForensicReportPdf(evidenceId: string): Promise<Blob> {
+  const response = await request("exporting the forensic report", `${API_BASE}/forensics/${encodeURIComponent(evidenceId)}/report.pdf`);
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(
+      typeof detail?.detail === "string" ? detail.detail : `PDF export failed (HTTP ${response.status}).`
+    );
+  }
+  return response.blob();
+}
+
 export async function verifyForensicsEvidence(
   evidenceId: string
 ): Promise<ForensicsVerificationResponse> {
