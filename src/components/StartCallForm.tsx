@@ -110,11 +110,13 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
             </p>
 
             <div className="section-rule mt-8">Monitoring input</div>
-            <div className="mt-3 space-y-3">
+            <div className="mt-3 space-y-3" role="radiogroup" aria-label="Monitoring input mode">
               {AUDIO_OPTIONS.map(({ mode, label, description, icon: Icon }) => (
                 <button
                   type="button"
                   key={mode}
+                  role="radio"
+                  aria-checked={audioMode === mode}
                   onClick={() => setAudioMode(mode)}
                   className={`group flex w-full items-start gap-4 border p-4 text-left transition-all ${
                     audioMode === mode
