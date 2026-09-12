@@ -1,0 +1,5 @@
+gradio>=4.0,<5
+torch>=2.2
+transformers>=4.39,<5
+speechbrain>=0.5.15
+numpy>=2,<3
