@@ -60,6 +60,7 @@ export interface CallStartResponse {
   call_id: string;
   status: string;
   ws_url: string;
+  token?: string;
 }
 
 export interface RiskTimelinePoint {

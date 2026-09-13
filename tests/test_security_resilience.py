@@ -123,6 +123,20 @@ def test_terminate_without_token_returns_401(client: TestClient, live_call):
 # B2: Authenticated WebSocket access (correct owner)
 # ---------------------------------------------------------------------------
 
+def test_start_call_returns_token_and_connects(client: TestClient):
+    caller_id = "ws-auth-flow-user"
+    resp = client.post("/api/v1/call/start", json={"caller_id": caller_id, "recipient_id": "bank"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "token" in data
+    token = data["token"]
+    assert token is not None
+    call_id = data["call_id"]
+
+    with client.websocket_connect(f"/api/v1/call/{call_id}/stream?token={token}") as ws:
+        ws.send_bytes(b"\x00" * 4)
+
+
 def test_ws_with_valid_token_connects(client: TestClient):
     caller_id = "ws-auth-test-user"
     resp = client.post("/api/v1/call/start", json={"caller_id": caller_id, "recipient_id": "bank"})

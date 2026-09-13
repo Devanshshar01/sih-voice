@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session as DBSession
 from app import config
 from app.core.http_auth import require_call_owner
 from app.core.session_manager import session_manager
+from app.core.ws_auth import create_access_token
 from app.db import models as db_models
 from app.db.database import get_db
 from app.models.schemas import (
@@ -55,6 +56,7 @@ def start_call(payload: CallStartRequest, db: DBSession = Depends(get_db)):
         call_id=session.call_id,
         status="INITIATED",
         ws_url=f"/api/v1/call/{session.call_id}/stream",
+        token=create_access_token(payload.caller_id),
     )
 
 

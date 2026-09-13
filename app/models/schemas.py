@@ -17,6 +17,7 @@ class CallStartResponse(BaseModel):
     call_id: str
     status: str
     ws_url: str
+    token: Optional[str] = None
 
 
 class RiskTelemetry(BaseModel):

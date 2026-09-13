@@ -206,7 +206,8 @@ export function useCallSession() {
         const startedAt = Date.now();
         setMeta({ callId: startRes.call_id, callerId, recipientId, audioMode, startedAt });
 
-        const ws = new WebSocket(buildStreamUrl(startRes.call_id));
+        const wsUrl = buildStreamUrl(startRes.call_id);
+        const ws = new WebSocket(startRes.token ? `${wsUrl}?token=${startRes.token}` : wsUrl);
         wsRef.current = ws;
         let everOpened = false;
 
