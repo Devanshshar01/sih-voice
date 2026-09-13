@@ -1,5 +1,12 @@
 """WebSocket audio ingestion (SIH Phase 1 alignment).
 
+SECURITY / RESILIENCE:
+  - Maximum binary frame size: MAX_FRAME_BYTES (8 MB). Oversized frames are
+    dropped with a counter increment; the stream stays alive (B4).
+  - _persist_risk_event() is DB-failure-tolerant: a commit error logs and
+    continues without crashing the WebSocket (B6).
+  - WebSocket auth (IDOR/BOLA) is handled by authenticate_websocket (B2/B10).
+
 Accepts binary audio frames, normalizes them through the codec layer
 (`app.services.codec_normalizer`), feeds a rolling ring buffer that emits
 4.0-second windows on a 0.5-second hop, gates inference with Silero VAD
@@ -22,6 +29,7 @@ gate is bypassed so the deterministic `force_acoustic_score` scenario keeps
 working without a live microphone.
 """
 import json
+import logging
 import time
 from typing import Any, Dict, Optional
 
@@ -43,6 +51,13 @@ from app.services.ml_detector import MockVoiceDetector, get_detector
 from app.services.speaker_vault import get_speaker_vault
 
 router = APIRouter(prefix="/call", tags=["stream"])
+
+_logger = logging.getLogger("satyavoice.stream")
+
+# Maximum binary frame size accepted per WebSocket message.
+# Frames exceeding this are silently dropped (malformed_frames counter incremented).
+# 4 seconds at 16kHz float32 = 256 KB. 8 MB is extremely generous.
+MAX_FRAME_BYTES = 8 * 1024 * 1024  # 8 MB
 
 detector = get_detector(
     config.VOICE_DETECTOR_MODE,
@@ -115,19 +130,35 @@ def _run_speaker_blocking(window) -> Dict[str, Any]:
 
 
 def _persist_risk_event(db: DBSession, call_id: str, result: dict) -> None:
-    db.add(
-        db_models.RiskEvent(
-            call_id=call_id,
-            acoustic_score=result["acoustic_score"],
-            intent_score=result["intent_score"],
-            combined_risk_score=result["risk_score"],
-            triggered_rule=result["status"],
+    """Persist a risk event to the database.
+
+    DB failures are logged and suppressed so that a transient DB issue does
+    not crash the WebSocket session (B6 resilience requirement).
+    """
+    try:
+        db.add(
+            db_models.RiskEvent(
+                call_id=call_id,
+                acoustic_score=result["acoustic_score"],
+                intent_score=result["intent_score"],
+                combined_risk_score=result["risk_score"],
+                triggered_rule=result["status"],
+            )
         )
-    )
-    session_row = db.query(db_models.Session).filter_by(call_id=call_id).first()
-    if session_row and result["risk_score"] > session_row.max_risk_score:
-        session_row.max_risk_score = result["risk_score"]
-    db.commit()
+        session_row = db.query(db_models.Session).filter_by(call_id=call_id).first()
+        if session_row and result["risk_score"] > session_row.max_risk_score:
+            session_row.max_risk_score = result["risk_score"]
+        db.commit()
+    except Exception as exc:
+        _logger.error(
+            "DB persist error for call_id=%s: %s — event not saved, stream continues",
+            call_id,
+            type(exc).__name__,
+        )
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 
 def _apply_codec_config(payload: Dict[str, Any], state: Dict[str, Any]) -> None:
@@ -214,6 +245,17 @@ async def stream_audio(websocket: WebSocket, call_id: str):
 
             raw_bytes = message.get("bytes")
             if raw_bytes is None:
+                continue
+
+            # Frame size guard: drop oversized frames (B4 — resource exhaustion)
+            if len(raw_bytes) > MAX_FRAME_BYTES:
+                malformed_frames += 1
+                _logger.warning(
+                    "Oversized frame dropped for call_id=%s: %d bytes > %d max",
+                    call_id,
+                    len(raw_bytes),
+                    MAX_FRAME_BYTES,
+                )
                 continue
 
             session.touch()

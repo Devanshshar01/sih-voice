@@ -17,8 +17,17 @@ import redis
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import logging
+    _lifespan_logger = logging.getLogger("satyavoice")
     # Enforce production safety policy before serving any traffic
     config.validate_detector_config()
+    # B9: Warn if running in production with wildcard CORS (security risk)
+    if config.IS_PRODUCTION and config.CORS_ORIGINS == ["*"]:
+        _lifespan_logger.warning(
+            "SECURITY WARNING: CORS is set to '*' in production. "
+            "Set VOICETRUST_CORS_ORIGINS to the exact Vercel frontend origin "
+            "(e.g. https://satyavoice.vercel.app) to enforce browser origin policy."
+        )
     init_db()
     yield
     session_manager.purge_expired()

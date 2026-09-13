@@ -1,10 +1,15 @@
 """
 Step-up (out-of-band) verification for high-risk calls.
 
+SECURITY (B12):
+  _active_challenges is pruned of expired entries on every read/write to
+  prevent unbounded memory growth from callers that never submit a code.
+
 The prototype simulates a TOTP challenge in-process. Swap `_validate_code`
 for a real provider (e.g. Twilio Verify, an authenticator-app TOTP secret)
 before this goes anywhere near production.
 """
+import logging
 import random
 import time
 from typing import Dict, Tuple
@@ -22,10 +27,20 @@ from app.models.schemas import (
     VerificationRequestResponse,
 )
 
+logger = logging.getLogger("satyavoice.verification")
+
 router = APIRouter(prefix="/verification", tags=["verification"])
 
 # call_id -> expected code, generated when a session first crosses HIGH risk.
 _active_challenges: Dict[str, Tuple[str, float]] = {}
+
+
+def _prune_expired_challenges() -> None:
+    """Remove expired challenge entries (B12: prevent unbounded dict growth)."""
+    now = time.time()
+    expired = [k for k, (_, exp) in _active_challenges.items() if now >= exp]
+    for k in expired:
+        _active_challenges.pop(k, None)
 
 
 def issue_challenge(call_id: str) -> str:
@@ -35,6 +50,7 @@ def issue_challenge(call_id: str) -> str:
     returned to the caller directly; the prototype returns it here purely
     so the demo UI can display it for judges.
     """
+    _prune_expired_challenges()  # keep dict bounded (B12)
     code = f"{random.randint(0, 999999):06d}"
     _active_challenges[call_id] = (
         code,
@@ -44,6 +60,7 @@ def issue_challenge(call_id: str) -> str:
 
 
 def _validate_code(call_id: str, code: str) -> bool:
+    _prune_expired_challenges()  # keep dict bounded (B12)
     challenge = _active_challenges.get(call_id)
     if challenge is None:
         return False

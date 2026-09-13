@@ -1,6 +1,15 @@
 """
 REST endpoints for call lifecycle: start a session, check the current risk
 snapshot, and gate sensitive actions behind the live risk score.
+
+SECURITY (B2 / B10):
+  - GET /{call_id}/risk and POST /{call_id}/terminate require the requester to
+    be the authenticated owner of the call session (IDOR/BOLA prevention via
+    require_call_owner dependency from app.core.http_auth).
+  - POST /action is intentionally more permissive in the current prototype
+    (any caller can attempt an action; the risk gate is the primary control).
+    In production, action gating should also require ownership verification.
+  - POST /start does NOT require auth (creates a new session for the caller).
 """
 from datetime import datetime, timezone
 
@@ -8,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
 
 from app import config
+from app.core.http_auth import require_call_owner
 from app.core.session_manager import session_manager
 from app.db import models as db_models
 from app.db.database import get_db
@@ -49,7 +59,11 @@ def start_call(payload: CallStartRequest, db: DBSession = Depends(get_db)):
 
 
 @router.get("/{call_id}/risk", response_model=CallRiskResponse)
-def get_risk(call_id: str):
+def get_risk(
+    call_id: str,
+    _subject: str = Depends(require_call_owner),
+):
+    """Return current risk snapshot for a call. Requires caller ownership."""
     session = session_manager.get(call_id)
     if not session:
         raise HTTPException(status_code=404, detail="Call session not found or expired.")
@@ -84,7 +98,12 @@ def execute_action(payload: CallActionRequest):
 
 
 @router.post("/{call_id}/terminate")
-def terminate_call(call_id: str, db: DBSession = Depends(get_db)):
+def terminate_call(
+    call_id: str,
+    db: DBSession = Depends(get_db),
+    _subject: str = Depends(require_call_owner),
+):
+    """Terminate a call. Requires caller ownership."""
     session = session_manager.end_session(call_id, status="COMPLETED")
     if not session:
         raise HTTPException(status_code=404, detail="Call session not found.")
