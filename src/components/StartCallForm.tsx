@@ -88,12 +88,14 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
               </p>
             </div>
 
-            <div className="mt-8 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-600">Monitoring input</div>
-            <div className="mt-3 space-y-2">
+            <div id="monitoring-input-label" className="mt-8 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-600">Monitoring input</div>
+            <div role="radiogroup" aria-labelledby="monitoring-input-label" className="mt-3 space-y-2">
               {AUDIO_OPTIONS.map(({ mode, label, description, icon: Icon }) => (
                 <button
                   type="button"
                   key={mode}
+                  role="radio"
+                  aria-checked={audioMode === mode}
                   onClick={() => setAudioMode(mode)}
                   className={`group flex w-full items-start gap-4 border p-4 text-left transition-colors ${
                     audioMode === mode
