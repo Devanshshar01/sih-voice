@@ -1,4 +1,5 @@
 # --- Phase 1: core API + mock detector (safe to install right away) ---
+PyJWT>=2.8,<3                 # WebSocket JWT authentication (ws_auth.py)
 fastapi>=0.115,<0.116
 uvicorn[standard]>=0.30,<0.31
 pydantic>=2.9,<3

@@ -10,12 +10,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import os
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+os.environ.setdefault("VOICETRUST_WS_JWT_SECRET", "smoke-test-secret-do-not-use-in-prod")
+os.environ.setdefault("HF_ZERO_GPU_SPACE", "dummy_space_for_smoke_tests")
+
 from app.main import app
 from app.config import HOP_SAMPLES, WINDOW_SAMPLES
+from app.core.ws_auth import create_access_token
 
 # With an 8,000-sample push exactly matching the hop size, the first window
 # only becomes ready once the ring buffer reaches WINDOW_SAMPLES (4.0 s per
@@ -53,15 +59,17 @@ def test_health(client: TestClient) -> None:
 
 
 def test_genuine_call_stays_low_risk(client: TestClient) -> None:
+    caller_id = "+91-9000000001"
     r = client.post(
         "/api/v1/call/start",
-        json={"caller_id": "+91-9000000001", "recipient_id": "finance-desk-01"},
+        json={"caller_id": caller_id, "recipient_id": "finance-desk-01"},
     )
     assert r.status_code == 200, r.text
     call_id = r.json()["call_id"]
     print(f"[ok] call started -> {call_id}")
 
-    with client.websocket_connect(f"/api/v1/call/{call_id}/stream") as ws:
+    token = create_access_token(subject=caller_id)
+    with client.websocket_connect(f"/api/v1/call/{call_id}/stream?token={token}") as ws:
         ws.send_text('{"transcript": "Just checking on the quarterly budget report."}')
         telemetry = _stream_silence_and_collect(ws, num_pushes=10)[-1]
         print("[ok] final telemetry (genuine):", telemetry)
@@ -73,14 +81,16 @@ def test_genuine_call_stays_low_risk(client: TestClient) -> None:
 
 
 def test_cloned_voice_locks_action(client: TestClient) -> None:
+    caller_id = "+91-9000000002"
     r = client.post(
         "/api/v1/call/start",
-        json={"caller_id": "+91-9000000002", "recipient_id": "finance-desk-01"},
+        json={"caller_id": caller_id, "recipient_id": "finance-desk-01"},
     )
     call_id = r.json()["call_id"]
     print(f"[ok] call started -> {call_id}")
 
-    with client.websocket_connect(f"/api/v1/call/{call_id}/stream") as ws:
+    token = create_access_token(subject=caller_id)
+    with client.websocket_connect(f"/api/v1/call/{call_id}/stream?token={token}") as ws:
         ws.send_text(
             '{"transcript": "This is urgent, please approve the wire transfer immediately.", '
             '"force_acoustic_score": 0.9}'

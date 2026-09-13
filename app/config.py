@@ -204,6 +204,19 @@ VOICE_MODEL_REVISION = os.getenv("VOICETRUST_MODEL_REVISION", "main")
 HF_ZERO_GPU_SPACE = os.getenv("HF_ZERO_GPU_SPACE", "")
 HF_TOKEN = os.getenv("HF_TOKEN", "")
 
+# ---- WebSocket authentication ----
+# JWT secret for signing/verifying WebSocket access tokens.
+# MUST be set to a strong random value in production (openssl rand -hex 32).
+# Never set this in source code or commit it to version control.
+WS_JWT_SECRET = os.getenv("VOICETRUST_WS_JWT_SECRET", "")
+WS_JWT_ALGORITHM = os.getenv("VOICETRUST_WS_JWT_ALGORITHM", "HS256")
+WS_JWT_EXPIRY_SECONDS = int(os.getenv("VOICETRUST_WS_JWT_EXPIRY_SECONDS", "3600"))
+# Auth enforcement: set to false ONLY for local development.
+# In production (IS_PRODUCTION=True), auth is always enforced regardless of this flag.
+WS_AUTH_ENABLED = os.getenv("VOICETRUST_WS_AUTH_ENABLED", "true").lower().strip() not in {
+    "0", "false", "no", "off"
+}
+
 
 def validate_detector_config(env_dict: dict | None = None) -> str:
     """Validate detector and inference provider settings against environment policy.

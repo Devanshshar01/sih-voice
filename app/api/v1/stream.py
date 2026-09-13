@@ -33,6 +33,7 @@ from app.core.latency import LatencyStats, LatencyTracker
 from app.core.parallel_inference import run_window_inference
 from app.core.risk_engine import compute_risk
 from app.core.session_manager import session_manager
+from app.core.ws_auth import authenticate_websocket
 from app.db import models as db_models
 from app.db.database import SessionLocal
 from app.services import codec_normalizer, vad
@@ -143,8 +144,19 @@ def _apply_codec_config(payload: Dict[str, Any], state: Dict[str, Any]) -> None:
 
 @router.websocket("/{call_id}/stream")
 async def stream_audio(websocket: WebSocket, call_id: str):
+    # ---- Authentication & Authorization (must occur BEFORE accept()) ----
+    # authenticate_websocket validates the JWT token from the ?token= query
+    # param, verifies the token's subject matches the session's caller_id
+    # (preventing IDOR/BOLA), and closes the socket on any failure.
+    # The session existence check is performed inside authenticate_websocket.
+    allowed = await authenticate_websocket(websocket, call_id)
+    if not allowed:
+        return
+
+    # Re-fetch the session (authenticate_websocket already verified it exists).
     session = session_manager.get(call_id)
     if not session:
+        # Extremely unlikely race: session expired between auth check and here.
         await websocket.close(code=4404)
         return
 
