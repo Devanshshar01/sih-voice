@@ -11,7 +11,8 @@ from dataclasses import dataclass
 # ---- Server ----
 APP_NAME = "SatyaVoice API"
 API_V1_PREFIX = "/api/v1"
-CORS_ORIGINS = os.getenv("VOICETRUST_CORS_ORIGINS", "*").split(",")
+_raw_origins = os.getenv("VOICETRUST_CORS_ORIGINS", "*").split(",")
+CORS_ORIGINS = [o.strip().rstrip("/") for o in _raw_origins if o.strip()] or ["*"]
 
 # ---- Canonical audio configuration (single source of truth) ----
 # These constants implement the SIH 2026 presentation specification exactly:
