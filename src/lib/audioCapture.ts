@@ -75,16 +75,5 @@ export class LiveAudioCapture {
   }
 }
 
-/**
- * Generates a synthetic 8000-sample silent-ish frame for demo mode, where
- * there is no live microphone. It exists purely to advance the backend's
- * sliding window on a realistic cadence; the acoustic score in demo mode is
- * driven entirely by the `force_acoustic_score` WebSocket hook, not by this
- * content.
- */
-export function buildDemoFrame(): Float32Array {
-  return new Float32Array(CHUNK_SAMPLES);
-}
-
 export const AUDIO_CHUNK_SAMPLES = CHUNK_SAMPLES;
 export const AUDIO_SAMPLE_RATE = SAMPLE_RATE;

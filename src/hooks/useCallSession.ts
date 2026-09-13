@@ -8,7 +8,7 @@ import {
   submitVerificationCode,
   terminateCall,
 } from "../lib/api";
-import { AUDIO_CHUNK_SAMPLES, LiveAudioCapture, buildDemoFrame } from "../lib/audioCapture";
+import { LiveAudioCapture } from "../lib/audioCapture";
 import { LocalAntiSpoofEngine } from "../lib/localInference";
 import { forbidsRawAudioUpload } from "../types";
 import type {
@@ -19,26 +19,6 @@ import type {
   LocalRisk,
   RiskTelemetry,
 } from "../types";
-
-const DEMO_INTERVAL_MS = Math.round((AUDIO_CHUNK_SAMPLES / 16000) * 1000); // 500ms
-
-interface DemoStage {
-  atMs: number;
-  transcript: string;
-  forceAcousticScore: number;
-}
-
-// Mirrors the demonstration script in the prototype blueprint: baseline ->
-// acoustic anomaly -> confirmed cloned-voice attack with urgent financial intent.
-const CLONED_SCENARIO: DemoStage[] = [
-  { atMs: 0, transcript: "Just confirming the numbers on this month's operating expense report before I sign off.", forceAcousticScore: 0.1 },
-  { atMs: 5000, transcript: "Sorry, bad line today. Anyway, about that report...", forceAcousticScore: 0.9 },
-  { atMs: 9500, transcript: "This is urgent, I need you to process a wire transfer right now, before end of day.", forceAcousticScore: 0.85 },
-];
-
-const GENUINE_SCENARIO: DemoStage[] = [
-  { atMs: 0, transcript: "Just confirming the numbers on this month's operating expense report before I sign off.", forceAcousticScore: 0.12 },
-];
 
 export interface VerificationState {
   demoCode: string | null;
@@ -90,21 +70,10 @@ export function useCallSession() {
   const wsRef = useRef<WebSocket | null>(null);
   const audioCaptureRef = useRef<LiveAudioCapture | null>(null);
   const localEngineRef = useRef<LocalAntiSpoofEngine | null>(null);
-  const demoIntervalRef = useRef<number | null>(null);
-  const demoTimeoutsRef = useRef<number[]>([]);
   const durationIntervalRef = useRef<number | null>(null);
   const actionFeedbackTimeoutRef = useRef<number | null>(null);
   const mutedRef = useRef(false);
   const onHoldRef = useRef(false);
-
-  const clearDemoTimers = useCallback(() => {
-    if (demoIntervalRef.current !== null) {
-      window.clearInterval(demoIntervalRef.current);
-      demoIntervalRef.current = null;
-    }
-    demoTimeoutsRef.current.forEach((id) => window.clearTimeout(id));
-    demoTimeoutsRef.current = [];
-  }, []);
 
   const sendWsText = useCallback((payload: Record<string, unknown>) => {
     const ws = wsRef.current;
@@ -113,20 +82,7 @@ export function useCallSession() {
     }
   }, []);
 
-  const runScenario = useCallback(
-    (stages: DemoStage[]) => {
-      stages.forEach((stage) => {
-        const id = window.setTimeout(() => {
-          sendWsText({ transcript: stage.transcript, force_acoustic_score: stage.forceAcousticScore });
-        }, stage.atMs);
-        demoTimeoutsRef.current.push(id);
-      });
-    },
-    [sendWsText]
-  );
-
   const teardown = useCallback(() => {
-    clearDemoTimers();
     if (durationIntervalRef.current !== null) {
       window.clearInterval(durationIntervalRef.current);
       durationIntervalRef.current = null;
@@ -143,7 +99,7 @@ export function useCallSession() {
     setLocalModelError(null);
     setBrowserOnnxStatus("idle");
     setBrowserOnnxResult(null);
-  }, [clearDemoTimers]);
+  }, []);
 
   useEffect(() => teardown, [teardown]);
 
@@ -329,14 +285,6 @@ export function useCallSession() {
                   : "Microphone access failed."
               );
             }
-          } else {
-            const frame = buildDemoFrame();
-            demoIntervalRef.current = window.setInterval(() => {
-              if (!mutedRef.current && !onHoldRef.current && ws.readyState === WebSocket.OPEN) {
-                ws.send(frame.buffer);
-              }
-            }, DEMO_INTERVAL_MS);
-            runScenario(audioMode === "demo-cloned" ? CLONED_SCENARIO : GENUINE_SCENARIO);
           }
         };
 
@@ -377,7 +325,7 @@ export function useCallSession() {
         setPhase("idle");
       }
     },
-    [runScenario]
+    []
   );
 
   const endCall = useCallback(async () => {

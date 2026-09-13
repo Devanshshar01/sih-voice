@@ -10,7 +10,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { forbidsRawAudioUpload, isDemoMode, usesLocalInference } from "../types";
+import { forbidsRawAudioUpload, usesLocalInference } from "../types";
 import {
   HOP_SAMPLES,
   LocalAntiSpoofEngine,
@@ -111,21 +111,12 @@ describe("audio mode helpers", () => {
     expect(usesLocalInference("hybrid")).toBe(true);
     expect(usesLocalInference("edge-local")).toBe(true);
     expect(usesLocalInference("cloud")).toBe(false);
-    expect(usesLocalInference("demo-cloned")).toBe(false);
   });
 
   it("forbids raw upload ONLY in edge mode", () => {
     expect(forbidsRawAudioUpload("edge-local")).toBe(true);
     expect(forbidsRawAudioUpload("hybrid")).toBe(false); // hybrid streams audio
     expect(forbidsRawAudioUpload("cloud")).toBe(false);
-    expect(forbidsRawAudioUpload("demo-genuine")).toBe(false);
-  });
-
-  it("identifies demo modes", () => {
-    expect(isDemoMode("demo-genuine")).toBe(true);
-    expect(isDemoMode("demo-cloned")).toBe(true);
-    expect(isDemoMode("edge-local")).toBe(false);
-    expect(isDemoMode("cloud")).toBe(false);
   });
 });
 

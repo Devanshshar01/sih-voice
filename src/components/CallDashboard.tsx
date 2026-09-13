@@ -74,7 +74,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
             </div>
             <div className="flex items-center gap-2 text-left text-xs text-mute sm:text-right">
               <span className="h-1.5 w-1.5 rounded-full bg-safe shadow-[0_0_8px_theme(colors.safe.DEFAULT)]" />
-              <div><p className="font-mono text-paper">{meta?.callId ?? "CONNECTING"}</p><p className="mt-1">{meta && !meta.audioMode.startsWith("demo") ? "LIVE MICROPHONE" : "CONTROLLED SCENARIO"}</p></div>
+              <div><p className="font-mono text-paper">{meta?.callId ?? "CONNECTING"}</p><p className="mt-1">{meta ? "LIVE MICROPHONE" : "CONNECTING"}</p></div>
             </div>
           </div>
 
@@ -113,28 +113,26 @@ export default function CallDashboard({ session }: CallDashboardProps) {
               <RiskTimeline points={telemetryHistory} />
 
               <section className="surface p-5 sm:p-6">
-                <div className="flex items-start justify-between gap-3"><div><p className="eyebrow">Conversation context</p><h2 className="mt-1 text-sm font-medium text-paper">ASR transcript</h2></div><span className="font-mono text-[10px] text-mute">{meta && !meta.audioMode.startsWith("demo") ? "MANUAL ASR INPUT" : "NOT EXPOSED"}</span></div>
-                {meta && !meta.audioMode.startsWith("demo") ? (
-                  <div>
-                    <textarea id="live-transcript" value={liveTranscript} onChange={(e) => updateLiveTranscript(e.target.value)} rows={3} placeholder="Type what the caller is asking for, as it happens…" className="field-input mt-4 w-full resize-none font-sans" />
-                    {languageLabel && <p className="mt-2 text-xs text-mute">Language: <span className="font-medium text-paper">{languageLabel}</span></p>}
-                    {intentRisks.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {intentRisks.map((risk, i) => (
-                          <div key={`${risk.category}-${risk.matched_phrase}-${i}`} className="border border-ink-700 bg-ink-900/60 px-3 py-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className={`text-xs font-semibold uppercase tracking-wide ${risk.severity === "critical" ? "text-danger" : risk.severity === "elevated" ? "text-warn" : "text-mute"}`}>
-                                {risk.category} · {risk.speech_act}
-                              </span>
-                              <span className="font-mono text-[11px] text-mute">{risk.language}</span>
-                            </div>
-                            <p className="mt-1 text-sm text-paper-dim">“{risk.matched_phrase}” — {risk.evidence}</p>
+                <div className="flex items-start justify-between gap-3"><div><p className="eyebrow">Conversation context</p><h2 className="mt-1 text-sm font-medium text-paper">ASR transcript</h2></div><span className="font-mono text-[10px] text-mute">MANUAL ASR INPUT</span></div>
+                <div>
+                  <textarea id="live-transcript" value={liveTranscript} onChange={(e) => updateLiveTranscript(e.target.value)} rows={3} placeholder="Type what the caller is asking for, as it happens…" className="field-input mt-4 w-full resize-none font-sans" />
+                  {languageLabel && <p className="mt-2 text-xs text-mute">Language: <span className="font-medium text-paper">{languageLabel}</span></p>}
+                  {intentRisks.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {intentRisks.map((risk, i) => (
+                        <div key={`${risk.category}-${risk.matched_phrase}-${i}`} className="border border-ink-700 bg-ink-900/60 px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-xs font-semibold uppercase tracking-wide ${risk.severity === "critical" ? "text-danger" : risk.severity === "elevated" ? "text-warn" : "text-mute"}`}>
+                              {risk.category} · {risk.speech_act}
+                            </span>
+                            <span className="font-mono text-[11px] text-mute">{risk.language}</span>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : <p className="mt-4 border border-ink-700 bg-ink-900/60 p-3 text-sm leading-relaxed text-mute">Transcript data is not exposed for this audio mode. The dashboard is showing only server telemetry and rationale signals.</p>}
+                          <p className="mt-1 text-sm text-paper-dim">“{risk.matched_phrase}” — {risk.evidence}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </section>
 
               {(meta?.audioMode === "hybrid" || meta?.audioMode === "edge-local") && (

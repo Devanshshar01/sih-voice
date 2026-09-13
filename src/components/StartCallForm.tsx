@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, Check, Mic, PlayCircle, ShieldAlert, ShieldCheck } from "lucide-react";
+import { ArrowRight, Check, Mic, ShieldCheck } from "lucide-react";
 import type { AudioMode } from "../types";
 
 interface StartCallFormProps {
@@ -30,24 +30,12 @@ const AUDIO_OPTIONS: { mode: AudioMode; label: string; description: string; icon
       "Anti-spoof runs fully in-browser; only derived scores and telemetry are shared. ASR, speaker, and policy fusion are unavailable offline and shown as explicitly degraded.",
     icon: ShieldCheck,
   },
-  {
-    mode: "demo-genuine",
-    label: "Scripted demo — genuine call",
-    description: "Risk stays low throughout with no injected artifacts.",
-    icon: PlayCircle,
-  },
-  {
-    mode: "demo-cloned",
-    label: "Scripted demo — cloned-voice attack",
-    description: "Escalates from baseline to a locked, verified attack.",
-    icon: ShieldAlert,
-  },
 ];
 
 export default function StartCallForm({ onStart, error, connecting }: StartCallFormProps) {
   const [callerId, setCallerId] = useState("+91 98450 12233");
   const [recipientId, setRecipientId] = useState("finance-desk-01");
-  const [audioMode, setAudioMode] = useState<AudioMode>("demo-cloned");
+  const [audioMode, setAudioMode] = useState<AudioMode>("cloud");
 
   return (
     <main className="min-h-[100dvh] bg-black text-neutral-200">
@@ -95,11 +83,10 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
           >
             <div>
               <h2 className="text-lg font-normal tracking-tight text-neutral-100">Choose a monitoring mode</h2>
-              <p className="mt-2 max-w-md text-sm leading-6 text-neutral-500">Start with a controlled scenario for a reliable demonstration, or connect live audio for operational monitoring.</p>
+              <p className="mt-2 max-w-md text-sm leading-6 text-neutral-500">
+                Connect live audio for real monitoring with the production-ready pipeline options below.
+              </p>
             </div>
-            <p className="mt-3 text-sm leading-6 text-neutral-600">
-              The attack scenario is preselected so the complete protection workflow is one click away.
-            </p>
 
             <div className="mt-8 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-600">Monitoring input</div>
             <div className="mt-3 space-y-2">
@@ -145,7 +132,6 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
               {connecting ? "Opening secure monitor..." : "Start monitored call"}
               {!connecting && <ArrowRight size={15} strokeWidth={1.5} />}
             </button>
-            <p className="mt-3 text-center text-[11px] leading-5 text-neutral-700">The demo uses synthetic frames. Live microphone mode requests browser permission.</p>
           </form>
         </section>
       </div>
