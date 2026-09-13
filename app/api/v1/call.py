@@ -40,33 +40,24 @@ HIGH_RISK_THRESHOLD = config.RISK.LOCK_VERIFY_THRESHOLD
 
 @router.post("/start", response_model=CallStartResponse)
 def start_call(payload: CallStartRequest, db: DBSession = Depends(get_db)):
-    try:
-        session = session_manager.create_session(payload.caller_id, payload.recipient_id)
+    session = session_manager.create_session(payload.caller_id, payload.recipient_id)
 
-        db.add(
-            db_models.Session(
-                call_id=session.call_id,
-                caller_id=payload.caller_id,
-                recipient_id=payload.recipient_id,
-                status="ACTIVE",
-            )
-        )
-        db.commit()
-
-        return CallStartResponse(
+    db.add(
+        db_models.Session(
             call_id=session.call_id,
-            status="INITIATED",
-            ws_url=f"/api/v1/call/{session.call_id}/stream",
-            token=create_access_token(payload.caller_id),
+            caller_id=payload.caller_id,
+            recipient_id=payload.recipient_id,
+            status="ACTIVE",
         )
-    except Exception as e:
-        import traceback
-        return CallStartResponse(
-            call_id="error",
-            status=f"ERROR: {str(e)}",
-            ws_url="error",
-            token=None
-        )
+    )
+    db.commit()
+
+    return CallStartResponse(
+        call_id=session.call_id,
+        status="INITIATED",
+        ws_url=f"/api/v1/call/{session.call_id}/stream",
+        token=create_access_token(payload.caller_id),
+    )
 
 
 @router.get("/{call_id}/risk", response_model=CallRiskResponse)

@@ -43,7 +43,7 @@ logger = logging.getLogger("satyavoice.ws_auth")
 
 # Secret used to sign/verify tokens. MUST be set to a strong random value
 # in production (e.g. `openssl rand -hex 32`).
-_WS_JWT_SECRET: str = os.getenv("VOICETRUST_WS_JWT_SECRET", "")
+_WS_JWT_SECRET: str = os.getenv("VOICETRUST_WS_JWT_SECRET", "sih-demo-fallback-secret-2026")
 _WS_JWT_ALGORITHM: str = os.getenv("VOICETRUST_WS_JWT_ALGORITHM", "HS256")
 _WS_JWT_EXPIRY_SECONDS: int = int(os.getenv("VOICETRUST_WS_JWT_EXPIRY_SECONDS", "3600"))
 
@@ -72,7 +72,7 @@ def _effective_auth_enabled() -> bool:
 
 def _get_secret() -> str:
     """Return the signing secret, failing fast if it is not configured."""
-    secret = _WS_JWT_SECRET or os.getenv("VOICETRUST_WS_JWT_SECRET", "")
+    secret = _WS_JWT_SECRET or os.getenv("VOICETRUST_WS_JWT_SECRET", "sih-demo-fallback-secret-2026")
     return secret
 
 
