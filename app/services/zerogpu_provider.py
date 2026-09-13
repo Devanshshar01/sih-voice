@@ -23,53 +23,54 @@ class ZeroGPUInferenceProvider(InferenceProvider):
         hf_token: Optional[str] = None,
         timeout: float = 30.0,
     ):
+        if not space_url or not space_url.strip():
+            raise ValueError(
+                "HF_ZERO_GPU_SPACE configuration is required for ZeroGPUInferenceProvider"
+            )
         self.space_url = space_url.rstrip("/")
         self.hf_token = hf_token
         self.timeout = timeout
-        self.client = Client(
-            self.space_url,
-            hf_token=self.hf_token,
-            verbose=False,
-            timeout=timeout,
-        )
+        self.client_kwargs: dict = {"verbose": False}
+        if self.hf_token:
+            self.client_kwargs["token"] = self.hf_token
+        self._client = None
+
         # We'll use the predict API endpoint
-        self.api_name = "/predict"
+        # NOTE: the Space's named endpoint is "/infer" (Gradio maps it to
+        # /gradio_api/call/infer). "/predict" does not exist on this Space.
+        self.api_name = "/infer"
         self._available = True
 
-    async def infer_audio_window(
+    def _get_client(self) -> Client:
+        if self._client is None:
+            self._client = Client(self.space_url, **self.client_kwargs)
+        return self._client
+
+    def infer_audio_window_sync(
         self, audio_window: np.ndarray
     ) -> InferenceResult:
-        """
-        Run inference by calling the Hugging Face Space.
-
-        Parameters
-        ----------
-        audio_window : np.ndarray
-            Mono audio signal as a 1D numpy array of float32 samples.
-            Expected to be at 16 kHz and approximately 4 seconds long.
-
-        Returns
-        -------
-        InferenceResult
-            The inference result containing spoof probability and speaker embedding.
-        """
-        # Prepare the input for the Gradio API
-        # The audio input expects a numpy array or a file path.
-        # We'll pass the numpy array directly.
-        # The Gradio client will handle the serialization.
+        """Run inference by calling the Hugging Face Space (blocking)."""
         try:
-            # We'll call the API asynchronously
-            # We use asyncio to run the blocking call in a thread pool
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: self.client.predict(
-                    audio_window,  # the audio input
-                    api_name=self.api_name,
-                ),
+            client = self._get_client()
+            result = client.predict(
+                audio_window,  # the audio input
+                api_name=self.api_name,
             )
-            # The result is expected to be a dictionary with the keys we defined
-            # We'll map it to our InferenceResult
+            # The Space returns a structured error payload (status="error")
+            # instead of a fake score on failure -- map that explicitly.
+            if isinstance(result, dict) and result.get("status") == "error":
+                error = result.get("error") or {}
+                return InferenceResult.failure(
+                    "INFERENCE_UNAVAILABLE",
+                    str(error.get("message", "unknown Space error")),
+                    provider="zerogpu",
+                    model_version_antispoof=str(
+                        result.get("model_version_antispoof", "unknown")
+                    ),
+                    model_version_speaker=str(
+                        result.get("model_version_speaker", "unknown")
+                    ),
+                )
             return InferenceResult(
                 spoof_probability=float(result["spoof_probability"]),
                 speaker_embedding=result["speaker_embedding"],
@@ -78,11 +79,19 @@ class ZeroGPUInferenceProvider(InferenceProvider):
                 model_version_speaker=str(result["model_version_speaker"]),
                 sample_rate=int(result["sample_rate"]),
                 duration_ms=float(result["duration_ms"]),
+                provider="zerogpu",
+                success=True,
             )
         except Exception as e:
-            # If the call fails, we mark the provider as unavailable and raise an exception
+            # If the call fails, mark the provider unavailable and return an explicit failure.
+            # NEVER fabricate a score or return a mock score on transport failure.
             self._available = False
-            raise RuntimeError(f"Failed to call ZeroGPU Space: {e}") from e
+            return InferenceResult.failure(
+                "INFERENCE_UNAVAILABLE",
+                f"Failed to call ZeroGPU Space: {e}",
+                provider="zerogpu",
+            )
+
 
     def is_available(self) -> bool:
         """

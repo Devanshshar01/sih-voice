@@ -4,6 +4,7 @@ Abstract base class for inference providers and mock implementations.
 from __future__ import annotations
 
 import abc
+import asyncio
 from dataclasses import dataclass
 from typing import Optional, List
 
@@ -12,14 +13,58 @@ import numpy as np
 
 @dataclass
 class InferenceResult:
-    """Result of audio window inference."""
-    spoof_probability: float
+    """Result of audio window inference.
+
+    Canonical inference contract shared by every provider (ZeroGPU, local
+    GPU/Kaggle, mock). A successful result has ``success=True`` and a real
+    ``spoof_probability``. A failure NEVER carries a fabricated score --
+    ``success=False`` with ``error_code`` set (e.g. ``INFERENCE_UNAVAILABLE``)
+    and ``spoof_probability=None`` so the risk engine can distinguish
+    REAL MODEL RESULTS from MODEL FAILURES.
+
+    The first seven fields preserve the original positional order so existing
+    call sites and serialized contracts keep working (additive evolution).
+    """
+
+    spoof_probability: Optional[float]
     speaker_embedding: List[float]
     inference_time_ms: float
     model_version_antispoof: str
     model_version_speaker: str
     sample_rate: int
     duration_ms: float
+    # ---- additive contract fields (safe defaults) ----
+    provider: str = "unknown"
+    success: bool = True
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    speaker_similarity: Optional[float] = None
+    model_hash_antispoof: Optional[str] = None
+    model_hash_speaker: Optional[str] = None
+
+    @classmethod
+    def failure(
+        cls,
+        error_code: str,
+        error_message: str,
+        provider: str = "unknown",
+        model_version_antispoof: str = "unknown",
+        model_version_speaker: str = "unknown",
+    ) -> "InferenceResult":
+        """Explicit failure state -- never a fake spoof_probability."""
+        return cls(
+            spoof_probability=None,
+            speaker_embedding=[],
+            inference_time_ms=0.0,
+            model_version_antispoof=model_version_antispoof,
+            model_version_speaker=model_version_speaker,
+            sample_rate=16000,
+            duration_ms=0.0,
+            provider=provider,
+            success=False,
+            error_code=error_code,
+            error_message=error_message,
+        )
 
 
 class InferenceProvider(abc.ABC):

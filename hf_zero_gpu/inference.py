@@ -33,14 +33,24 @@ try:
 except ImportError:  # speechbrain installed via requirements on the Space
     speechbrain = None
 
-from config import (
-    ANTISPOOF_MODEL_ID,
-    SPEAKER_MODEL_ID,
-    SAMPLE_RATE,
-    WINDOW_SECONDS,
-    WINDOW_SAMPLES,
-    DEVICE,
-)
+try:  # package import (Kaggle/local provider: `from hf_zero_gpu import inference`)
+    from .config import (
+        ANTISPOOF_MODEL_ID,
+        SPEAKER_MODEL_ID,
+        SAMPLE_RATE,
+        WINDOW_SECONDS,
+        WINDOW_SAMPLES,
+        DEVICE,
+    )
+except ImportError:  # Space runtime: app dir is on sys.path, flat import works
+    from config import (
+        ANTISPOOF_MODEL_ID,
+        SPEAKER_MODEL_ID,
+        SAMPLE_RATE,
+        WINDOW_SECONDS,
+        WINDOW_SAMPLES,
+        DEVICE,
+    )
 
 # Global model objects (loaded once at startup, on CPU)
 _antispoof_processor = None

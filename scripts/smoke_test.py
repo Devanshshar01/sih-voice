@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -37,6 +38,12 @@ def test_window_geometry_is_sih_canonical() -> None:
     """The backend must expose exactly the SIH windowing contract."""
     assert WINDOW_SAMPLES == 64000, "Window must be 4.0 s at 16 kHz"
     assert HOP_SAMPLES == 8000, "Hop must be 0.5 s at 16 kHz"
+
+
+@pytest.fixture(scope="module")
+def client():
+    with TestClient(app) as c:
+        yield c
 
 
 def test_health(client: TestClient) -> None:

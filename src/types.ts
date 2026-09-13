@@ -113,17 +113,7 @@ export interface ForensicsVerificationResponse {
 // hybrid       — local anti-spoof in-browser + backend ASR/speaker/policy
 // edge-local   — raw audio NEVER leaves the device; only derived results go
 //                to the backend (no raw-audio WebSocket)
-// demo-*       — deterministic scripted scenarios (no microphone)
-export type AudioMode =
-  | "cloud"
-  | "hybrid"
-  | "edge-local"
-  | "demo-genuine"
-  | "demo-cloned";
-
-export function isDemoMode(mode: AudioMode): boolean {
-  return mode === "demo-genuine" || mode === "demo-cloned";
-}
+export type AudioMode = "cloud" | "hybrid" | "edge-local";
 
 /** True for modes where the browser performs anti-spoof locally. */
 export function usesLocalInference(mode: AudioMode): boolean {

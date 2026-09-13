@@ -12,6 +12,7 @@ Both return the same shape: {"acoustic_score": float 0-1, "details": {...}}.
 from __future__ import annotations
 
 import hashlib
+import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
@@ -220,6 +221,44 @@ class RealAntiSpoofDetector(BaseVoiceDetector):
         }
 
 
+class ZeroGPUVoiceDetectorAdapter(BaseVoiceDetector):
+    """Adapter wrapping ZeroGPUInferenceProvider into the BaseVoiceDetector interface."""
+
+    def __init__(self, provider=None):
+        if provider is None:
+            from app.services.provider_factory import get_inference_provider
+            provider = get_inference_provider()
+        self.provider = provider
+
+    def predict(self, audio_window: np.ndarray) -> Dict[str, Any]:
+        result = self.provider.infer_audio_window_sync(audio_window)
+        if not result.success or result.spoof_probability is None:
+            return {
+                "acoustic_score": None,
+                "success": False,
+                "inference_available": False,
+                "detector_status": "unavailable",
+                "error_code": result.error_code or "INFERENCE_UNAVAILABLE",
+                "error_message": result.error_message or "ZeroGPU inference unavailable",
+                "details": {
+                    "mode": "zerogpu",
+                    "status": "unavailable",
+                    "error": result.error_message,
+                },
+            }
+        return {
+            "acoustic_score": round(result.spoof_probability, 4),
+            "success": True,
+            "inference_available": True,
+            "detector_status": "ok",
+            "details": {
+                "mode": "zerogpu",
+                "model": result.model_version_antispoof,
+                "inference_time_ms": result.inference_time_ms,
+            },
+        }
+
+
 def get_detector(
     mode: str,
     model_path: Optional[str] = None,
@@ -227,13 +266,40 @@ def get_detector(
     device: str = "cpu",
     revision: str = "main",
 ) -> BaseVoiceDetector:
-    if mode == "real":
+    from app import config
+
+    normalized_mode = mode.strip().lower()
+    env_name = (
+        os.getenv("ENVIRONMENT")
+        or os.getenv("VOICETRUST_ENVIRONMENT")
+        or config.ENVIRONMENT
+    ).strip().lower()
+    is_prod = env_name in {"production", "prod"}
+
+    if is_prod and normalized_mode == "mock":
+        raise RuntimeError(
+            "PRODUCTION ENVIRONMENT SAFETY VIOLATION: "
+            "MockVoiceDetector is strictly prohibited in production mode. "
+            "Production must use a real inference provider (e.g. zerogpu)."
+        )
+
+
+    if normalized_mode == "zerogpu":
+        return ZeroGPUVoiceDetectorAdapter()
+    if normalized_mode == "real":
         return RealAntiSpoofDetector(
             model_id=model_id,
             model_path=model_path,
             device=device,
             revision=revision,
         )
-    if mode == "ml":
+    if normalized_mode == "ml":
         return LightweightMLVoiceDetector(model_path=model_path)
-    return MockVoiceDetector()
+    if normalized_mode == "mock":
+        return MockVoiceDetector()
+
+    raise ValueError(
+        f"Unknown VOICE_DETECTOR_MODE '{mode}'. "
+        f"Expected one of: 'zerogpu', 'real', 'ml', 'mock'."
+    )
+

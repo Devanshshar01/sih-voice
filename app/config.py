@@ -181,17 +181,68 @@ BLOCKCHAIN_PRIVATE_KEY = os.getenv("VOICETRUST_BLOCKCHAIN_PRIVATE_KEY", "")
 BLOCKCHAIN_CHAIN_ID = int(os.getenv("VOICETRUST_BLOCKCHAIN_CHAIN_ID", "80002"))
 BLOCKCHAIN_GAS_LIMIT = int(os.getenv("VOICETRUST_BLOCKCHAIN_GAS_LIMIT", "300000"))
 
+# ---- Environment & Environment Safety Guards ----
+ENVIRONMENT = os.getenv("ENVIRONMENT", os.getenv("VOICETRUST_ENVIRONMENT", "development")).strip().lower()
+IS_PRODUCTION = ENVIRONMENT in {"production", "prod"}
+
 # ---- Detector selection ----
-# Production target stack: a fine-tuned Wav2Vec2-XLS-R (300M) anti-spoof
-# checkpoint. The current default remains "mock" so the app can boot safely
-# during local development and deployment preparation. When the fine-tuned
-# detector checkpoint is ready, set VOICETRUST_DETECTOR_MODE=real and point
-# VOICETRUST_MODEL_ID at that checkpoint.
-VOICE_DETECTOR_MODE = os.getenv("VOICETRUST_DETECTOR_MODE", "mock").lower()
+# Canonical production architecture target stack: Hugging Face ZeroGPU Space
+# running fine-tuned Wav2Vec2-XLS-R (300M) + ECAPA-TDNN.
+# Default mode is "zerogpu" (real production path). "mock" mode requires an
+# explicit opt-in (VOICETRUST_DETECTOR_MODE=mock) and is forbidden in production.
+# Note: The current default XLS-R checkpoint remains facebook/wav2vec2-xls-r-300m
+# (base model); fine-tuning is conducted separately on Kaggle GPU.
+VOICE_DETECTOR_MODE = os.getenv(
+    "VOICETRUST_DETECTOR_MODE",
+    os.getenv("INFERENCE_PROVIDER", "zerogpu")
+).strip().lower()
+INFERENCE_PROVIDER = VOICE_DETECTOR_MODE
 VOICE_MODEL_ID = os.getenv("VOICETRUST_MODEL_ID", "Hemgg/Deepfake-audio-detection")
 VOICE_MODEL_PATH = os.getenv("VOICETRUST_MODEL_PATH", "")
 VOICE_MODEL_DEVICE = os.getenv("VOICETRUST_MODEL_DEVICE", "cpu")
 VOICE_MODEL_REVISION = os.getenv("VOICETRUST_MODEL_REVISION", "main")
+HF_ZERO_GPU_SPACE = os.getenv("HF_ZERO_GPU_SPACE", "")
+HF_TOKEN = os.getenv("HF_TOKEN", "")
+
+
+def validate_detector_config(env_dict: dict | None = None) -> str:
+    """Validate detector and inference provider settings against environment policy.
+
+    Raises RuntimeError if mock mode is configured in production or if required
+    production credentials/endpoints are missing.
+    """
+    env_source = os.environ if env_dict is None else env_dict
+    env_name = (
+        env_source.get("ENVIRONMENT")
+        or env_source.get("VOICETRUST_ENVIRONMENT")
+        or ENVIRONMENT
+    ).strip().lower()
+    is_prod = env_name in {"production", "prod"}
+
+    mode = (
+        env_source.get("VOICETRUST_DETECTOR_MODE")
+        or env_source.get("INFERENCE_PROVIDER")
+        or VOICE_DETECTOR_MODE
+    ).strip().lower()
+
+    if is_prod:
+        if mode == "mock":
+            raise RuntimeError(
+                "PRODUCTION ENVIRONMENT SAFETY VIOLATION: "
+                "Mock detector mode (VOICETRUST_DETECTOR_MODE=mock) is strictly prohibited in production. "
+                "Production must use a real inference provider (e.g. zerogpu)."
+            )
+        if mode == "zerogpu":
+            space_url = env_source.get("HF_ZERO_GPU_SPACE", HF_ZERO_GPU_SPACE).strip()
+            if not space_url:
+                raise RuntimeError(
+                    "PRODUCTION ENVIRONMENT SAFETY VIOLATION: "
+                    "ZeroGPU inference provider is selected for production but "
+                    "HF_ZERO_GPU_SPACE is not configured."
+                )
+
+    return mode
+
 
 # ---- Automatic speech recognition ----
 # Target stack: faster-whisper small. Keep "manual" as a development default

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Activity, ArrowRight, Check, Mic, PlayCircle, ShieldAlert, ShieldCheck } from "lucide-react";
+import { ArrowRight, Check, Mic, ShieldCheck } from "lucide-react";
 import type { AudioMode } from "../types";
 
 interface StartCallFormProps {
@@ -30,42 +30,26 @@ const AUDIO_OPTIONS: { mode: AudioMode; label: string; description: string; icon
       "Anti-spoof runs fully in-browser; only derived scores and telemetry are shared. ASR, speaker, and policy fusion are unavailable offline and shown as explicitly degraded.",
     icon: ShieldCheck,
   },
-  {
-    mode: "demo-genuine",
-    label: "Scripted demo — genuine call",
-    description: "Risk stays low throughout with no injected artifacts.",
-    icon: PlayCircle,
-  },
-  {
-    mode: "demo-cloned",
-    label: "Scripted demo — cloned-voice attack",
-    description: "Escalates from baseline to a locked, verified attack.",
-    icon: ShieldAlert,
-  },
 ];
 
 export default function StartCallForm({ onStart, error, connecting }: StartCallFormProps) {
   const [callerId, setCallerId] = useState("+91 98450 12233");
   const [recipientId, setRecipientId] = useState("finance-desk-01");
-  const [audioMode, setAudioMode] = useState<AudioMode>("demo-cloned");
+  const [audioMode, setAudioMode] = useState<AudioMode>("cloud");
 
   return (
-    <main className="min-h-[100dvh] bg-ink-950">
-      <div className="console-grid mx-auto grid min-h-[100dvh] max-w-[1480px] lg:grid-cols-[0.9fr_1.1fr]">
-        <section className="relative flex flex-col justify-between border-b border-ink-700 px-6 py-8 sm:px-10 lg:border-b-0 lg:border-r lg:px-14 lg:py-12">
+    <main className="min-h-[100dvh] bg-black text-neutral-200">
+      <div className="mx-auto grid min-h-[100dvh] max-w-[1280px] lg:grid-cols-[0.9fr_1.1fr]">
+        <section className="relative flex flex-col justify-between border-b border-neutral-900 px-6 py-10 sm:px-10 lg:border-b-0 lg:border-r lg:px-14 lg:py-12">
           <div className="relative">
-            <div className="flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-signal">
-              <span className="flex h-8 w-8 items-center justify-center border border-signal/40 bg-signal-bg">
-                <ShieldCheck size={16} />
-              </span>
-              SatyaVoice security console
+            <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500">
+              SatyaVoice
             </div>
-            <div className="mt-14 max-w-xl lg:mt-20">
-              <p className="text-xs font-medium uppercase tracking-[0.14em] text-safe">REAL-TIME VOICE INTEGRITY</p>
-              <h1 className="mt-4 text-3xl font-semibold leading-tight tracking-tight text-paper sm:text-4xl">
+            <div className="mt-16 max-w-xl lg:mt-24">
+              <h1 className="text-3xl font-normal leading-tight tracking-tight text-neutral-100 sm:text-4xl">
                 Stop an impersonation attempt before money moves.
               </h1>
-              <p className="mt-5 max-w-lg text-sm leading-6 text-paper-dim sm:text-base">
+              <p className="mt-5 max-w-md text-sm leading-6 text-neutral-500">
                 SatyaVoice scores acoustic and conversational signals while a call is live, then
                 pauses sensitive actions when the evidence crosses a risk threshold.
               </p>
@@ -76,16 +60,15 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
                 ["02", "Score", "Fuse voice and intent signals"],
                 ["03", "Protect", "Verify before money moves"],
               ].map(([number, title, description]) => (
-                <div key={number} className="border-t border-ink-600 pt-3">
-                  <p className="font-mono text-xs text-signal">{number}</p>
-                  <p className="mt-2 text-sm font-medium text-paper">{title}</p>
-                  <p className="mt-1 text-xs leading-5 text-mute">{description}</p>
+                <div key={number} className="border-t border-neutral-900 pt-3">
+                  <p className="font-mono text-xs text-neutral-600">{number}</p>
+                  <p className="mt-2 text-sm text-neutral-300">{title}</p>
+                  <p className="mt-1 text-xs leading-5 text-neutral-600">{description}</p>
                 </div>
               ))}
             </div>
           </div>
-          <div className="relative mt-16 flex items-center gap-2 text-xs text-mute">
-            <Activity size={14} className="text-safe" />
+          <div className="relative mt-16 text-xs text-neutral-700">
             Demo environment · metadata only · audio is never stored
           </div>
         </section>
@@ -96,41 +79,37 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
               e.preventDefault();
               onStart(callerId.trim(), recipientId.trim(), audioMode);
             }}
-            className="w-full max-w-lg animate-rise"
+            className="w-full max-w-lg"
           >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-              <p className="eyebrow">Secure intake / new session</p>
-              <h2 className="mt-2 text-xl font-semibold tracking-tight text-paper">Choose a monitoring mode</h2>
-              <p className="mt-2 max-w-lg text-sm leading-relaxed text-paper-dim">Start with a controlled scenario for a reliable demonstration, or connect live audio for operational monitoring.</p>
-              </div>
+            <div>
+              <h2 className="text-lg font-normal tracking-tight text-neutral-100">Choose a monitoring mode</h2>
+              <p className="mt-2 max-w-md text-sm leading-6 text-neutral-500">
+                Connect live audio for real monitoring with the production-ready pipeline options below.
+              </p>
             </div>
-            <p className="mt-3 text-sm leading-6 text-paper-dim">
-              The attack scenario is preselected so the complete protection workflow is one click away.
-            </p>
 
-            <div className="section-rule mt-8">Monitoring input</div>
-            <div className="mt-3 space-y-3">
+            <div className="mt-8 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-600">Monitoring input</div>
+            <div className="mt-3 space-y-2">
               {AUDIO_OPTIONS.map(({ mode, label, description, icon: Icon }) => (
                 <button
                   type="button"
                   key={mode}
                   onClick={() => setAudioMode(mode)}
-                  className={`group flex w-full items-start gap-4 border p-4 text-left transition-all ${
+                  className={`group flex w-full items-start gap-4 border p-4 text-left transition-colors ${
                     audioMode === mode
-                      ? "border-signal/70 bg-signal-bg shadow-[inset_3px_0_0_#4fc3f7]"
-                      : "border-ink-600 bg-ink-800/60 hover:border-ink-500 hover:bg-ink-800"
+                      ? "border-neutral-400 bg-neutral-950"
+                      : "border-neutral-900 bg-black hover:border-neutral-700"
                   }`}
                 >
-                  <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center border ${audioMode === mode ? "border-signal/40 text-signal" : "border-ink-500 text-mute"}`}>
-                    <Icon size={17} />
+                  <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center border ${audioMode === mode ? "border-neutral-500 text-neutral-200" : "border-neutral-800 text-neutral-500"}`}>
+                    <Icon size={16} strokeWidth={1.5} />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center justify-between gap-3">
-                      <span className={`text-sm font-medium ${audioMode === mode ? "text-paper" : "text-paper-dim"}`}>{label}</span>
-                      {audioMode === mode && <Check size={16} className="shrink-0 text-signal" />}
+                      <span className={`text-sm ${audioMode === mode ? "text-neutral-100" : "text-neutral-400"}`}>{label}</span>
+                      {audioMode === mode && <Check size={14} className="shrink-0 text-neutral-300" strokeWidth={1.5} />}
                     </span>
-                    <span className="mt-1 block text-xs leading-5 text-mute">{description}</span>
+                    <span className="mt-1 block text-xs leading-5 text-neutral-600">{description}</span>
                   </span>
                 </button>
               ))}
@@ -147,13 +126,12 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
               </div>
             </div>
 
-            {error && <p role="alert" className="mt-4 border border-danger/40 bg-danger-bg px-3 py-3 text-xs leading-5 text-danger">{error}</p>}
+            {error && <p role="alert" className="mt-4 border border-neutral-800 px-3 py-3 text-xs leading-5 text-neutral-400">{error}</p>}
 
-            <button type="submit" disabled={connecting || !callerId.trim() || !recipientId.trim()} className="mt-6 flex w-full items-center justify-center gap-2 bg-signal px-4 py-3 text-sm font-semibold text-ink-950 transition-all hover:bg-[#83d9ff] disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="submit" disabled={connecting || !callerId.trim() || !recipientId.trim()} className="mt-6 flex w-full items-center justify-center gap-2 border border-neutral-300 bg-white px-4 py-3 text-sm font-medium text-black transition-colors hover:bg-neutral-200 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-neutral-950 disabled:text-neutral-600">
               {connecting ? "Opening secure monitor..." : "Start monitored call"}
-              {!connecting && <ArrowRight size={16} />}
+              {!connecting && <ArrowRight size={15} strokeWidth={1.5} />}
             </button>
-            <p className="mt-3 text-center text-[11px] leading-5 text-mute">The demo uses synthetic frames. Live microphone mode requests browser permission.</p>
           </form>
         </section>
       </div>

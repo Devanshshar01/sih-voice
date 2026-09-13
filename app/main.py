@@ -5,6 +5,7 @@ and startup/shutdown hooks (DB init + expired-session cleanup).
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import config
@@ -16,6 +17,8 @@ import redis
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Enforce production safety policy before serving any traffic
+    config.validate_detector_config()
     init_db()
     yield
     session_manager.purge_expired()
@@ -38,13 +41,24 @@ app.add_middleware(
 
 
 @app.on_event("startup")
-async def _log_cors_config() -> None:
+async def _log_startup_config() -> None:
     import logging
 
-    logging.getLogger("satyavoice").info(
+    logger = logging.getLogger("satyavoice")
+    logger.info(
         "CORS enabled origins: %s (credentials=%s)",
         config.CORS_ORIGINS,
         _credentials_enabled,
+    )
+    logger.info("Environment: %s", config.ENVIRONMENT)
+    logger.info("Selected detector mode: %s", config.VOICE_DETECTOR_MODE)
+    logger.info(
+        "Mock detector: %s",
+        "DISABLED" if config.IS_PRODUCTION or config.VOICE_DETECTOR_MODE != "mock" else "ENABLED (development opt-in)"
+    )
+    logger.info(
+        "ZeroGPU Space status: %s",
+        "CONFIGURED" if bool(config.HF_ZERO_GPU_SPACE) else "NOT_CONFIGURED"
     )
 
 app.include_router(call.router, prefix=config.API_V1_PREFIX)
@@ -62,10 +76,16 @@ def health_check():
 
 @app.get("/ready")
 def readiness_check():
+    # Check production safety validation & provider configuration
+    try:
+        config.validate_detector_config()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Detector configuration invalid: {e}")
+
     # Check database
     try:
         db = SessionLocal()
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         db.close()
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
@@ -78,4 +98,10 @@ def readiness_check():
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"Redis connection failed: {e}")
     
-    return {"status": "ready"}
+    return {
+        "status": "ready",
+        "environment": config.ENVIRONMENT,
+        "detector_mode": config.VOICE_DETECTOR_MODE,
+        "mock_disabled": config.IS_PRODUCTION or config.VOICE_DETECTOR_MODE != "mock",
+    }
+
