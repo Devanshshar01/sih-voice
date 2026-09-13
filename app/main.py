@@ -5,6 +5,7 @@ and startup/shutdown hooks (DB init + expired-session cleanup).
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import config
@@ -65,7 +66,7 @@ def readiness_check():
     # Check database
     try:
         db = SessionLocal()
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         db.close()
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")

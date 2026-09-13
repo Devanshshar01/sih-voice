@@ -1,0 +1,12 @@
+# Kaggle GPU dependencies (DEVELOPMENT/TESTING ONLY -- never a production dependency)
+#
+# Install only what the Kaggle image does not already ship. Kaggle GPU images
+# include torch+cu12x, torchaudio, numpy, pandas, scipy, sklearn, matplotlib.
+#
+# IMPORTANT: the SAME model checkpoint/config as production is reused via
+# env vars (ANTISPOOF_MODEL_ID, SPEAKER_MODEL_ID) -- see README.md.
+
+transformers>=4.39.0
+speechbrain>=1.0.0
+soundfile>=0.12.1
+gradio-client>=1.0.0   # only for the cross-provider consistency test (HF Space)

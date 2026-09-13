@@ -33,43 +33,35 @@ class ZeroGPUInferenceProvider(InferenceProvider):
             timeout=timeout,
         )
         # We'll use the predict API endpoint
-        self.api_name = "/predict"
+        # NOTE: the Space's named endpoint is "/infer" (Gradio maps it to
+        # /gradio_api/call/infer). "/predict" does not exist on this Space.
+        self.api_name = "/infer"
         self._available = True
 
-    async def infer_audio_window(
+    def infer_audio_window_sync(
         self, audio_window: np.ndarray
     ) -> InferenceResult:
-        """
-        Run inference by calling the Hugging Face Space.
-
-        Parameters
-        ----------
-        audio_window : np.ndarray
-            Mono audio signal as a 1D numpy array of float32 samples.
-            Expected to be at 16 kHz and approximately 4 seconds long.
-
-        Returns
-        -------
-        InferenceResult
-            The inference result containing spoof probability and speaker embedding.
-        """
-        # Prepare the input for the Gradio API
-        # The audio input expects a numpy array or a file path.
-        # We'll pass the numpy array directly.
-        # The Gradio client will handle the serialization.
+        """Run inference by calling the Hugging Face Space (blocking)."""
         try:
-            # We'll call the API asynchronously
-            # We use asyncio to run the blocking call in a thread pool
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: self.client.predict(
-                    audio_window,  # the audio input
-                    api_name=self.api_name,
-                ),
+            result = self.client.predict(
+                audio_window,  # the audio input
+                api_name=self.api_name,
             )
-            # The result is expected to be a dictionary with the keys we defined
-            # We'll map it to our InferenceResult
+            # The Space returns a structured error payload (status="error")
+            # instead of a fake score on failure -- map that explicitly.
+            if isinstance(result, dict) and result.get("status") == "error":
+                error = result.get("error") or {}
+                return InferenceResult.failure(
+                    "INFERENCE_UNAVAILABLE",
+                    str(error.get("message", "unknown Space error")),
+                    provider="zerogpu",
+                    model_version_antispoof=str(
+                        result.get("model_version_antispoof", "unknown")
+                    ),
+                    model_version_speaker=str(
+                        result.get("model_version_speaker", "unknown")
+                    ),
+                )
             return InferenceResult(
                 spoof_probability=float(result["spoof_probability"]),
                 speaker_embedding=result["speaker_embedding"],
@@ -78,9 +70,12 @@ class ZeroGPUInferenceProvider(InferenceProvider):
                 model_version_speaker=str(result["model_version_speaker"]),
                 sample_rate=int(result["sample_rate"]),
                 duration_ms=float(result["duration_ms"]),
+                provider="zerogpu",
+                success=True,
             )
         except Exception as e:
-            # If the call fails, we mark the provider as unavailable and raise an exception
+            # If the call fails, mark the provider unavailable and raise.
+            # NEVER fabricate a score on transport failure.
             self._available = False
             raise RuntimeError(f"Failed to call ZeroGPU Space: {e}") from e
 
