@@ -6,6 +6,9 @@
 # - websockets>=10.4
 
 # Additional dependencies we need:
+# NOTE: torchaudio ships with the base image's torch install and is a
+# hard dependency of speechbrain; we rely on the base image version to
+# avoid pip rebuilding/replacing the CUDA torch wheel.
 transformers>=4.39.0
 speechbrain>=0.5.15
 numpy>=1.24.0,<2.0  # Must be <2.0 for torch 2.13.0 compatibility
