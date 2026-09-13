@@ -70,7 +70,7 @@ def _classify(risk_score: int) -> str:
 
 
 def compute_risk(
-    acoustic_score: float,
+    acoustic_score: Optional[float],
     intent_score: float,
     flagged_phrases: Optional[List[str]] = None,
     speaker_similarity: Optional[float] = None,
@@ -91,7 +91,12 @@ def compute_risk(
     degraded = degraded or {}
     cfg = config.RISK
 
-    A = max(0.0, min(1.0, float(acoustic_score)))
+    acoustic_available = acoustic_score is not None
+    if acoustic_available:
+        A = max(0.0, min(1.0, float(acoustic_score)))
+    else:
+        A = 0.5  # neutral prior for convex math only when anti-spoof is unavailable
+
     I = max(0.0, min(1.0, float(intent_score)))
     M = identity_mismatch(speaker_similarity)
 
@@ -100,7 +105,7 @@ def compute_risk(
     if (
         cfg.HARD_TRIGGER_ENABLED
         and any(cat in config.HARD_TRIGGER_CATEGORIES for cat in flagged_categories)
-        and max(A, I) >= cfg.HARD_TRIGGER_MIN_AMBIGUITY
+        and max(A if acoustic_available else 0.0, I) >= cfg.HARD_TRIGGER_MIN_AMBIGUITY
     ):
         I = 1.0
         hard_trigger = True
@@ -108,8 +113,9 @@ def compute_risk(
     raw = 100.0 * (cfg.ACOUSTIC_WEIGHT * A + cfg.INTENT_WEIGHT * I + cfg.IDENTITY_MISMATCH_WEIGHT * M)
 
     # --- Degraded-evidence handling --------------------------------------
-    if degraded:
-        raw += 100.0 * cfg.DEGRADED_FUSION_PENALTY * len(degraded)
+    if degraded or not acoustic_available:
+        degraded_count = len(degraded) if degraded else 1
+        raw += 100.0 * cfg.DEGRADED_FUSION_PENALTY * degraded_count
 
     risk_score = min(100, math.floor(raw))
     status = _classify(risk_score)
@@ -121,7 +127,7 @@ def compute_risk(
 
     rationale = _build_rationale(
         status=status,
-        acoustic=A,
+        acoustic=A if acoustic_available else 0.0,
         intent=I,
         identity_mismatch=M,
         flagged_phrases=flagged_phrases,
@@ -132,8 +138,11 @@ def compute_risk(
     return {
         "risk_score": risk_score,
         "status": status,
-        # Component evidence (all in [0,1], semantics unambiguous):
-        "acoustic_score": round(A, 4),
+        # Component evidence:
+        "acoustic_score": round(A, 4) if acoustic_available else None,
+        "inference_available": acoustic_available,
+        "detector_status": "ok" if acoustic_available else "unavailable",
+        "error_code": None if acoustic_available else "INFERENCE_UNAVAILABLE",
         "intent_score": round(I, 4),
         # Kept for backward compatibility with existing consumers: this is
         # the raw SIMILARITY, not a risk term.
@@ -148,7 +157,7 @@ def compute_risk(
                 "identity_mismatch": cfg.IDENTITY_MISMATCH_WEIGHT,
             },
             "contributions": {
-                "acoustic": round(100 * cfg.ACOUSTIC_WEIGHT * A, 2),
+                "acoustic": round(100 * cfg.ACOUSTIC_WEIGHT * A, 2) if acoustic_available else 0.0,
                 "intent": round(100 * cfg.INTENT_WEIGHT * I, 2),
                 "identity_mismatch": round(100 * cfg.IDENTITY_MISMATCH_WEIGHT * M, 2),
             },
@@ -157,6 +166,7 @@ def compute_risk(
         "rationale": rationale,
         **({"intent_details": intent_details} if intent_details else {}),
     }
+
 
 
 def _build_rationale(

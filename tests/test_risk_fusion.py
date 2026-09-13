@@ -231,9 +231,10 @@ def test_detector_exception_yields_degraded_safe_state() -> None:
 
     acoustic, transcript, speaker, degraded = asyncio.run(scenario())
     assert degraded["anti_spoof"].startswith("RuntimeError")
-    assert acoustic["acoustic_score"] == 0.5  # uninformative prior
+    assert acoustic["acoustic_score"] is None  # explicit unavailable score -- NEVER a fake 0.5
     assert acoustic["details"]["mode"] == "degraded"
     assert speaker["speaker_match_score"] is None  # neutral identity
+
 
     # Fusion on degraded evidence stays computable and flags the degradation.
     result = compute_risk(

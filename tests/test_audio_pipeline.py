@@ -315,12 +315,17 @@ def test_ring_buffer_honors_explicit_geometry() -> None:
 # ---------------------------------------------------------------------------
 
 def test_vad_assess_is_non_mutating_and_reports_silence() -> None:
-    silent = np.zeros(WINDOW, dtype=np.float32)
-    out, telemetry = vad.assess(silent)
-    np.testing.assert_array_equal(out, silent)  # never mutates window data
-    assert telemetry["vad_active"] is False
-    assert telemetry["vad_coverage"] == 0.0
-    assert telemetry["vad_backend"] in {"silero", "energy-fallback"}
+    vad._SILERO_MODEL = None
+    vad._SILERO_LOAD_ERROR = "forced-for-test"
+    try:
+        silent = np.zeros(WINDOW, dtype=np.float32)
+        out, telemetry = vad.assess(silent)
+        np.testing.assert_array_equal(out, silent)  # never mutates window data
+        assert telemetry["vad_active"] is False
+        assert telemetry["vad_coverage"] == 0.0
+        assert telemetry["vad_backend"] in {"silero", "energy-fallback"}
+    finally:
+        vad._SILERO_LOAD_ERROR = None
 
 
 def test_vad_detects_energy_fallback_speech() -> None:

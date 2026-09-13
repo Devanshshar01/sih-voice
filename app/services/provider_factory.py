@@ -24,19 +24,37 @@ from typing import Optional
 
 from .inference_provider import InferenceProvider, InferenceResult
 
-PROVIDER_DETECTOR = "detector"
 PROVIDER_ZEROGPU = "zerogpu"
 PROVIDER_LOCAL = "local"
+PROVIDER_REAL = "real"
+PROVIDER_DETECTOR = "detector"
+PROVIDER_MOCK = "mock"
 
 # "local" is what Kaggle sets; documented alias "kaggle" maps onto it because
 # Kaggle does not need a redundant provider of its own (it IS local GPU).
-_PROVIDER_ALIASES = {"kaggle": PROVIDER_LOCAL}
+_PROVIDER_ALIASES = {
+    "kaggle": PROVIDER_LOCAL,
+    "real": PROVIDER_REAL,
+    "mock": PROVIDER_MOCK,
+    "detector": PROVIDER_MOCK,  # legacy detector mode maps to mock unless explicitly real
+}
+
+
+def _resolve_env(env: Optional[dict] = None) -> dict:
+    source = dict(os.environ)
+    if env is not None:
+        source.update(env)
+    return source
 
 
 def get_configured_provider_name(env: Optional[dict] = None) -> str:
-    """Normalized INFERENCE_PROVIDER value (default: current behaviour)."""
-    source = os.environ if env is None else env
-    raw = (source.get("INFERENCE_PROVIDER") or PROVIDER_DETECTOR).strip().lower()
+    """Normalized INFERENCE_PROVIDER / VOICETRUST_DETECTOR_MODE value (default: zerogpu)."""
+    source = _resolve_env(env)
+    raw = (
+        source.get("VOICETRUST_DETECTOR_MODE")
+        or source.get("INFERENCE_PROVIDER")
+        or PROVIDER_ZEROGPU
+    ).strip().lower()
     return _PROVIDER_ALIASES.get(raw, raw)
 
 
@@ -45,29 +63,51 @@ def get_inference_provider(
 ) -> InferenceProvider:
     """Instantiate the configured provider.
 
-    Raises ValueError for an unknown provider name; falls back to the
-    always-available MockInferenceProvider only where the existing production
-    fallback already used one.
+    Enforces production safety policy: mock mode is strictly rejected when
+    ENVIRONMENT=production. Real production deployments default to ZeroGPU.
     """
-    name = get_configured_provider_name(env)
-    if name == PROVIDER_DETECTOR:
-        # Preserve today's production path untouched.
-        from .inference_provider import MockInferenceProvider
+    source = _resolve_env(env)
+    env_name = (
+        source.get("ENVIRONMENT")
+        or source.get("VOICETRUST_ENVIRONMENT")
+        or "development"
+    ).strip().lower()
+    is_production = env_name in {"production", "prod"}
 
-        return MockInferenceProvider()
+    name = get_configured_provider_name(source)
+
+
+    if is_production and name in {PROVIDER_MOCK, PROVIDER_DETECTOR}:
+        raise RuntimeError(
+            "PRODUCTION ENVIRONMENT SAFETY VIOLATION: "
+            "Mock inference provider is strictly prohibited in production. "
+            "Production must use a real inference provider (e.g. zerogpu)."
+        )
+
     if name == PROVIDER_ZEROGPU:
         from .zerogpu_provider import ZeroGPUInferenceProvider
 
-        source = os.environ if env is None else env
+        space_url = (source.get("HF_ZERO_GPU_SPACE") or "").strip()
+        if not space_url:
+            raise RuntimeError(
+                "ZeroGPU configuration missing: HF_ZERO_GPU_SPACE is required for ZeroGPUInferenceProvider"
+            )
         return ZeroGPUInferenceProvider(
-            space_url=source.get("HF_ZERO_GPU_SPACE", ""),
+            space_url=space_url,
             hf_token=source.get("HF_TOKEN") or None,
         )
+
+    if name in {PROVIDER_MOCK, PROVIDER_DETECTOR}:
+        from .inference_provider import MockInferenceProvider
+
+        return MockInferenceProvider()
+
     if name == PROVIDER_LOCAL:
         from .local_provider import LocalInferenceProvider
 
         return LocalInferenceProvider(env=env)
+
     raise ValueError(
-        f"Unknown INFERENCE_PROVIDER '{name}'. "
-        f"Expected one of: {PROVIDER_DETECTOR}, {PROVIDER_ZEROGPU}, {PROVIDER_LOCAL}."
-    )
+        f"Unknown INFERENCE_PROVIDER / VOICETRUST_DETECTOR_MODE '{name}'. "
+        f"Expected one of: {PROVIDER_ZEROGPU}, {PROVIDER_LOCAL}, {PROVIDER_REAL}, {PROVIDER_MOCK}."
+    )

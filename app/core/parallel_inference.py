@@ -124,11 +124,16 @@ async def run_window_inference(
 
     async def _anti_spoof() -> Tuple[Dict[str, Any], Optional[str]]:
         try:
-            return await _anti_spoof_lane().run(run_anti_spoof, window, timeout=timeout), None
+            res = await _anti_spoof_lane().run(run_anti_spoof, window, timeout=timeout)
+            if isinstance(res, dict) and res.get("acoustic_score") is None and res.get("success") is False:
+                return res, res.get("error_message") or "anti_spoof_unavailable"
+            return res, None
         except asyncio.TimeoutError:
-            return _degraded_acoustic(), f"timeout after {timeout:.1f}s"
+            msg = f"timeout after {timeout:.1f}s"
+            return _degraded_acoustic(msg), msg
         except Exception as exc:
-            return _degraded_acoustic(), f"{exc.__class__.__name__}: {exc}"
+            msg = f"{exc.__class__.__name__}: {exc}"
+            return _degraded_acoustic(msg), msg
 
     async def _asr() -> Tuple[Optional[str], Optional[str]]:
         if run_asr is None:
@@ -164,8 +169,14 @@ async def run_window_inference(
     return acoustic_result, transcript, speaker_match, degraded
 
 
-def _degraded_acoustic() -> Dict[str, Any]:
+def _degraded_acoustic(reason: str = "anti_spoof_unavailable") -> Dict[str, Any]:
     return {
-        "acoustic_score": 0.5,  # uninformative prior; fusion adds a penalty
-        "details": {"mode": "degraded", "warning": "anti_spoof_unavailable"},
+        "acoustic_score": None,  # explicit unavailable score -- NEVER a fake 0.5
+        "success": False,
+        "inference_available": False,
+        "detector_status": "unavailable",
+        "error_code": "INFERENCE_UNAVAILABLE",
+        "error_message": reason,
+        "details": {"mode": "degraded", "warning": reason},
     }
+

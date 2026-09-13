@@ -52,7 +52,7 @@ class RiskEvent(Base):
     event_id = Column(Integer, primary_key=True, autoincrement=True)
     call_id = Column(String, ForeignKey("sessions.call_id"), nullable=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    acoustic_score = Column(Float, nullable=False)
+    acoustic_score = Column(Float, nullable=True)
     intent_score = Column(Float, nullable=False)
     combined_risk_score = Column(Integer, nullable=False)
     triggered_rule = Column(Text, nullable=True)

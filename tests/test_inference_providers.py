@@ -62,11 +62,18 @@ def test_backward_compatible_positional_construction() -> None:
 # ---------------------------------------------------------------------------
 # 2. Factory / provider selection
 # ---------------------------------------------------------------------------
-def test_default_provider_preserves_current_behaviour() -> None:
-    # Default (no env) MUST keep today's production behaviour.
-    with mock.patch.dict(os.environ, {}, clear=True):
-        assert provider_factory.get_configured_provider_name({}) == "detector"
+def test_default_provider_defaults_to_zerogpu() -> None:
+    # Default (no env) MUST default to zerogpu (production real path).
+    with mock.patch.dict(os.environ, {"HF_ZERO_GPU_SPACE": "https://huggingface.co/spaces/test/space"}, clear=True):
+        assert provider_factory.get_configured_provider_name({}) == "zerogpu"
         p = provider_factory.get_inference_provider({})
+        assert isinstance(p, ZeroGPUInferenceProvider)
+
+
+def test_explicit_mock_provider_in_development() -> None:
+    with mock.patch.dict(os.environ, {"ENVIRONMENT": "development", "INFERENCE_PROVIDER": "mock"}, clear=True):
+        assert provider_factory.get_configured_provider_name({"INFERENCE_PROVIDER": "mock"}) == "mock"
+        p = provider_factory.get_inference_provider({"INFERENCE_PROVIDER": "mock"})
         assert isinstance(p, MockInferenceProvider)
 
 
@@ -77,7 +84,7 @@ def test_default_provider_preserves_current_behaviour() -> None:
         ("local", "local"),
         ("kaggle", "local"),  # documented alias
         ("LOCAL", "local"),
-        ("detector", "detector"),
+        ("mock", "mock"),
     ],
 )
 def test_provider_switching(value: str, expected: str) -> None:
@@ -88,7 +95,8 @@ def test_provider_switching(value: str, expected: str) -> None:
 
 def test_unknown_provider_raises() -> None:
     with pytest.raises(ValueError):
-        provider_factory.get_inference_provider({"INFERENCE_PROVIDER": "kaggle-prod"})
+        provider_factory.get_inference_provider({"INFERENCE_PROVIDER": "unknown-provider"})
+
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +175,8 @@ def _zero_provider_with(predict_return, api_name_capture: dict) -> ZeroGPUInfere
             "https://huggingface.co/spaces/devanshshar01/satyavoice-gpu",
             hf_token=None,
         )
+        # Initialize _client immediately for mocking
+        p._client = mock.MagicMock()
 
     def _predict(audio, api_name=None):
         api_name_capture["api_name"] = api_name
@@ -174,7 +184,7 @@ def _zero_provider_with(predict_return, api_name_capture: dict) -> ZeroGPUInfere
             raise predict_return
         return predict_return
 
-    p.client.predict = _predict
+    p._client.predict = _predict
     return p
 
 
@@ -201,11 +211,14 @@ def test_zerogpu_provider_structured_error_mapping() -> None:
     assert r.error_code == "INFERENCE_UNAVAILABLE"
 
 
-def test_zerogpu_provider_transport_failure_raises_not_fabricates() -> None:
+def test_zerogpu_provider_transport_failure_returns_failure_result() -> None:
     captured: dict = {}
     p = _zero_provider_with(RuntimeError("connection refused"), captured)
-    with pytest.raises(RuntimeError):
-        asyncio.run(p.infer_audio_window(WINDOW))
+    r = asyncio.run(p.infer_audio_window(WINDOW))
+    assert r.success is False
+    assert r.spoof_probability is None  # NEVER a fake score
+    assert r.error_code == "INFERENCE_UNAVAILABLE"
+
 
 
 # ---------------------------------------------------------------------------
