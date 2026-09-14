@@ -5,37 +5,37 @@ export default {
     extend: {
       colors: {
         ink: {
-          950: "#080b0e",
-          900: "#0d1217",
-          800: "#151c23",
-          700: "#202a33",
-          600: "#2d3944",
-          500: "#42515d",
+          950: "#000000",
+          900: "#000000",
+          800: "#0a0a0a",
+          700: "#1c1c1c",
+          600: "#2a2a2a",
+          500: "#3f3f3f",
         },
         paper: {
-          DEFAULT: "#edf1f3",
-          dim: "#c7d0d6",
+          DEFAULT: "#fafafa",
+          dim: "#d4d4d4",
         },
         mute: {
-          DEFAULT: "#8b99a3",
-          dim: "#64727c",
+          DEFAULT: "#a3a3a3",
+          dim: "#737373",
         },
         signal: {
-          DEFAULT: "#8bb6c8",
-          dim: "#5f8798",
-          bg: "rgba(139,182,200,0.10)",
+          DEFAULT: "#e5e5e5",
+          dim: "#a3a3a3",
+          bg: "rgba(255,255,255,0.06)",
         },
         safe: {
-          DEFAULT: "#78b79a",
-          bg: "rgba(120,183,154,0.10)",
+          DEFAULT: "#7fb694",
+          bg: "rgba(127,182,148,0.08)",
         },
         warn: {
-          DEFAULT: "#d5a766",
-          bg: "rgba(213,167,102,0.10)",
+          DEFAULT: "#cfa86b",
+          bg: "rgba(207,168,107,0.08)",
         },
         danger: {
-          DEFAULT: "#db817b",
-          bg: "rgba(219,129,123,0.12)",
+          DEFAULT: "#d08580",
+          bg: "rgba(208,133,128,0.10)",
         },
       },
       fontFamily: {
@@ -44,8 +44,8 @@ export default {
       },
       boxShadow: {
         none: "none",
-        panel: "0 16px 42px rgba(0,0,0,0.18)",
-        signal: "0 0 0 1px rgba(139,182,200,0.12), 0 10px 28px rgba(0,0,0,0.16)",
+        panel: "0 16px 42px rgba(0,0,0,0.45)",
+        signal: "none",
       },
       keyframes: {
         sweep: {
