@@ -46,10 +46,10 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
               SatyaVoice
             </div>
             <div className="mt-16 max-w-xl lg:mt-24">
-              <h1 className="text-3xl font-normal leading-tight tracking-tight text-neutral-100 sm:text-4xl">
+              <h1 className="text-4xl font-normal leading-tight tracking-tight text-neutral-100 sm:text-5xl">
                 Stop an impersonation attempt before money moves.
               </h1>
-              <p className="mt-5 max-w-md text-sm leading-6 text-neutral-500">
+              <p className="mt-5 max-w-md text-base leading-7 text-neutral-500">
                 SatyaVoice scores acoustic and conversational signals while a call is live, then
                 pauses sensitive actions when the evidence crosses a risk threshold.
               </p>
@@ -62,14 +62,14 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
               ].map(([number, title, description]) => (
                 <div key={number} className="border-t border-neutral-900 pt-3">
                   <p className="font-mono text-xs text-neutral-600">{number}</p>
-                  <p className="mt-2 text-sm text-neutral-300">{title}</p>
-                  <p className="mt-1 text-xs leading-5 text-neutral-600">{description}</p>
+                  <p className="mt-2 text-base text-neutral-300">{title}</p>
+                  <p className="mt-1 text-sm leading-6 text-neutral-600">{description}</p>
                 </div>
               ))}
             </div>
           </div>
           <div className="relative mt-16 text-xs text-neutral-700">
-            Demo environment · metadata only · audio is never stored
+            Metadata only · audio is never stored
           </div>
         </section>
 
@@ -82,13 +82,13 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
             className="w-full max-w-lg"
           >
             <div>
-              <h2 className="text-lg font-normal tracking-tight text-neutral-100">Choose a monitoring mode</h2>
+              <h2 className="text-xl font-normal tracking-tight text-neutral-100">Choose a monitoring mode</h2>
               <p className="mt-2 max-w-md text-sm leading-6 text-neutral-500">
                 Connect live audio for real monitoring with the production-ready pipeline options below.
               </p>
             </div>
 
-            <div className="mt-8 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-600">Monitoring input</div>
+            <div className="mt-8 text-xs font-medium uppercase tracking-[0.16em] text-neutral-600">Monitoring input</div>
             <div className="mt-3 space-y-2">
               {AUDIO_OPTIONS.map(({ mode, label, description, icon: Icon }) => (
                 <button
@@ -106,7 +106,7 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center justify-between gap-3">
-                      <span className={`text-sm ${audioMode === mode ? "text-neutral-100" : "text-neutral-400"}`}>{label}</span>
+                      <span className={`text-base ${audioMode === mode ? "text-neutral-100" : "text-neutral-400"}`}>{label}</span>
                       {audioMode === mode && <Check size={14} className="shrink-0 text-neutral-300" strokeWidth={1.5} />}
                     </span>
                     <span className="mt-1 block text-xs leading-5 text-neutral-600">{description}</span>
@@ -126,7 +126,7 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
               </div>
             </div>
 
-            {error && <p role="alert" className="mt-4 border border-neutral-800 px-3 py-3 text-xs leading-5 text-neutral-400">{error}</p>}
+            {error && <p role="alert" className="mt-4 border border-neutral-800 px-3 py-3 text-sm leading-6 text-neutral-400">{error}</p>}
 
             <button type="submit" disabled={connecting || !callerId.trim() || !recipientId.trim()} className="mt-6 flex w-full items-center justify-center gap-2 border border-neutral-300 bg-white px-4 py-3 text-sm font-medium text-black transition-colors hover:bg-neutral-200 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-neutral-950 disabled:text-neutral-600">
               {connecting ? "Opening secure monitor..." : "Start monitored call"}

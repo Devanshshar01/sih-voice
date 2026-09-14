@@ -47,7 +47,7 @@ export interface ForensicsExportReport {
   technical_integrity_note: string;
 }
 
-const DEMO_SIGNING_KEY = "satyavoice-local-demo-signing-key";
+const LOCAL_SIGNING_KEY = "satyavoice-local-signing-key";
 const textEncoder = new TextEncoder();
 
 const compactJson = (value: Record<string, unknown>) => JSON.stringify(value).replace(/\s+/g, " ");
@@ -69,7 +69,7 @@ async function sha256Hex(value: string): Promise<string> {
 
 async function buildPackageSignature(reportWithoutSignature: Omit<ForensicsExportReport, "package_signature">): Promise<string> {
   const payload = JSON.stringify(reportWithoutSignature);
-  return sha256Hex(`${DEMO_SIGNING_KEY}:${payload}`);
+  return sha256Hex(`${LOCAL_SIGNING_KEY}:${payload}`);
 }
 
 export async function buildTechnicalEvidenceReport({
@@ -151,7 +151,7 @@ export async function buildTechnicalEvidenceReport({
     model_version_metadata: {
       app_name: "SatyaVoice",
       app_version: "0.1.0",
-      detector_mode: modelVersionMetadata?.detector_mode ?? "demo",
+      detector_mode: modelVersionMetadata?.detector_mode ?? "unknown",
       audio_pipeline: modelVersionMetadata?.audio_pipeline ?? "WebSocket PCM + sliding windows",
       telemetry_window_count: telemetryHistory.length,
       generated_at: exportedAt,
@@ -160,7 +160,7 @@ export async function buildTechnicalEvidenceReport({
     policy_state_transitions: policyStateTransitions,
     analysis_windows: analysisWindows,
     technical_integrity_note:
-      "This is a technical integrity evidence package for local/demo review. It is not a legal certification and does not establish IT Act §65B admissibility; any legal certification requires a human/legal process.",
+      "This is a technical integrity evidence package for local analyst review. It is not a legal certification and does not establish IT Act §65B admissibility; any legal certification requires a human/legal process.",
   };
 
   const evidenceHash = await sha256Hex(JSON.stringify(reportWithoutSignature));

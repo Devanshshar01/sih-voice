@@ -49,8 +49,8 @@ export default function Spectrograph({ analyser, status }: SpectrographProps) {
           values.push(freqData[i * step] / 255);
         }
       } else {
-        // Demo mode: a deterministic, non-random-looking trace whose
-        // roughness scales with the current risk status.
+        // No analyser connected: a deterministic idle trace whose roughness
+        // scales with the current risk status (never random noise).
         phaseRef.current += 0.09;
         for (let i = 0; i < BAR_COUNT; i++) {
           const base = 0.22 + 0.18 * Math.sin(phaseRef.current + i * 0.35);

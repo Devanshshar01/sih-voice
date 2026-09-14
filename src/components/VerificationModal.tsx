@@ -31,7 +31,7 @@ export default function VerificationModal({
       )
     : null;
   const expired = remaining === 0;
-  const showCodeEntry = verification.demoCode && !expired;
+  const showCodeEntry = verification.deliveredCode && !expired;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/80 p-4 backdrop-blur-sm">
@@ -69,9 +69,9 @@ export default function VerificationModal({
           ) : (
             <>
               <div className="mt-4 border border-ink-600 bg-ink-900 px-3 py-2">
-                <p className="text-xs text-mute">Demo delivery — sent to registered device</p>
+                <p className="text-xs text-mute">Code delivered in-app for this environment</p>
                 <p className="tabular mt-1 font-mono text-lg tracking-[0.3em] text-paper">
-                  {verification.demoCode}
+                  {verification.deliveredCode}
                 </p>
               </div>
 

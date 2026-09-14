@@ -21,7 +21,7 @@ import type {
 } from "../types";
 
 export interface VerificationState {
-  demoCode: string | null;
+  deliveredCode: string | null;
   requestedAt: number | null;
   expiresInSeconds: number;
   input: string;
@@ -31,7 +31,7 @@ export interface VerificationState {
 }
 
 const initialVerification: VerificationState = {
-  demoCode: null,
+  deliveredCode: null,
   requestedAt: null,
   expiresInSeconds: 60,
   input: "",
@@ -386,7 +386,7 @@ export function useCallSession() {
       const res = await requestVerificationCode(meta.callId);
       setVerification((prev) => ({
         ...prev,
-        demoCode: res.code,
+        deliveredCode: res.code,
         requestedAt: Date.now(),
         expiresInSeconds: res.expires_in_seconds,
         requesting: false,
