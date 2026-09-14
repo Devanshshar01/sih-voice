@@ -5,9 +5,16 @@ BaseVoiceDetector defines a stable interface so nothing downstream (the risk
 engine, the API) ever needs to change when the model changes:
 
     Phase 1 (hackathon-safe, zero heavy deps): MockVoiceDetector
-    Phase 2 (real model):                      LightweightMLVoiceDetector
+    Phase 2 (real model):                      RealAntiSpoofDetector
+    (legacy scikit-learn path kept for compatibility: LightweightMLVoiceDetector)
 
 Both return the same shape: {"acoustic_score": float 0-1, "details": {...}}.
+
+The real-mode detector is the pretrained
+``nii-yamagishilab/mms-300m-anti-deepfake`` checkpoint (MMS-300M-AntiDeepfake,
+NII/Yamagishi Lab, CC BY-NC-SA 4.0), used off-the-shelf as an acoustic speech
+deepfake/spoof detector. SatyaVoice-specific fine-tuning is a separate future
+task. acoustic_score is the FAKE probability: higher score = higher risk.
 """
 from __future__ import annotations
 
@@ -127,12 +134,31 @@ class LightweightMLVoiceDetector(BaseVoiceDetector):
 
 
 class RealAntiSpoofDetector(BaseVoiceDetector):
-    """Lazy-loaded pretrained audio deepfake classifier.
+    """Lazy-loaded acoustic speech deepfake detector.
 
-    The default checkpoint is a Wav2Vec2 classifier published on Hugging Face.
-    It is loaded only when real mode receives its first audio window so mock
-    mode remains lightweight and deterministic.
+    The active production checkpoint is
+    ``nii-yamagishilab/mms-300m-anti-deepfake`` (MMS-300M-AntiDeepfake,
+    released by NII/Yamagishi Lab under CC BY-NC-SA 4.0). It is post-trained
+    for deepfake speech detection; SatyaVoice has not fine-tuned it.
+
+    Loading follows the official model card exactly: the checkpoint is a
+    fairseq ``Wav2Vec2Model`` front-end plus a fully connected binary head,
+    packaged with ``PyTorchModelHubMixin``. It is therefore NOT loadable via
+    ``transformers.AutoModelForAudioClassification`` (its HF config declares
+    ``Wav2Vec2ForPreTraining``).
+
+    Output convention (verified from the official inference example):
+        softmax(logits)[0] == fake probability, [1] == real probability.
+
+    SatyaVoice acoustic risk convention: HIGHER acoustic_score means MORE
+    synthetic (higher risk). We therefore map fake probability ->
+    acoustic_score so that fake audio raises risk and genuine audio lowers
+    it. The model is loaded lazily exactly once and reused for every window.
     """
+
+    # Official checkpoint class ordering: index 0 = fake, index 1 = real.
+    FAKE_INDEX = 0
+    REAL_INDEX = 1
 
     def __init__(
         self,
@@ -146,7 +172,6 @@ class RealAntiSpoofDetector(BaseVoiceDetector):
         self.device = device
         self.revision = revision
         self.sample_rate = sample_rate
-        self._processor = None
         self._model = None
 
     def _ensure_model_loaded(self) -> None:
@@ -155,69 +180,171 @@ class RealAntiSpoofDetector(BaseVoiceDetector):
 
         try:
             import torch
-            from transformers import AutoModelForAudioClassification, Wav2Vec2FeatureExtractor
+            from fairseq.models.wav2vec import Wav2Vec2Config, Wav2Vec2Model
+            from huggingface_hub import PyTorchModelHubMixin
         except ImportError as exc:
             raise RuntimeError(
-                "Real detector mode requires torch and transformers. "
-                "Install requirements.txt before setting VOICETRUST_DETECTOR_MODE=real."
+                "Real detector mode requires torch, fairseq, and huggingface-hub "
+                "(see the official nii-yamagishilab/mms-300m-anti-deepfake model "
+                "card). Install requirements.txt before setting "
+                "VOICETRUST_DETECTOR_MODE=real."
             ) from exc
 
         try:
-            self._processor = Wav2Vec2FeatureExtractor.from_pretrained(
-                self.model_id, revision=self.revision
-            )
-            self._model = AutoModelForAudioClassification.from_pretrained(
+
+            class _SSLModel(torch.nn.Module):
+                """MMS-300M front-end (fairseq) as specified by the model card."""
+
+                def __init__(self) -> None:
+                    super().__init__()
+                    cfg = Wav2Vec2Config(
+                        quantize_targets=True,
+                        extractor_mode="layer_norm",
+                        layer_norm_first=True,
+                        final_dim=768,
+                        latent_temp=(2.0, 0.1, 0.999995),
+                        encoder_layerdrop=0.0,
+                        dropout_input=0.0,
+                        dropout_features=0.0,
+                        dropout=0.0,
+                        attention_dropout=0.0,
+                        conv_bias=True,
+                        encoder_layers=24,
+                        encoder_embed_dim=1024,
+                        encoder_ffn_embed_dim=4096,
+                        encoder_attention_heads=16,
+                        feature_grad_mult=1.0,
+                    )
+                    self.model = Wav2Vec2Model(cfg)
+
+                def extract_feat(self, input_data: "torch.Tensor") -> "torch.Tensor":
+                    if input_data.ndim == 3:
+                        input_data = input_data[:, :, 0]
+                    with torch.no_grad():
+                        features = self.model(
+                            input_data, mask=False, features_only=True
+                        )["x"]
+                    return features
+
+            class _DeepfakeDetector(torch.nn.Module, PyTorchModelHubMixin):
+                """SSL front-end + adaptive pooling + FC binary head."""
+
+                def __init__(self) -> None:
+                    super().__init__()
+                    self.ssl_orig_output_dim = 1024
+                    self.num_classes = 2
+                    self.m_ssl = _SSLModel()
+                    self.adap_pool1d = torch.nn.AdaptiveAvgPool1d(output_size=1)
+                    self.proj_fc = torch.nn.Linear(
+                        in_features=self.ssl_orig_output_dim,
+                        out_features=self.num_classes,
+                    )
+
+                def forward(self, wav: "torch.Tensor") -> "torch.Tensor":
+                    emb = self.m_ssl.extract_feat(wav)  # [B, T, D]
+                    emb = emb.transpose(1, 2)  # [B, D, T]
+                    pooled = self.adap_pool1d(emb).squeeze(-1)  # [B, D]
+                    return self.proj_fc(pooled)  # [B, 2]
+
+            model = _DeepfakeDetector.from_pretrained(
                 self.model_id, revision=self.revision
             ).to(self.device)
-            self._model.eval()
+            model.eval()
+            self._model = model
         except Exception as exc:
             raise RuntimeError(
                 f"Could not load real detector checkpoint '{self.model_id}': {exc}"
             ) from exc
 
-    def predict(self, audio_window: np.ndarray) -> Dict[str, Any]:
-        self._ensure_model_loaded()
-        import torch
+    def _prepare_input(self, samples: np.ndarray):
+        """Validate a 16 kHz mono float window; return (samples, warning).
 
-        samples = np.asarray(audio_window, dtype=np.float32)
+        Pure-numpy validation so malformed input never requires torch. Returns
+        (None, reason) for unusable input. Tensor conversion and the official
+        layer_norm preprocessing happen in predict() once torch is available.
+        """
+        samples = np.asarray(samples, dtype=np.float32)
         if samples.size == 0:
+            return None, "empty_audio_window"
+
+        warning = None
+        finite = samples[np.isfinite(samples)]
+        if finite.size != samples.size:
+            warning = "non_finite_samples_removed"
+            samples = finite
+        if samples.size == 0:
+            return None, "all_non_finite_samples"
+
+        if warning is None and float(np.max(np.abs(samples))) > 8.0:
+            warning = "unusual_amplitude_range"
+            samples = np.clip(samples, -1.0, 1.0)
+
+        return samples, warning
+
+    def predict(self, audio_window: np.ndarray) -> Dict[str, Any]:
+        import time
+
+        started = time.perf_counter()
+        samples, warning = self._prepare_input(audio_window)
+        if samples is None:
+            # Degraded result: neutral score with explicit warning, never a
+            # confident "genuine" verdict.
             return {
                 "acoustic_score": 0.5,
                 "details": {
                     "mode": "real",
                     "model": self.model_id,
-                    "warning": "empty_audio_window",
+                    "status": "degraded",
+                    "warning": warning,
                 },
             }
 
-        inputs = self._processor(
-            samples,
-            sampling_rate=self.sample_rate,
-            return_tensors="pt",
-            padding=True,
-        )
-        inputs = {key: value.to(self.device) for key, value in inputs.items()}
-        with torch.inference_mode():
-            logits = self._model(**inputs).logits
-            probabilities = torch.softmax(logits, dim=-1)[0]
+        try:
+            import torch
 
-        labels = getattr(self._model.config, "id2label", {})
-        synthetic_index = next(
-            (index for index, label in labels.items() if "ai" in label.lower() or "fake" in label.lower() or "spoof" in label.lower()),
-            0,
-        )
-        score = float(probabilities[int(synthetic_index)].item())
-        label = labels.get(int(torch.argmax(probabilities).item()), "unknown")
+            self._ensure_model_loaded()
+            waveform = torch.from_numpy(np.ascontiguousarray(samples)).to(self.device)
+            # Official preprocessing: per-waveform layer normalization.
+            waveform = torch.nn.functional.layer_norm(waveform, waveform.shape)
+            with torch.inference_mode():
+                logits = self._model(waveform.unsqueeze(0))
+                probabilities = torch.softmax(logits, dim=-1)[0]
+
+            fake_probability = float(probabilities[self.FAKE_INDEX].item())
+            real_probability = float(probabilities[self.REAL_INDEX].item())
+            predicted_label = (
+                "fake" if fake_probability >= real_probability else "real"
+            )
+        except Exception as exc:
+            # Degraded mode (including model-load failure): do not crash the
+            # stream and do not fake confidence.
+            return {
+                "acoustic_score": 0.5,
+                "details": {
+                    "mode": "real",
+                    "model": self.model_id,
+                    "status": "degraded",
+                    "error": f"{type(exc).__name__}: {exc}",
+                },
+            }
+
+        latency_ms = round((time.perf_counter() - started) * 1000.0, 2)
+        details: Dict[str, Any] = {
+            "mode": "real",
+            "model": self.model_id,
+            "revision": self.revision,
+            "predicted_label": predicted_label,
+            "fake_probability": round(fake_probability, 4),
+            "real_probability": round(real_probability, 4),
+            "inference_latency_ms": latency_ms,
+            "sample_rate": self.sample_rate,
+            "status": "ok",
+        }
+        if warning:
+            details["warning"] = warning
         return {
-            "acoustic_score": round(score, 4),
-            "details": {
-                "mode": "real",
-                "model": self.model_id,
-                "revision": self.revision,
-                "predicted_label": label,
-                "labels": labels,
-                "sample_rate": self.sample_rate,
-            },
+            "acoustic_score": round(fake_probability, 4),
+            "details": details,
         }
 
 
@@ -262,7 +389,7 @@ class ZeroGPUVoiceDetectorAdapter(BaseVoiceDetector):
 def get_detector(
     mode: str,
     model_path: Optional[str] = None,
-    model_id: str = "Hemgg/Deepfake-audio-detection",
+    model_id: str = "nii-yamagishilab/mms-300m-anti-deepfake",
     device: str = "cpu",
     revision: str = "main",
 ) -> BaseVoiceDetector:

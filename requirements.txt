@@ -18,8 +18,21 @@ websockets>=12.0      # used by scripts/demo_client.py (real WS client)
 # reported as unsupported until one is installed.
 
 # --- Real detector runtime ---
+# The active acoustic deepfake detector (nii-yamagishilab/mms-300m-anti-deepfake)
+# is a fairseq Wav2Vec2 front-end + FC head packaged with
+# PyTorchModelHubMixin. Versions follow the official model card; fairseq
+# 0.12.2 is pinned because it is the version the checkpoint was released
+# with. Known caveat: fairseq 0.12.2 predates NumPy 2; if the fairseq import
+# fails under NumPy 2, pin numpy<2 (this does not affect mock mode).
+# fairseq is only needed when VOICETRUST_DETECTOR_MODE=real.
 torch>=2.2
 transformers>=4.39,<5
+fairseq==0.12.2
+safetensors>=0.5,<0.6
+soundfile>=0.12,<0.14
+huggingface-hub>=0.31,<1
+hydra-core==1.0.7
+omegaconf==2.0.6
 protobuf>=4.25
 faster-whisper>=1.1,<2
 silero-vad>=6.2,<7

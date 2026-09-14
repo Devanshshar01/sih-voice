@@ -88,14 +88,20 @@ def test_explicit_mock_provider_in_development() -> None:
     ],
 )
 def test_provider_switching(value: str, expected: str) -> None:
-    assert provider_factory.get_configured_provider_name(
-        {"INFERENCE_PROVIDER": value}
-    ) == expected
+    # clear=True: other test modules set VOICETRUST_DETECTOR_MODE=mock at
+    # import time; the factory prioritizes it over INFERENCE_PROVIDER, so the
+    # leaked value would break these parametrized cases.
+    with mock.patch.dict(os.environ, {}, clear=True):
+        assert provider_factory.get_configured_provider_name(
+            {"INFERENCE_PROVIDER": value}
+        ) == expected
 
 
 def test_unknown_provider_raises() -> None:
-    with pytest.raises(ValueError):
-        provider_factory.get_inference_provider({"INFERENCE_PROVIDER": "unknown-provider"})
+    # clear=True: isolate from VOICETRUST_DETECTOR_MODE leaked by other tests.
+    with mock.patch.dict(os.environ, {}, clear=True):
+        with pytest.raises(ValueError):
+            provider_factory.get_inference_provider({"INFERENCE_PROVIDER": "unknown-provider"})
 
 
 

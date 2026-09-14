@@ -175,15 +175,15 @@ and must be benchmarked on target hardware.
 
 The presentation stack for SatyaVoice is:
 
-- Anti-spoofing: fine-tuned Wav2Vec2-XLS-R (300M)
+- Anti-spoofing: `nii-yamagishilab/mms-300m-anti-deepfake`
+  (MMS-300M-AntiDeepfake, used off-the-shelf; fine-tuning is future work)
 - ASR: faster-whisper small
 - Speaker embedding: ECAPA-TDNN
 - Voice activity: Silero VAD
 - Dataset: IndicSpoof v0
 
 The current codebase now reflects that target on the configuration and runtime
-contract level, while keeping the tuned detector checkpoint itself as a future
-handoff item.
+contract level, while keeping detector fine-tuning as a future handoff item.
 
 ## Detector modes
 
@@ -194,11 +194,13 @@ returns:
   deployment preparation; supports a `force_acoustic_score` hook over the
   WebSocket so the demo can trigger cloned-voice scenarios without depending
   on a live microphone.
-- `real` — the runtime is prepared to load a real audio anti-spoof checkpoint.
-  The target production stack for the presentation is a fine-tuned
-  Wav2Vec2-XLS-R (300M) classifier. Until that tuned checkpoint is available,
-  the current code still uses the existing default public model value as a
-  placeholder and should not be treated as the final production detector.
+- `real` — loads the active production acoustic deepfake detector:
+  the pretrained MMS-300M-AntiDeepfake checkpoint
+  (`nii-yamagishilab/mms-300m-anti-deepfake`) via the official fairseq +
+  `PyTorchModelHubMixin` loading path (see `docs/model-card.md`). It is used
+  off-the-shelf as an acoustic speech deepfake/spoof detector and returns
+  fake/real probabilities; the fake probability maps to `acoustic_score`
+  (higher = higher risk). SatyaVoice-specific fine-tuning is a future task.
 - `ml` — legacy classical feature extraction + a trained scikit-learn
   classifier, retained for compatibility but not part of the presentation
   target stack.

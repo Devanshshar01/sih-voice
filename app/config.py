@@ -188,17 +188,20 @@ IS_PRODUCTION = ENVIRONMENT in {"production", "prod"}
 
 # ---- Detector selection ----
 # Canonical production architecture target stack: Hugging Face ZeroGPU Space
-# running fine-tuned Wav2Vec2-XLS-R (300M) + ECAPA-TDNN.
+# running the MMS-300M-AntiDeepfake detector + ECAPA-TDNN.
 # Default mode is "zerogpu" (real production path). "mock" mode requires an
 # explicit opt-in (VOICETRUST_DETECTOR_MODE=mock) and is forbidden in production.
-# Note: The current default XLS-R checkpoint remains facebook/wav2vec2-xls-r-300m
-# (base model); fine-tuning is conducted separately on Kaggle GPU.
+# Active acoustic deepfake checkpoint (real in-process mode):
+# nii-yamagishilab/mms-300m-anti-deepfake — fairseq Wav2Vec2 front-end + FC
+# binary head, loaded via PyTorchModelHubMixin (NOT a transformers
+# AutoModelForAudioClassification checkpoint). Used off-the-shelf; fine-tuning
+# is a future task. See docs/model-card.md.
 VOICE_DETECTOR_MODE = os.getenv(
     "VOICETRUST_DETECTOR_MODE",
     os.getenv("INFERENCE_PROVIDER", "zerogpu")
 ).strip().lower()
 INFERENCE_PROVIDER = VOICE_DETECTOR_MODE
-VOICE_MODEL_ID = os.getenv("VOICETRUST_MODEL_ID", "Hemgg/Deepfake-audio-detection")
+VOICE_MODEL_ID = os.getenv("VOICETRUST_MODEL_ID", "nii-yamagishilab/mms-300m-anti-deepfake")
 VOICE_MODEL_PATH = os.getenv("VOICETRUST_MODEL_PATH", "")
 VOICE_MODEL_DEVICE = os.getenv("VOICETRUST_MODEL_DEVICE", "cpu")
 VOICE_MODEL_REVISION = os.getenv("VOICETRUST_MODEL_REVISION", "main")

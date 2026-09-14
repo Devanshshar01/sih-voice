@@ -10,10 +10,13 @@ Updated for Phase 1 real detector integration.
 - Codec normalization layer: PCM float32/s16le and G.711 μ-law/A-law decode natively; Opus requires opuslib + native libopus; AMR-NB/WB require a native AMR binding and are reported as unsupported until installed
 - Silero VAD preprocessing stage (enabled by default) with per-window speech-coverage telemetry and a documented energy-threshold fallback
 - Mock detector behind `VOICETRUST_DETECTOR_MODE=mock`
-- Current real-mode placeholder detector loading for `Hemgg/Deepfake-audio-detection`
-- Target-stack runtime contract alignment for the presentation: fine-tuned
-  Wav2Vec2-XLS-R (300M) anti-spoofing, faster-whisper `small`, Silero VAD,
-  and ECAPA-TDNN speaker matching
+- Active real-mode acoustic deepfake detector:
+  `nii-yamagishilab/mms-300m-anti-deepfake` (MMS-300M-AntiDeepfake,
+  NII/Yamagishi Lab, CC BY-NC-SA 4.0), loaded via the official fairseq +
+  PyTorchModelHubMixin path, used off-the-shelf (not fine-tuned by
+  SatyaVoice; fine-tuning is a future task)
+- Target-stack runtime contract alignment for the presentation:
+  faster-whisper `small`, Silero VAD, and ECAPA-TDNN speaker matching
 - Existing acoustic + intent risk fusion
 - `ALLOW`, `WARN`, and `LOCK_VERIFY` policy states
 - Server-side sensitive-action blocking
@@ -27,11 +30,18 @@ Updated for Phase 1 real detector integration.
 
 ## Safe wording for the real detector
 
-> SatyaVoice can run a pretrained Wav2Vec2 audio-classification checkpoint in real mode. The checkpoint is Apache-2.0 and its publisher reports 95.45% accuracy on its own evaluation set. SatyaVoice has not independently benchmarked this model on Indic languages, telephony audio, or unseen attacks yet.
+> SatyaVoice runs the pretrained MMS-300M-AntiDeepfake checkpoint
+> (`nii-yamagishilab/mms-300m-anti-deepfake`) off-the-shelf as its acoustic
+> speech deepfake/spoof detector. The model was post-trained for deepfake
+> detection by NII/Yamagishi Lab and is used here under its CC BY-NC-SA 4.0
+> license for research/educational purposes. SatyaVoice has not fine-tuned it
+> and has not independently benchmarked it on Indic languages, telephony
+> audio, or unseen attacks yet.
 
 ## Not safe to claim yet
 
-- Wav2Vec2-XLS-R specifically
+- SatyaVoice fine-tuned or trained the MMS-300M-AntiDeepfake model
+- Indian-language performance verified for the detector
 - AASIST checkpoint running in SatyaVoice
 - IndicSynth-trained performance
 - Indian-language production accuracy
@@ -39,7 +49,7 @@ Updated for Phase 1 real detector integration.
 - Sub-500 ms real-model end-to-end latency
 - Opus or AMR decode in the default runtime (capability-gated with documented dependencies)
 - ECAPA-TDNN speaker matching or cross-session vault
-- On-device WebAssembly inference
+- On-device WebAssembly inference matching the cloud detector
 - Android SDK
 - PostgreSQL, Redis, or Celery production infrastructure
 - Technical integrity evidence package for local/demo review only; legal admissibility certification remains a human/legal process
