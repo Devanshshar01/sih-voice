@@ -91,14 +91,23 @@ def readiness_check():
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Detector configuration invalid: {e}")
 
-    # Check database
+    # Check database, but do not fail readiness if the DB is temporarily
+    # unavailable. The stream and call endpoints already degrade gracefully
+    # when persistence is unavailable, so readiness should reflect service
+    # health rather than forcing a hard crash on an optional backing store.
+    db_status = "not_checked"
     try:
         db = SessionLocal()
         db.execute(text("SELECT 1"))
         db.close()
+        db_status = "available"
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
-    
+        db_status = "unavailable"
+        logging.getLogger("satyavoice").warning(
+            "Database probe failed during readiness check; continuing in degraded mode. %s",
+            e,
+        )
+
     # Check Redis if configured for session store, but do not fail readiness
     # when Redis is unavailable. The session manager already falls back to
     # in-memory sessions, so the backend should continue serving traffic.
@@ -124,6 +133,7 @@ def readiness_check():
         "detector_mode": config.VOICE_DETECTOR_MODE,
         "mock_disabled": config.IS_PRODUCTION or config.VOICE_DETECTOR_MODE != "mock",
         "session_store_backend": config.SESSION_STORE_BACKEND,
+        "database_status": db_status,
         "redis_status": redis_status,
     }
 
