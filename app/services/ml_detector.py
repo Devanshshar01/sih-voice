@@ -5,7 +5,7 @@ BaseVoiceDetector defines a stable interface so nothing downstream (the risk
 engine, the API) ever needs to change when the model changes:
 
     Phase 1 (hackathon-safe, zero heavy deps): MockVoiceDetector
-    Phase 2 (real model):                      LightweightMLVoiceDetector
+    Phase 2 (real model):                      MMS-300M-AntiDeepfake provider
 
 Both return the same shape: {"acoustic_score": float 0-1, "details": {...}}.
 """
@@ -17,6 +17,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
+
+from app import config
 
 
 class BaseVoiceDetector(ABC):
@@ -127,11 +129,17 @@ class LightweightMLVoiceDetector(BaseVoiceDetector):
 
 
 class RealAntiSpoofDetector(BaseVoiceDetector):
-    """Lazy-loaded pretrained audio deepfake classifier.
+    """Lazy-loaded production anti-spoof detector.
 
-    The default checkpoint is a Wav2Vec2 classifier published on Hugging Face.
-    It is loaded only when real mode receives its first audio window so mock
-    mode remains lightweight and deterministic.
+    Active checkpoint (since the MMS migration): the official
+    nii-yamagishilab/mms-300m-anti-deepfake model, loaded through the
+    fairseq/PyTorchModelHubMixin path its model card documents — NOT
+    AutoModelForAudioClassification, which cannot read this checkpoint.
+
+    Implementation lives in app.services.anti_spoof_provider (single load,
+    eval mode, torch.inference_mode(), fake/real probability normalization).
+    The old facebook/wav2vec2-xls-r-300m / Hemgg placeholder path has been
+    removed from the production real-mode provider entirely.
     """
 
     def __init__(
@@ -142,83 +150,35 @@ class RealAntiSpoofDetector(BaseVoiceDetector):
         revision: str = "main",
         sample_rate: int = 16000,
     ):
-        self.model_id = model_path or model_id
-        self.device = device
-        self.revision = revision
-        self.sample_rate = sample_rate
-        self._processor = None
-        self._model = None
+        from app.services.anti_spoof_provider import MMSAntiDeepfakeDetector
 
-    def _ensure_model_loaded(self) -> None:
-        if self._model is not None:
-            return
+        self._impl = MMSAntiDeepfakeDetector(
+            model_id=model_id,
+            model_path=model_path,
+            device=device,
+            revision=revision,
+            sample_rate=sample_rate,
+        )
 
-        try:
-            import torch
-            from transformers import AutoModelForAudioClassification, Wav2Vec2FeatureExtractor
-        except ImportError as exc:
-            raise RuntimeError(
-                "Real detector mode requires torch and transformers. "
-                "Install requirements.txt before setting VOICETRUST_DETECTOR_MODE=real."
-            ) from exc
-
-        try:
-            self._processor = Wav2Vec2FeatureExtractor.from_pretrained(
-                self.model_id, revision=self.revision
-            )
-            self._model = AutoModelForAudioClassification.from_pretrained(
-                self.model_id, revision=self.revision
-            ).to(self.device)
-            self._model.eval()
-        except Exception as exc:
-            raise RuntimeError(
-                f"Could not load real detector checkpoint '{self.model_id}': {exc}"
-            ) from exc
-
+    # Delegate everything to the MMS provider so the detector contract
+    # (predict -> {'acoustic_score', 'details'}) is unchanged downstream.
     def predict(self, audio_window: np.ndarray) -> Dict[str, Any]:
-        self._ensure_model_loaded()
-        import torch
+        return self._impl.predict(audio_window)
 
-        samples = np.asarray(audio_window, dtype=np.float32)
-        if samples.size == 0:
-            return {
-                "acoustic_score": 0.5,
-                "details": {
-                    "mode": "real",
-                    "model": self.model_id,
-                    "warning": "empty_audio_window",
-                },
-            }
+    def infer(self, audio_window: np.ndarray) -> Dict[str, Any]:
+        return self._impl.infer(audio_window)
 
-        inputs = self._processor(
-            samples,
-            sampling_rate=self.sample_rate,
-            return_tensors="pt",
-            padding=True,
-        )
-        inputs = {key: value.to(self.device) for key, value in inputs.items()}
-        with torch.inference_mode():
-            logits = self._model(**inputs).logits
-            probabilities = torch.softmax(logits, dim=-1)[0]
+    @property
+    def model_id(self) -> str:
+        return self._impl.model_id
 
-        labels = getattr(self._model.config, "id2label", {})
-        synthetic_index = next(
-            (index for index, label in labels.items() if "ai" in label.lower() or "fake" in label.lower() or "spoof" in label.lower()),
-            0,
-        )
-        score = float(probabilities[int(synthetic_index)].item())
-        label = labels.get(int(torch.argmax(probabilities).item()), "unknown")
-        return {
-            "acoustic_score": round(score, 4),
-            "details": {
-                "mode": "real",
-                "model": self.model_id,
-                "revision": self.revision,
-                "predicted_label": label,
-                "labels": labels,
-                "sample_rate": self.sample_rate,
-            },
-        }
+    @property
+    def loaded(self) -> bool:
+        return self._impl.loaded
+
+    @property
+    def load_error(self):
+        return self._impl.load_error
 
 
 _DETECTOR_CACHE: Dict[Tuple[str, Optional[str], str, str, str], BaseVoiceDetector] = {}
@@ -228,14 +188,18 @@ _CACHE_LOCK = threading.Lock()
 def get_detector(
     mode: str,
     model_path: Optional[str] = None,
-    model_id: str = "Hemgg/Deepfake-audio-detection",
+    model_id: str = "nii-yamagishilab/mms-300m-anti-deepfake",
     device: str = "cpu",
     revision: str = "main",
 ) -> BaseVoiceDetector:
     """Process-wide detector factory (cached singleton per configuration).
 
-    Each instance holds its own HF pipeline and GPU/CPU memory; per-call-site
-    instantiation (stream, analyze, tasks) multiplied resident model copies.
+    Modes:
+      * "real"      — in-process MMS-300M-AntiDeepfake (fairseq loading path).
+      * "remote_hf" — delegate to the hf_zero_gpu ZeroGPU Space (the only
+                      GPU-heavy component; used on the 512 MB-class web tier).
+    Each instance holds its own model/client; per-call-site instantiation
+    (stream, analyze, tasks) multiplied resident copies.
     """
     key = (mode, model_path, model_id, device, revision)
     with _CACHE_LOCK:
@@ -248,6 +212,13 @@ def get_detector(
                 model_path=model_path,
                 device=device,
                 revision=revision,
+            )
+        elif mode == "remote_hf":
+            from app.services.hf_zero_gpu_client import HFZeroGPUDetector
+
+            detector = HFZeroGPUDetector(
+                space_id=config.HF_SPACE_ID,
+                token=config.HF_TOKEN or None,
             )
         elif mode == "ml":
             detector = LightweightMLVoiceDetector(model_path=model_path)

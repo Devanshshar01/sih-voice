@@ -16,9 +16,18 @@ websockets>=12.0      # used by scripts/demo_client.py (real WS client)
 # reported as unsupported until one is installed.
 
 # --- Real detector runtime ---
+# Production anti-spoof model: nii-yamagishilab/mms-300m-anti-deepfake
+# (fairseq/PyTorchModelHubMixin loading path — see app/services/anti_spoof_provider.py).
+# NOTE: fairseq is intentionally NOT listed here — it is an older-style build
+# (numpy<2 era) that conflicts with this repo's numpy>=2 runtime. On hosts that
+# run the detector in-process, use hf_zero_gpu/requirements.txt's pinned set
+# in a SEPARATE environment, or set VOICETRUST_DETECTOR_MODE=remote_hf to
+# delegate to the ZeroGPU Space (needs only gradio_client, below).
 torch>=2.2
 transformers>=4.39,<5
 protobuf>=4.25
+# Optional: remote ZeroGPU anti-spoof provider (VOICETRUST_DETECTOR_MODE=remote_hf)
+gradio_client>=1.0,<2
 faster-whisper>=1.1,<2
 silero-vad>=6.2,<7
 

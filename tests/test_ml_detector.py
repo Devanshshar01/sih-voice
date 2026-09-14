@@ -21,13 +21,13 @@ def test_mock_detector_is_deterministic() -> None:
 
 
 def test_real_detector_is_lazy() -> None:
-    detector = get_detector("real", model_id="Hemgg/Deepfake-audio-detection")
+    detector = get_detector("real", model_id="nii-yamagishilab/mms-300m-anti-deepfake")
     assert isinstance(detector, RealAntiSpoofDetector)
-    assert detector._model is None
+    assert detector.loaded is False  # MMS provider lazy-loads on first predict
 
 
 def test_real_detector_ignores_mock_force_contract() -> None:
-    detector = get_detector("real", model_id="Hemgg/Deepfake-audio-detection")
+    detector = get_detector("real", model_id="nii-yamagishilab/mms-300m-anti-deepfake")
     assert not isinstance(detector, MockVoiceDetector)
 
 

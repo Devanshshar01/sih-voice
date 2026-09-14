@@ -1,3 +1,16 @@
+"""Export a browser ONNX anti-spoof artifact from a transformers classifier.
+
+IMPORTANT PROVENANCE NOTE (MMS migration):
+The production CLOUD detector is nii-yamagishilab/mms-300m-anti-deepfake,
+which uses a fairseq/PyTorchModelHubMixin architecture and CANNOT be loaded
+through transformers' AutoModelForAudioClassification — so it cannot be
+exported by this script as-is. The Edge/browser ONNX artifact therefore
+remains derived from a transformers-classifier checkpoint and the Edge
+telemetry must keep reporting its own model_id, never the MMS checkpoint.
+
+Set MODEL_ID below to the transformers classifier you actually want in the
+browser. Do not set it to the MMS checkpoint (it will fail to load here).
+"""
 from __future__ import annotations
 
 import json
@@ -6,6 +19,7 @@ from pathlib import Path
 import torch
 from transformers import AutoModelForAudioClassification
 
+# Edge/browser artifact source (transformers-format classifier only).
 MODEL_ID = "Hemgg/Deepfake-audio-detection"
 OUT_DIR = Path("public/models")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -46,6 +60,11 @@ metadata = {
     "labels": labels,
     "synthetic_index": synthetic_index,
     "input_length": sample_rate,
+    "note": (
+        "Edge/browser ONNX artifact — independent of the cloud MMS-300M-"
+        "AntiDeepfake detector. Model identities are reported separately "
+        "and must stay truthful in telemetry."
+    ),
 }
 (OUT_DIR / "anti_spoof.metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 

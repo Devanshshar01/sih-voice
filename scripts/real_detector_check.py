@@ -1,4 +1,9 @@
-"""Run one real-detector inference after the checkpoint is available locally."""
+"""Run one real-detector inference after the checkpoint is available locally.
+
+Active checkpoint: nii-yamagishilab/mms-300m-anti-deepfake (NII Yamagishi
+Lab, CC BY-NC-SA 4.0). Verifies the fake/real probability mapping and the
+SatyaVoice acoustic-score direction (acoustic_score == fake probability).
+"""
 import sys
 from pathlib import Path
 
@@ -20,9 +25,15 @@ def main() -> None:
     )
     result = detector.predict(np.zeros(config.SAMPLE_RATE_HZ, dtype=np.float32))
     score = result["acoustic_score"]
+    details = result["details"]
     assert 0.0 <= score <= 1.0
-    assert result["details"]["mode"] == "real"
-    print("[ok] real detector ->", result)
+    assert details["mode"] == "real"
+    assert details["model"] == "nii-yamagishilab/mms-300m-anti-deepfake"
+    # Direction contract: acoustic_score IS the fake probability.
+    assert abs(score - details["fake_probability"]) < 1e-6
+    # Probabilities are normalized: fake + real ~= 1.
+    assert abs(details["fake_probability"] + details["real_probability"] - 1.0) < 1e-3
+    print("[ok] MMS-300M-AntiDeepfake detector ->", result)
 
 
 if __name__ == "__main__":

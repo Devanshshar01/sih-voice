@@ -6,7 +6,7 @@ they run CONCURRENTLY instead of serially:
 
     4-second window
         |
-        +--> anti-spoof (Wav2Vec2 / mock)
+        +--> anti-spoof (MMS-300M-AntiDeepfake / remote ZeroGPU / mock)
         |
         +--> faster-whisper ASR          } asyncio.gather over a bounded
         |                                 } ThreadPoolExecutor (max workers

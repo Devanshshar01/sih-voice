@@ -1,113 +1,120 @@
 # SatyaVoice Detector Model Card
 
-## Target stack
+## Active production detector (acoustic anti-spoof stage)
 
-The presentation target stack for SatyaVoice is:
+- **Model:** [nii-yamagishilab/mms-300m-anti-deepfake](https://huggingface.co/nii-yamagishilab/mms-300m-anti-deepfake)
+  — "MMS-300M-AntiDeepfake"
+- **Publisher:** Yamagishi Lab, National Institute of Informatics (NII), Japan
+- **Base model:** `facebook/mms-300m` (Wav2Vec 2.0 architecture SSL front-end)
+- **Back-end:** AdaptiveAvgPool1d + fully connected binary classifier (2 classes)
+- **License:** **CC BY-NC-SA 4.0** — research/educational use only.
+  Attribution: NII Yamagishi Lab. NOT cleared for commercial deployment
+  without a separate license decision.
+- **Usage status:** off-the-shelf, post-trained checkpoint as published.
+  **SatyaVoice has NOT fine-tuned it.** Fine-tuning is a documented future
+  task. No Indian-language performance claim is made or verified.
 
-- **Anti-spoofing:** fine-tuned `Wav2Vec2-XLS-R (300M)`
-- **ASR:** faster-whisper `small`
-- **Speaker embedding:** ECAPA-TDNN
-- **VAD:** Silero VAD
+## Input / output
 
-This file documents the current placeholder detector integration only. The
-fine-tuned XLS-R 300M anti-spoof checkpoint itself is intentionally deferred
-for later handoff and is not yet wired into production as the active detector.
+- **Input:** 16 kHz mono speech, arbitrary length (SatyaVoice sends
+  canonical 4-second / 64,000-sample windows from the existing ring buffer;
+  preprocessing is `layer_norm` over the whole window, per the official
+  inference example).
+- **Output (softmax over 2 logits):** index **0 = Fake**, index **1 = Real**
+  (verified from the official model card's output formatting).
+- **SatyaVoice convention:** `acoustic_score` = `P(fake)` — higher fake
+  probability means higher fraud risk. The mapping is regression-tested
+  (`tests/test_mms_detector.py::test_acoustic_score_equals_fake_probability_not_real`,
+  `test_risk_direction_fake_probability_raises_risk`).
 
-## Current placeholder model
+## Loading path (critical)
 
-- **Model ID:** `Hemgg/Deepfake-audio-detection`
-- **Architecture:** `Wav2Vec2ForSequenceClassification`
-- **Base model:** `facebook/wav2vec2-base`
-- **Labels:** `AIVoice` and `HumanVoice`
-- **Sample rate:** 16 kHz
-- **Checkpoint format:** Safetensors
-- **License:** Apache-2.0, according to the Hugging Face model metadata
-- **Source:** https://huggingface.co/Hemgg/Deepfake-audio-detection
+The checkpoint is a fairseq-style model distributed through
+`PyTorchModelHubMixin`. It has **no `transformers` classifier head**, so
+`AutoModelForAudioClassification` **cannot** load it. The exact loading
+path used (mirroring the official model card):
 
-## Integration
-
-SatyaVoice loads the current placeholder checkpoint lazily through
-`transformers` when `VOICETRUST_DETECTOR_MODE=real`. The detector implements the
-existing `BaseVoiceDetector` contract and returns an `acoustic_score` in `[0, 1]`,
-where the score is the probability assigned to the model's `AIVoice` label.
-
-The production target is a later fine-tuned `facebook/wav2vec2-xls-r-300m`
-checkpoint that follows the same detector contract once the user completes the
-training/fine-tuning phase.
-
-Configuration:
-
-```text
-VOICETRUST_DETECTOR_MODE=real
-VOICETRUST_MODEL_ID=Hemgg/Deepfake-audio-detection
-VOICETRUST_MODEL_DEVICE=cpu
-VOICETRUST_MODEL_REVISION=main
-VOICETRUST_MODEL_PATH=
+```
+fairseq Wav2Vec2Config(quantize_targets=True, extractor_mode="layer_norm",
+    layer_norm_first=True, final_dim=768, encoder_layers=24,
+    encoder_embed_dim=1024, encoder_ffn_embed_dim=4096,
+    encoder_attention_heads=16, conv_bias=True, ...)
+-> Wav2Vec2Model front-end
+-> AdaptiveAvgPool1d(1) -> Linear(1024 -> 2)
+-> DeepfakeDetector.from_pretrained("nii-yamagishilab/mms-300m-anti-deepfake")
+-> .eval(); inference under torch.inference_mode()
 ```
 
-`VOICETRUST_MODEL_PATH` can point to a local model directory. Otherwise,
-Transformers downloads the checkpoint from Hugging Face on first inference and
-caches it locally. The checkpoint is approximately 378 MB and is intentionally
-not committed to this repository.
+Implementation: `app/services/anti_spoof_provider.py` (in-process) and
+`hf_zero_gpu/inference.py` (ZeroGPU Space). Dependencies per the official
+card: `fairseq==0.12.2`, `safetensors==0.5.3`, `soundfile==0.13.1`,
+`huggingface-hub==0.31.1` (pinned in `hf_zero_gpu/requirements.txt` only —
+fairseq conflicts with this repo's `numpy>=2` runtime, see below).
 
-## Published evaluation
+## Deployment topologies
 
-The model metadata reports **95.45% accuracy** on its self-described
-audiofolder evaluation set. This result is not independently verified by
-SatyaVoice and must not be presented as a SatyaVoice benchmark, an EER result,
-or a telephony/Indic-language result.
+| Mode | Where the model runs | Notes |
+|---|---|---|
+| `VOICETRUST_DETECTOR_MODE=real` | backend process (needs torch + fairseq in a compatible env) | full local control |
+| `VOICETRUST_DETECTOR_MODE=remote_hf` | **hf_zero_gpu ZeroGPU Space** (only GPU-heavy stage in the stack) | web tier needs only `gradio_client`; response mapped by `app/services/hf_zero_gpu_client.py` |
 
-The official AASIST repository reports ASVspoof 2019 results of 0.83% EER for
-AASIST and 0.99% EER for AASIST-L, but those are separate models and datasets;
-SatyaVoice does not currently ship an AASIST checkpoint.
+ZeroGPU efficiency rules enforced in `hf_zero_gpu/inference.py`: the model
+loads **exactly once** at Space startup (double-checked locking), stays
+GPU-resident in `eval()` mode, and every request runs under
+`torch.inference_mode()` with no per-request architecture construction.
 
-## Data and limitations
+fairseq 0.12.2 predates numpy 2 and may not co-install with this repo's
+`numpy>=2`. It is therefore pinned **only** in `hf_zero_gpu/requirements.txt`
+(Space environment); the Render backend either runs `real` mode in a
+fairseq-compatible environment or uses `remote_hf`.
 
-The Hugging Face card describes a multi-ethnic English audiofolder training and
-evaluation setup. It does not establish performance on Indian languages,
-telephony codecs, noisy contact-center audio, replay attacks, or unseen TTS
-systems. SatyaVoice has not yet measured calibration, false-positive rate,
-false-negative rate, EER, or latency for this integration.
+## Failure semantics
 
-IndicSynth is a useful future evaluation/fine-tuning dataset, but its published
-license is **CC BY-NC 4.0**, which restricts commercial use. It must not be
-used for a commercial training pipeline without a separate license decision.
-It covers 12 Indian languages and contains synthetic audio plus metadata, but
-using it here would require a separate data pipeline and evaluation protocol.
+- Empty/malformed/NaN/Inf input → sanitized or degraded
+  (`acoustic_score = 0.5`, `status: degraded_input`); the WebSocket never
+  crashes and the score is **never** presented as "genuine".
+- Inference exception → `status: degraded_output` (in-process) or the
+  stream pipeline's `anti_spoof_unavailable` degraded flag; fusion applies
+  the documented degraded-evidence penalty.
+- Space unreachable (remote mode) → `degraded_remote` with the error in
+  telemetry. Failures are never mapped to a low (benign) score.
+
+## Performance instrumentation
+
+`acoustic_score` details include `inference_latency_ms` (model call only)
+and one-time `load_ms`. The ZeroGPU path additionally reports
+`remote_inference_ms` and `remote_device`, so cloud-GPU latency stays
+separately identifiable from backend-local latency. **No end-to-end
+<500 ms claim is made for the real-model cloud path** — measure with
+`scripts/benchmark_latency.py` on the deployment host before claiming it.
+
+## Published evaluation (publisher-reported, NOT SatyaVoice benchmarks)
+
+The official card reports, for this 300M checkpoint: ADD2023 EER 7.93%,
+In-the-Wild EER 2.90%, Deepfake-Eval-2024 EER 32.84% (4 s inputs: EER
+17.15%, ROC AUC 0.90). These are the publisher's numbers on their
+protocols — SatyaVoice has not independently verified any of them, and
+none constitute an Indic-language or telephony result.
+
+## Edge/browser model identity (truthfulness)
+
+The Edge/ONNX browser artifact (`public/models/anti_spoof.onnx`, exported
+by `scripts/export_anti_spoof_onnx.py`) is derived from a
+transformers-format classifier checkpoint and is **NOT** the MMS
+checkpoint (fairseq models cannot be exported by that script). Edge
+telemetry reports the ONNX metadata's own `model_id`; cloud telemetry
+reports the MMS model. The two identities are deliberately kept separate
+and truthful.
 
 ## Intended use
 
-This integration is intended for local research, prototype evaluation, and
-risk-policy demonstration. It is not a production fraud decision service and
-must not be treated as a standalone identity or financial authorization
-mechanism.
-
-## Failure modes
-
-- Distribution shift from English training data to Indic languages
-- Telephony codec and bandwidth degradation
-- Replay and re-recording attacks
-- Unseen TTS or voice-conversion systems
-- Background noise, music, clipping, and overlapping speakers
-- Probability calibration differences between this checkpoint and SatyaVoice
-  policy thresholds
-- CPU inference latency on long or repeated windows
-
-## Reproducibility
-
-1. Install `requirements.txt` in the project virtual environment.
-2. Set `VOICETRUST_DETECTOR_MODE=real`.
-3. Run the focused detector check or start the API.
-4. Record the model ID, revision, device, input sample rate, and measured
-   latency for every experiment.
-
-No model weights or external dataset are committed to this repository.
+Research, prototype evaluation, and risk-policy demonstration. Not a
+production fraud decision service; not a standalone identity or financial
+authorization mechanism. The CC BY-NC-SA 4.0 license additionally
+restricts commercial use of the model weights.
 
 ## ASR companion component
 
-SatyaVoice optionally uses `faster-whisper` for transcription when
-`VOICETRUST_ASR_MODE=real`. The project now targets the `small` model with
-CPU `int8` compute for the presentation stack. On the development machine,
-a two-second silent window took approximately 2.89 seconds for `small`
-inference, excluding the one-time model load. These measurements are local
-CPU observations and do not establish production real-time performance.
+Unchanged by this migration: faster-whisper `small`, CPU `int8`, per the
+existing configuration (`VOICETRUST_ASR_*`). Speaker matching remains
+ECAPA-TDNN via the persistent vault.

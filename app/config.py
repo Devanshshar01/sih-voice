@@ -237,6 +237,18 @@ def _ai_mode(env_var: str, dev_default: str, production_default: str) -> str:
 VOICE_DETECTOR_MODE = _ai_mode("VOICETRUST_DETECTOR_MODE", "mock", "real")
 ASR_MODE = _ai_mode("VOICETRUST_ASR_MODE", "manual", "real")
 
+# ---- Hugging Face ZeroGPU (remote anti-spoof provider) ----
+# VOICETRUST_DETECTOR_MODE=remote_hf delegates the anti-spoof stage to the
+# hf_zero_gpu Space (the only GPU-heavy component in the stack; the web tier
+# never loads fairseq/torch). MMS-300M-AntiDeepfake runs there — the same
+# checkpoint the in-process "real" mode uses.
+HF_SPACE_ID = os.getenv("VOICETRUST_HF_SPACE_ID", "").strip()
+HF_TOKEN = os.getenv("VOICETRUST_HF_TOKEN", "").strip()
+if VOICE_DETECTOR_MODE == "remote_hf" and not HF_SPACE_ID:
+    raise RuntimeError(
+        "VOICETRUST_DETECTOR_MODE=remote_hf requires VOICETRUST_HF_SPACE_ID."
+    )
+
 # ---- Authentication (API keys per tenant) ----
 # Format: comma-separated "tenant_id:key" pairs, e.g. "acme:sk_live_x,contoso:sk_live_y".
 # An empty value disables auth (development/demo only). Production REQUIRES it:
@@ -292,12 +304,13 @@ BLOCKCHAIN_CHAIN_ID = int(os.getenv("VOICETRUST_BLOCKCHAIN_CHAIN_ID", "80002"))
 BLOCKCHAIN_GAS_LIMIT = int(os.getenv("VOICETRUST_BLOCKCHAIN_GAS_LIMIT", "300000"))
 
 # ---- Detector selection ----
-# Production target stack: a fine-tuned Wav2Vec2-XLS-R (300M) anti-spoof
-# checkpoint. Defaults are mode-aware (see the env-modes block above):
-# development/demo default to "mock"; production defaults to "real" and
-# refuses mock. Set VOICETRUST_DETECTOR_MODE=real and point VOICETRUST_MODEL_ID
-# at the fine-tuned checkpoint when it is ready.
-VOICE_MODEL_ID = os.getenv("VOICETRUST_MODEL_ID", "Hemgg/Deepfake-audio-detection")
+# Production anti-spoof checkpoint: NII Yamagishi Lab's MMS-300M-AntiDeepfake
+# (post-trained facebook/mms-300m, CC BY-NC-SA 4.0). Loaded via the fairseq/
+# PyTorchModelHubMixin path in app/services/anti_spoof_provider.py — NOT via
+# AutoModelForAudioClassification (this checkpoint has no HF classifier head).
+VOICE_MODEL_ID = os.getenv(
+    "VOICETRUST_MODEL_ID", "nii-yamagishilab/mms-300m-anti-deepfake"
+)
 VOICE_MODEL_PATH = os.getenv("VOICETRUST_MODEL_PATH", "")
 VOICE_MODEL_DEVICE = os.getenv("VOICETRUST_MODEL_DEVICE", "cpu")
 VOICE_MODEL_REVISION = os.getenv("VOICETRUST_MODEL_REVISION", "main")
