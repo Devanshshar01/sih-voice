@@ -99,18 +99,31 @@ def readiness_check():
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     
-    # Check Redis if configured for session store
+    # Check Redis if configured for session store, but do not fail readiness
+    # when Redis is unavailable. The session manager already falls back to
+    # in-memory sessions, so the backend should continue serving traffic.
+    redis_status = "not_configured"
     if config.SESSION_STORE_BACKEND == "redis":
+        logger = logging.getLogger("satyavoice")
         try:
-            r = redis.from_url(config.REDIS_URL)
-            r.ping()
+            redis_client = getattr(session_manager, "_redis_client", None)
+            if redis_client is None:
+                raise RuntimeError("Redis client not initialized")
+            redis_client.ping()
+            redis_status = "available"
         except Exception as e:
-            raise HTTPException(status_code=503, detail=f"Redis connection failed: {e}")
-    
+            redis_status = "unavailable_fallback_to_memory"
+            logger.warning(
+                "Redis session store unavailable; continuing with in-memory fallback. %s",
+                e,
+            )
+
     return {
         "status": "ready",
         "environment": config.ENVIRONMENT,
         "detector_mode": config.VOICE_DETECTOR_MODE,
         "mock_disabled": config.IS_PRODUCTION or config.VOICE_DETECTOR_MODE != "mock",
+        "session_store_backend": config.SESSION_STORE_BACKEND,
+        "redis_status": redis_status,
     }
 
