@@ -182,6 +182,18 @@ BLOCKCHAIN_PRIVATE_KEY = os.getenv("VOICETRUST_BLOCKCHAIN_PRIVATE_KEY", "")
 BLOCKCHAIN_CHAIN_ID = int(os.getenv("VOICETRUST_BLOCKCHAIN_CHAIN_ID", "80002"))
 BLOCKCHAIN_GAS_LIMIT = int(os.getenv("VOICETRUST_BLOCKCHAIN_GAS_LIMIT", "300000"))
 
+# Public base URL of the verification portal. The forensic PDF embeds a QR code
+# pointing at "{PUBLIC_VERIFY_BASE_URL}?evidence=<id>". Keep this free of PII —
+# it only ever carries an opaque evidence id, never case contents.
+PUBLIC_VERIFY_BASE_URL = os.getenv(
+    "VOICETRUST_PUBLIC_VERIFY_BASE_URL", "https://satyavoice.in/verify"
+)
+# Human-facing name of the network shown in the PDF's Blockchain Integrity block.
+BLOCKCHAIN_DISPLAY_NAME = os.getenv(
+    "VOICETRUST_BLOCKCHAIN_DISPLAY_NAME",
+    "Polygon Amoy Testnet (chainID 80002)",
+)
+
 # ---- Environment & Environment Safety Guards ----
 ENVIRONMENT = os.getenv("ENVIRONMENT", os.getenv("VOICETRUST_ENVIRONMENT", "development")).strip().lower()
 IS_PRODUCTION = ENVIRONMENT in {"production", "prod"}

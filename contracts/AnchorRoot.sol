@@ -1,19 +1,35 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import {MerkleProof} from "./MerkleProof.sol";
+
 /**
  * @title AnchorRoot
  * @notice Append-only evidence root anchoring for SatyaVoice forensic packages.
  *
+ * TWO ANCHORING MODES (both append-only, both onlyOwner):
+ *
+ *   1. `anchor(bytes32 rootHash)` — the original single-digest commitment. It
+ *      commits an opaque evidence root with no associated identifier. Retained
+ *      unchanged for backward compatibility with already-deployed integrations.
+ *
+ *   2. `anchorEvidence(bytes32 evidenceRoot, bytes32 evidenceId)` — the
+ *      Merkle-root scheme. It commits a Merkle ROOT together with a stable
+ *      `evidenceId`, and records `root -> evidenceId` so a verifier can resolve
+ *      a report's root back to the case it belongs to. Emits `EvidenceAnchored`.
+ *      Optionally, `anchorEvidenceWithProof` verifies a caller-supplied Merkle
+ *      inclusion proof against the root in the SAME transaction, so a specific
+ *      evidence leaf is provably bound to the anchored commitment on-chain.
+ *
  * SECURITY MODEL:
- *   Only the contract owner (the deploying account) can anchor new roots.
- *   This prevents arbitrary callers from overwriting or polluting the anchor
- *   history. The backend evidence service is the sole authorized submitter.
+ *   Only the contract owner (the deploying account) can anchor. This prevents
+ *   arbitrary callers from polluting the anchor history. The backend evidence
+ *   service is the sole authorized submitter; the privacy-preserving design
+ *   keeps raw audio/transcripts off-chain (only commitments are stored).
  *
  * APPEND-ONLY DESIGN:
- *   Root hashes are stored in an ordered array. Anchoring a new root appends
- *   to the history — it does NOT overwrite the previous root. This makes the
- *   on-chain history tamper-evident: every anchored root is permanently
+ *   Roots are stored in ordered arrays. Anchoring appends to the history — it
+ *   never overwrites a previous root. Every anchored root stays permanently
  *   visible and queryable.
  *
  * REPLAY PREVENTION:
@@ -21,22 +37,20 @@ pragma solidity ^0.8.20;
  *   evidence digest can only be anchored once.
  *
  * ZERO-VALUE PREVENTION:
- *   A zero bytes32 root hash is rejected. This guards against accidental
- *   anchoring of uninitialized or empty hash values.
+ *   Zero bytes32 roots and IDs are rejected.
  *
  * EVENTS:
- *   RootAnchored is emitted for every successful anchor. Off-chain verifiers
- *   can reconstruct the full anchor history from events alone.
+ *   `RootAnchored` (legacy) and `EvidenceAnchored` (Merkle scheme) are emitted
+ *   so off-chain verifiers can reconstruct the full anchor history from events.
  *
  * OWNERSHIP TRANSFER:
- *   The owner can transfer ownership to a new address using transferOwnership().
- *   Ownership cannot be renounced (set to zero address) to ensure there is
- *   always an authorized submitter.
+ *   Ownership can be transferred; it cannot be renounced (set to zero) so there
+ *   is always an authorized submitter.
  *
  * CHAIN ID NOTE:
- *   This contract does not verify chain ID in Solidity — chain ID confusion
- *   is handled at the application layer (app/services/anchor_adapter.py
- *   verifies web3.eth.chain_id matches BLOCKCHAIN_CHAIN_ID before signing).
+ *   Chain-ID confusion is handled at the application layer
+ *   (app/services/anchor_adapter.py verifies web3.eth.chain_id matches
+ *   BLOCKCHAIN_CHAIN_ID before signing).
  */
 contract AnchorRoot {
     // -------------------------------------------------------------------------
@@ -53,6 +67,19 @@ contract AnchorRoot {
     // Reverse mapping: root hash -> index+1 (0 means not anchored).
     mapping(bytes32 => uint256) private _rootIndex;
 
+    // --- Merkle-root scheme (`anchorEvidence`) ---------------------------------
+    // Append-only history of evidence anchors (independent of the legacy array
+    // above so the two schemes never interfere).
+    bytes32[] public evidenceRoots;
+    bytes32[] public evidenceIds;
+
+    // root -> evidenceId, set once (a root is anchored at most once).
+    mapping(bytes32 => bytes32) private _evidenceIdOf;
+    // evidenceId -> root, so a case id resolves to its committed root.
+    mapping(bytes32 => bytes32) private _rootOfEvidenceId;
+    // root -> index+1 in the evidence arrays (0 means not anchored).
+    mapping(bytes32 => uint256) private _evidenceIndex;
+
     // -------------------------------------------------------------------------
     // Events
     // -------------------------------------------------------------------------
@@ -62,6 +89,18 @@ contract AnchorRoot {
         uint256 indexed anchorIndex,
         uint256 blockNumber,
         uint256 timestamp
+    );
+
+    /**
+     * @notice Emitted for every Merkle-root evidence anchor.
+     * @dev Verifiers reconstruct the anchor history from these events alone.
+     *      `anchorer` records who submitted (always the owner in practice).
+     */
+    event EvidenceAnchored(
+        bytes32 indexed root,
+        bytes32 indexed evidenceId,
+        uint256 timestamp,
+        address indexed anchorer
     );
 
     event OwnershipTransferred(
@@ -128,6 +167,81 @@ contract AnchorRoot {
     }
 
     // -------------------------------------------------------------------------
+    // Core anchoring — Merkle evidence scheme
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice Anchor a Merkle root together with its evidence identifier.
+     * @param evidenceRoot The Merkle root (32 bytes) over the canonical,
+     *        per-item-hashed evidence leaves.
+     * @param evidenceId   A stable 32-byte case/evidence identifier
+     *        (e.g. keccak256/sha256 of the SatyaVoice case id string).
+     * @return evidenceIndex The zero-based index of this anchor in the history.
+     *
+     * Reverts if either argument is zero, or if the root was already anchored
+     * (replay prevention). Emits `EvidenceAnchored`. Only the owner may call.
+     */
+    function anchorEvidence(
+        bytes32 evidenceRoot,
+        bytes32 evidenceId
+    ) external onlyOwner returns (uint256 evidenceIndex) {
+        return _anchorEvidence(evidenceRoot, evidenceId);
+    }
+
+    /**
+     * @notice Anchor a Merkle root and, in the same transaction, verify that a
+     *         specific evidence leaf is included in it.
+     * @param evidenceRoot The Merkle root to anchor.
+     * @param evidenceId   The case/evidence identifier.
+     * @param leaf         The domain-separated leaf digest to prove inclusion of.
+     * @param proof        The ordered sibling hashes (leaf -> root).
+     *
+     * The inclusion check runs BEFORE the write, so a bogus proof reverts the
+     * whole transaction: a leaf is only ever bound to a root that provably
+     * contains it. Emits `EvidenceAnchored` on success. Only the owner may call.
+     */
+    function anchorEvidenceWithProof(
+        bytes32 evidenceRoot,
+        bytes32 evidenceId,
+        bytes32 leaf,
+        bytes32[] calldata proof
+    ) external onlyOwner returns (uint256 evidenceIndex) {
+        require(
+            MerkleProof.verify(proof, evidenceRoot, leaf),
+            "AnchorRoot: Merkle inclusion proof failed"
+        );
+        return _anchorEvidence(evidenceRoot, evidenceId);
+    }
+
+    /**
+     * @dev Shared write path for the two public entry points. Validates both
+     *      keys, appends to the evidence history, and updates the two-way maps.
+     */
+    function _anchorEvidence(
+        bytes32 evidenceRoot,
+        bytes32 evidenceId
+    ) private returns (uint256 evidenceIndex) {
+        require(evidenceRoot != bytes32(0), "AnchorRoot: root hash must not be zero");
+        require(evidenceId != bytes32(0), "AnchorRoot: evidenceId must not be zero");
+        require(_evidenceIndex[evidenceRoot] == 0, "AnchorRoot: root hash already anchored");
+        require(
+            _rootOfEvidenceId[evidenceId] == bytes32(0),
+            "AnchorRoot: evidenceId already anchored"
+        );
+
+        evidenceIndex = evidenceRoots.length;
+        evidenceRoots.push(evidenceRoot);
+        evidenceIds.push(evidenceId);
+
+        // Store index+1 so 0 unambiguously means "not anchored".
+        _evidenceIndex[evidenceRoot] = evidenceIndex + 1;
+        _evidenceIdOf[evidenceRoot] = evidenceId;
+        _rootOfEvidenceId[evidenceId] = evidenceRoot;
+
+        emit EvidenceAnchored(evidenceRoot, evidenceId, block.timestamp, msg.sender);
+    }
+
+    // -------------------------------------------------------------------------
     // Read functions
     // -------------------------------------------------------------------------
 
@@ -188,5 +302,51 @@ contract AnchorRoot {
         uint256 stored = _rootIndex[rootHash];
         require(stored != 0, "AnchorRoot: root hash not anchored");
         return stored - 1;
+    }
+
+    // --- Merkle evidence scheme reads -----------------------------------------
+
+    /**
+     * @notice Returns the total number of Merkle evidence anchors.
+     */
+    function evidenceAnchorCount() external view returns (uint256) {
+        return evidenceRoots.length;
+    }
+
+    /**
+     * @notice Check whether a Merkle evidence root has been anchored.
+     */
+    function isEvidenceAnchored(bytes32 evidenceRoot) external view returns (bool) {
+        return _evidenceIndex[evidenceRoot] != 0;
+    }
+
+    /**
+     * @notice Return the evidenceId committed for a root (zero if not anchored).
+     */
+    function evidenceIdOf(bytes32 evidenceRoot) external view returns (bytes32) {
+        return _evidenceIdOf[evidenceRoot];
+    }
+
+    /**
+     * @notice Return the root committed for an evidenceId (zero if not anchored).
+     */
+    function rootOfEvidenceId(bytes32 evidenceId) external view returns (bytes32) {
+        return _rootOfEvidenceId[evidenceId];
+    }
+
+    /**
+     * @notice Verify a Merkle inclusion proof against a root anchored here.
+     * @dev Returns false (never reverts) when the root is not anchored, so a UI
+     *      can call this directly without try/catch.
+     */
+    function verifyEvidenceProof(
+        bytes32 evidenceRoot,
+        bytes32 leaf,
+        bytes32[] calldata proof
+    ) external view returns (bool) {
+        if (_evidenceIndex[evidenceRoot] == 0) {
+            return false;
+        }
+        return MerkleProof.verify(proof, evidenceRoot, leaf);
     }
 }
