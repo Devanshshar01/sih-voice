@@ -23,6 +23,7 @@ generation and local verification remain fully functional.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -32,12 +33,38 @@ from app import config
 logger = logging.getLogger("satyavoice.anchor")
 
 
+def evidence_id_to_bytes32(evidence_id: str) -> str:
+    """Derive the canonical 32-byte on-chain evidence id for a string case id.
+
+    The on-chain contract keys on ``bytes32``. A SatyaVoice evidence/case id is
+    an arbitrary string, so we commit ``sha256(utf-8(evidence_id))`` — a stable,
+    collision-resistant, reversible-by-lookup identifier. This is applied
+    identically on both the Python and JavaScript sides (WebCrypto ``SHA-256``).
+
+    Returns a ``0x``-prefixed 64-char hex string.
+    """
+    digest = hashlib.sha256(evidence_id.encode("utf-8")).hexdigest()
+    return "0x" + digest
+
+
 class BaseAnchorAdapter:
     def anchor_root(self, root_hash: str, evidence_id: str) -> dict[str, Any]:
         raise NotImplementedError
 
     def verify_anchor(self, root_hash: str) -> dict[str, Any]:
         raise NotImplementedError
+
+    # --- Merkle evidence scheme (Phase 10) -----------------------------------
+    # These default to the legacy single-digest behaviour so that any adapter
+    # which does not implement the Merkle scheme still functions.
+
+    def anchor_evidence(self, root_hash: str, evidence_id: str) -> dict[str, Any]:
+        """Commit a Merkle root + evidence id. Defaults to ``anchor_root``."""
+        return self.anchor_root(root_hash, evidence_id)
+
+    def verify_evidence(self, root_hash: str, evidence_id: str | None = None) -> dict[str, Any]:
+        """Verify a Merkle root (and optionally its evidence id) on-chain."""
+        return self.verify_anchor(root_hash)
 
 
 class NoopAnchorAdapter(BaseAnchorAdapter):
@@ -63,6 +90,11 @@ class NoopAnchorAdapter(BaseAnchorAdapter):
             "status": "unavailable",
             "failure_reason": "Blockchain anchoring is disabled.",
         }
+
+    def verify_evidence(self, root_hash: str, evidence_id: str | None = None) -> dict[str, Any]:
+        result = self.verify_anchor(root_hash)
+        result.setdefault("evidence_id_matches", None)
+        return result
 
 
 class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
@@ -114,6 +146,42 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
                 {"indexed": False, "internalType": "uint256", "name": "timestamp", "type": "uint256"},
             ],
             "name": "RootAnchored",
+            "type": "event",
+        },
+        # --- Phase 10 Merkle evidence scheme (contracts/AnchorRoot.sol) ------
+        {
+            "inputs": [
+                {"internalType": "bytes32", "name": "evidenceRoot", "type": "bytes32"},
+                {"internalType": "bytes32", "name": "evidenceId", "type": "bytes32"},
+            ],
+            "name": "anchorEvidence",
+            "outputs": [{"internalType": "uint256", "name": "evidenceIndex", "type": "uint256"}],
+            "stateMutability": "nonpayable",
+            "type": "function",
+        },
+        {
+            "inputs": [{"internalType": "bytes32", "name": "evidenceRoot", "type": "bytes32"}],
+            "name": "isEvidenceAnchored",
+            "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+            "stateMutability": "view",
+            "type": "function",
+        },
+        {
+            "inputs": [{"internalType": "bytes32", "name": "evidenceRoot", "type": "bytes32"}],
+            "name": "evidenceIdOf",
+            "outputs": [{"internalType": "bytes32", "name": "", "type": "bytes32"}],
+            "stateMutability": "view",
+            "type": "function",
+        },
+        {
+            "anonymous": False,
+            "inputs": [
+                {"indexed": True, "internalType": "bytes32", "name": "root", "type": "bytes32"},
+                {"indexed": True, "internalType": "bytes32", "name": "evidenceId", "type": "bytes32"},
+                {"indexed": False, "internalType": "uint256", "name": "timestamp", "type": "uint256"},
+                {"indexed": True, "internalType": "address", "name": "anchorer", "type": "address"},
+            ],
+            "name": "EvidenceAnchored",
             "type": "event",
         },
     ]
@@ -313,6 +381,199 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
             return {
                 "anchored": False,
                 "status": "failed",
+                "failure_reason": f"Verification query error: {type(exc).__name__}",
+            }
+
+    # --- Merkle evidence scheme (Phase 10) -----------------------------------
+
+    def anchor_evidence(self, root_hash: str, evidence_id: str) -> dict[str, Any]:
+        """Commit a Merkle root + evidence id via ``anchorEvidence``.
+
+        ``evidence_id`` is the SatyaVoice case id string; it is hashed to a
+        ``bytes32`` with :func:`evidence_id_to_bytes32` so the on-chain key is
+        deterministic and comparable across implementations. The returned dict
+        carries the same shape as :meth:`anchor_root`, plus ``evidence_id_bytes32``.
+        Never raises. Never logs private_key.
+        """
+        if not self.rpc_url or not self.contract_address:
+            return self._unavailable(
+                "Polygon Amoy RPC URL or contract address is not configured."
+            )
+        if not self.private_key:
+            return self._unavailable(
+                "BLOCKCHAIN_PRIVATE_KEY is missing. "
+                "Local forensic evidence remains available."
+            )
+
+        try:
+            from eth_account import Account
+            from web3 import Web3
+        except Exception as exc:  # pragma: no cover
+            return self._unavailable(
+                f"web3 runtime dependencies are not installed: {exc}"
+            )
+
+        try:
+            normalized_root = root_hash if root_hash.startswith("0x") else f"0x{root_hash}"
+            if len(normalized_root) != 66:
+                raise ValueError(f"Expected 32-byte hex, got length {len(normalized_root)}")
+            if normalized_root == "0x" + "00" * 32:
+                raise ValueError("Zero root hash is not permitted.")
+            normalized_id = evidence_id_to_bytes32(evidence_id)
+        except ValueError as exc:
+            return self._fail(f"Invalid evidence anchor input: {exc}")
+
+        try:
+            web3 = Web3(Web3.HTTPProvider(self.rpc_url))
+            if not web3.is_connected():
+                return self._unavailable("Polygon Amoy RPC endpoint is unreachable.")
+
+            on_chain_id = web3.eth.chain_id
+            if on_chain_id != self.chain_id:
+                return self._fail(
+                    f"Chain ID mismatch: expected {self.chain_id}, "
+                    f"connected node reports {on_chain_id}. "
+                    f"Transaction aborted to prevent cross-chain replay."
+                )
+
+            account = Account.from_key(self.private_key)
+            contract = web3.eth.contract(address=self.contract_address, abi=self._ABI)
+
+            nonce = web3.eth.get_transaction_count(account.address)
+            root_bytes = bytes.fromhex(normalized_root[2:])
+            id_bytes = bytes.fromhex(normalized_id[2:])
+
+            fn = contract.functions.anchorEvidence(root_bytes, id_bytes)
+            try:
+                gas_estimate = fn.estimate_gas({"from": account.address})
+                gas = min(gas_estimate + 10_000, self.gas_limit)
+            except Exception:
+                gas = self.gas_limit
+
+            tx = fn.build_transaction(
+                {
+                    "from": account.address,
+                    "nonce": nonce,
+                    "gas": gas,
+                    "gasPrice": web3.eth.gas_price,
+                    "chainId": self.chain_id,
+                }
+            )
+            signed_tx = Account.sign_transaction(tx, private_key=self.private_key)
+            tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
+            receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+            tx_hash_hex = web3.to_hex(tx_hash)
+
+            if receipt.status != 1:
+                return self._fail(
+                    "Transaction mined but returned failed status (status=0).",
+                    tx_hash=tx_hash_hex,
+                    block_number=receipt.blockNumber,
+                )
+
+            block = web3.eth.get_block(receipt.blockNumber)
+            block_timestamp = datetime.fromtimestamp(block["timestamp"], timezone.utc)
+
+            logger.info(
+                "Evidence Merkle root anchored on %s: tx=%s block=%s",
+                config.BLOCKCHAIN_NETWORK,
+                tx_hash_hex,
+                receipt.blockNumber,
+            )
+
+            return {
+                "status": "anchored",
+                "network": config.BLOCKCHAIN_NETWORK,
+                "contract_address": self.contract_address,
+                "tx_hash": tx_hash_hex,
+                "block_number": receipt.blockNumber,
+                "anchor_timestamp": block_timestamp,
+                "evidence_id_bytes32": normalized_id,
+                "failure_reason": None,
+            }
+
+        except Exception as exc:
+            from web3.exceptions import ContractLogicError
+            if isinstance(exc, ContractLogicError):
+                logger.warning(
+                    "AnchorRoot.anchorEvidence reverted (evidence_id=%s): %s", evidence_id, exc
+                )
+                return self._fail(f"Contract reverted: {exc}")
+            logger.warning(
+                "Blockchain evidence anchor failed (evidence_id=%s): %s",
+                evidence_id,
+                type(exc).__name__,
+            )
+            return self._fail(f"Submission error: {type(exc).__name__}")
+
+    def verify_evidence(self, root_hash: str, evidence_id: str | None = None) -> dict[str, Any]:
+        """Verify a Merkle root via ``isEvidenceAnchored`` and, when supplied,
+        that the on-chain ``evidenceIdOf(root)`` matches the expected id.
+
+        Returns a dict with ``anchored``, ``status``, ``evidence_id_matches``
+        (``None`` when no id was supplied or the read failed) and
+        ``on_chain_evidence_id``. Never raises.
+        """
+        if not self.rpc_url or not self.contract_address:
+            return {
+                "anchored": False,
+                "status": "unavailable",
+                "evidence_id_matches": None,
+                "on_chain_evidence_id": None,
+                "failure_reason": "RPC URL or contract address not configured.",
+            }
+
+        try:
+            from web3 import Web3
+            web3 = Web3(Web3.HTTPProvider(self.rpc_url))
+            if not web3.is_connected():
+                return {
+                    "anchored": False,
+                    "status": "failed",
+                    "evidence_id_matches": None,
+                    "on_chain_evidence_id": None,
+                    "failure_reason": "RPC endpoint unreachable.",
+                }
+
+            on_chain_id = web3.eth.chain_id
+            if on_chain_id != self.chain_id:
+                return {
+                    "anchored": False,
+                    "status": "failed",
+                    "evidence_id_matches": None,
+                    "on_chain_evidence_id": None,
+                    "failure_reason": (
+                        f"Chain ID mismatch: expected {self.chain_id}, got {on_chain_id}."
+                    ),
+                }
+
+            contract = web3.eth.contract(address=self.contract_address, abi=self._ABI)
+            normalized = root_hash if root_hash.startswith("0x") else f"0x{root_hash}"
+            root_bytes = bytes.fromhex(normalized[2:])
+
+            is_anchored: bool = contract.functions.isEvidenceAnchored(root_bytes).call()
+            on_chain_id_hex: str | None = None
+            id_matches: bool | None = None
+            if is_anchored:
+                raw_id = contract.functions.evidenceIdOf(root_bytes).call()
+                on_chain_id_hex = "0x" + bytes(raw_id).hex()
+                if evidence_id is not None:
+                    id_matches = on_chain_id_hex == evidence_id_to_bytes32(evidence_id)
+
+            return {
+                "anchored": bool(is_anchored),
+                "status": "anchored" if is_anchored else "not_anchored",
+                "evidence_id_matches": id_matches,
+                "on_chain_evidence_id": on_chain_id_hex,
+                "failure_reason": None,
+            }
+
+        except Exception as exc:
+            return {
+                "anchored": False,
+                "status": "failed",
+                "evidence_id_matches": None,
+                "on_chain_evidence_id": None,
                 "failure_reason": f"Verification query error: {type(exc).__name__}",
             }
 

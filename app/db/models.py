@@ -212,3 +212,126 @@ class EvidenceAnchor(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     evidence_package = relationship("EvidencePackage", back_populates="anchors")
+
+
+class EvidenceMerklePackage(Base):
+    """A Merkle-root evidence package (Phase 10 — RFC 8785 + SHA-256 tree).
+
+    Distinct from the legacy ``EvidencePackage`` (a flat hash-chain ledger): a
+    Merkle package commits to an *ordered set* of named evidence items via a
+    single Merkle root, which is what gets anchored on-chain. The canonical
+    package JSON (RFC 8785) is stored verbatim so the package hash can be
+    re-derived at verification time.
+
+    PRIVACY: only commitments (per-item SHA-256 digests, the Merkle root, the
+    canonical manifest) are stored here. Raw audio/transcripts never appear.
+    """
+
+    __tablename__ = "evidence_merkle_packages"
+
+    evidence_id = Column(String, primary_key=True)
+    schema_version = Column(String, nullable=False, default="phase10-v1")
+    package_format = Column(String, nullable=False, default="merkle-integrity-evidence-package")
+    # The RFC 8785 canonical JSON of the manifest (hashed to package_hash).
+    canonical_package = Column(Text, nullable=False)
+    package_hash = Column(String, nullable=False, unique=True)
+    # Lowercase hex of the 32-byte Merkle root. Indexed (not unique): the root is
+    # a property of the item SET, so two evidence packages that reference
+    # identical items legitimately share a root. Duplicate *commits* — the real
+    # replay concern — are rejected by the on-chain `anchorEvidence` contract.
+    merkle_root = Column(String, nullable=False, index=True)
+    leaf_count = Column(Integer, nullable=False, default=0)
+    # Denormalised leaf digest map for fast listing: {"item": "sha256hex", ...}
+    leaves_json = Column(Text, nullable=False, default="{}")
+    # sha256(evidence_id) as 0x hex — the bytes32 the contract keys on.
+    evidence_id_bytes32 = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    status = Column(String, nullable=False, default="registered")
+
+    # Blockchain anchor metadata (mirrors the legacy evidence package columns).
+    blockchain_network = Column(String, nullable=True)
+    contract_address = Column(String, nullable=True)
+    anchor_tx_hash = Column(String, nullable=True)
+    anchor_block_number = Column(Integer, nullable=True)
+    anchor_timestamp = Column(DateTime(timezone=True), nullable=True)
+    anchor_status = Column(String, nullable=False, default="unavailable")
+    failure_reason = Column(Text, nullable=True)
+
+    leaves = relationship(
+        "EvidenceMerkleLeaf",
+        back_populates="package",
+        cascade="all, delete-orphan",
+    )
+    queue_entries = relationship(
+        "AnchorQueueEntry",
+        back_populates="package",
+        cascade="all, delete-orphan",
+    )
+
+
+class EvidenceMerkleLeaf(Base):
+    """One evidence item (leaf) inside a Merkle package.
+
+    Stores the per-item SHA-256 hex (the leaf pre-image digest) and the
+    domain-separated ``leaf_hash`` actually placed in the tree, plus a cached
+    inclusion proof so a verifier can answer "is item X in this package?"
+    without rebuilding the whole tree.
+    """
+
+    __tablename__ = "evidence_merkle_leaves"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    evidence_id = Column(
+        String, ForeignKey("evidence_merkle_packages.evidence_id"), nullable=False
+    )
+    item_name = Column(String, nullable=False)
+    item_sha256 = Column(String, nullable=False)      # sha256(raw item bytes) hex
+    leaf_hash = Column(String, nullable=False)        # sha256(0x00 || raw) hex
+    proof_json = Column(Text, nullable=False, default="[]")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    package = relationship("EvidenceMerklePackage", back_populates="leaves")
+
+    __table_args__ = (
+        Index("ix_merkle_leaf_evidence", "evidence_id", "item_name"),
+    )
+
+
+class AnchorQueueEntry(Base):
+    """Offline anchor queue entry (OFFLINE → PENDING → CONFIRMED / FAILED).
+
+    When the device is offline (rural/edge deployment), an evidence root is
+    queued here instead of being dropped. On reconnect a worker dequeues it,
+    submits ``anchorEvidence`` and records the transaction. A failed anchor is
+    never silently discarded — it stays with ``status='failed'`` and a reason so
+    an operator can retry.
+    """
+
+    __tablename__ = "anchor_queue_entries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    evidence_id = Column(
+        String, ForeignKey("evidence_merkle_packages.evidence_id"), nullable=False
+    )
+    root_hash = Column(String, nullable=False)              # 0x hex Merkle root
+    evidence_id_bytes32 = Column(String, nullable=False)    # 0x hex bytes32 id
+    blockchain_network = Column(String, nullable=True)
+    contract_address = Column(String, nullable=True)
+    # OFFLINE | PENDING | CONFIRMED | FAILED
+    status = Column(String, nullable=False, default="OFFLINE")
+    attempts = Column(Integer, nullable=False, default=0)
+    last_error = Column(Text, nullable=True)
+    tx_hash = Column(String, nullable=True)
+    block_number = Column(Integer, nullable=True)
+    anchor_timestamp = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    package = relationship("EvidenceMerklePackage", back_populates="queue_entries")
+
+    __table_args__ = (
+        Index("ix_anchor_queue_status", "status"),
+        Index("ix_anchor_queue_root", "root_hash", unique=True),
+    )

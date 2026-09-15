@@ -53,7 +53,8 @@ Updated for Phase 1 real detector integration.
 - Android SDK
 - PostgreSQL, Redis, or Celery production infrastructure
 - Technical integrity evidence package for local/demo review only; legal admissibility certification remains a human/legal process
-- Blockchain anchoring
+- Legal admissibility of blockchain anchoring; production mainnet deployment;
+  independent smart-contract audit; real-world confirmation-time benchmarks
 - Production bank or telecom integration
 
 ## ASR performance wording
