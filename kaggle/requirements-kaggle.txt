@@ -5,8 +5,20 @@
 #
 # IMPORTANT: the SAME model checkpoint/config as production is reused via
 # env vars (ANTISPOOF_MODEL_ID, SPEAKER_MODEL_ID) -- see README.md.
-
-transformers>=4.39.0
+#
+# The anti-spoof model (nii-yamagishilab/mms-300m-anti-deepfake) loads through
+# fairseq, exactly as its model card documents, so Kaggle needs the same runtime
+# as the HF ZeroGPU Space. Run the install from the REPOSITORY ROOT so the
+# vendored wheel path resolves (pip resolves relative paths against the current
+# working directory):
+#   !cd sih-voice && pip install -q -r kaggle/requirements-kaggle.txt
+hf_zero_gpu/vendor/omegaconf-2.0.6-py3-none-any.whl
+omegaconf==2.0.6
+hydra-core==1.0.7
+antlr4-python3-runtime==4.8
+fairseq==0.12.2
 speechbrain>=1.0.0
 soundfile>=0.12.1
+safetensors>=0.5.3      # the MMS checkpoint ships model.safetensors
+numpy>=1.24,<2          # fairseq 0.12.2 predates NumPy 2 (same pin as the Space)
 gradio-client>=1.0.0   # only for the cross-provider consistency test (HF Space)

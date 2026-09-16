@@ -67,14 +67,25 @@ hundred MB and is intentionally not committed to this repository.
 
 Dependencies: the production path (`VOICETRUST_DETECTOR_MODE=remote_hf`, alias
 `zerogpu`) calls the Hugging Face Space over `gradio-client` and does not load
-MMS locally. Running the detector in-process needs `torch`, `fairseq==0.12.2`,
-`hydra-core==1.0.7`, `omegaconf==2.0.6`, `safetensors`, `soundfile`, and
-`huggingface-hub`, pinned per the official model card. The build-heavy
-fairseq/hydra trio compiles native extensions and needs `g++`, so it is
-deliberately kept out of the root `requirements.txt` that the Render image
-installs; it lives in `hf_zero_gpu/requirements.txt` for the Space.
-Known caveat: fairseq 0.12.2 predates NumPy 2; if the fairseq import fails
-under NumPy 2, pin `numpy<2` (this does not affect the remote/zerogpu path).
+MMS/fairseq locally, so the Render image stays lightweight: the root
+`requirements.txt` intentionally contains no `fairseq`, `hydra-core` or
+`omegaconf`. Running the detector in-process needs `torch`, `fairseq==0.12.2`,
+`hydra-core==1.0.7`, `omegaconf==2.0.6`, `safetensors`, `soundfile`,
+`huggingface-hub` and `torchaudio`; those pins live only in
+`hf_zero_gpu/requirements.txt` (Space) and `kaggle/requirements-kaggle.txt`
+(development GPU host) — never in the Render image.
+
+Build caveat (this is what left the Space in `BUILD_ERROR`): `fairseq==0.12.2`
+declares `omegaconf<2.1`, and both releases in that range (2.0.5 and 2.0.6) were
+published with metadata that pip >= 24.1 rejects
+(`Requires-Dist: PyYAML (>=5.1.*)` → ".* suffix can only be used with `==` or
+`!=`"). A `pip<24.1` line cannot fix it from inside a requirements file: pip
+resolves the whole file with the pip already installed in the base image. The
+Space therefore installs a metadata-repaired copy of the upstream omegaconf
+2.0.6 wheel from `hf_zero_gpu/vendor/` (code byte-identical; checksums and the
+exact one-line metadata change are documented in `vendor/README.md`).
+Original caveat retained: fairseq 0.12.2 predates NumPy 2, hence `numpy<2`
+(this does not affect the remote/zerogpu path).
 
 ## Streaming behavior
 
@@ -134,11 +145,36 @@ Local research, prototype evaluation, and risk-policy demonstration. This is
 not a production fraud decision service and must not be treated as a
 standalone identity or financial authorization mechanism.
 
+## Deployment (Hugging Face ZeroGPU)
+
+Cloud path: Vercel → Render FastAPI → `remote_hf` (`gradio_client`) → Hugging
+Face ZeroGPU Space → MMS-300M-AntiDeepfake.
+
+```text
+VOICETRUST_DETECTOR_MODE=remote_hf          # Render spelling; alias of zerogpu
+VOICETRUST_HF_SPACE_ID=<space id>           # or HF_ZERO_GPU_SPACE=<space url>
+```
+
+The Space loads the anti-spoof + speaker models once (first GPU invocation) and
+must report:
+
+```text
+model_version_antispoof = nii-yamagishilab/mms-300m-anti-deepfake
+model_version_speaker   = speechbrain/spkrec-ecapa-voxceleb
+```
+
+A deployment that still reports `facebook/wav2vec2-xls-r-300m` is serving the
+previous checkpoint and must be treated as mis-configured. The same code path is
+used by Kaggle (`INFERENCE_PROVIDER=local`), so both hosts must report identical
+model IDs.
+
 ## Reproducibility
 
 1. Install `requirements.txt` in the project virtual environment, plus the
    fairseq/hydra runtime from `hf_zero_gpu/requirements.txt` (needed only for
-   in-process `real` mode; the production remote path does not need it).
+   in-process `real` mode; the production remote path does not need it). That
+   file references the vendored omegaconf wheel, so install it from the
+   repository root.
 2. Set `VOICETRUST_DETECTOR_MODE=real`.
 3. Run `python scripts/real_detector_check.py` (one inference, verified
    output structure, fake/real probabilities, no exception) or start the API.

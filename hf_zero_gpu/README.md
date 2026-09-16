@@ -16,11 +16,12 @@ This Hugging Face Space provides an API for anti-spoof detection and speaker emb
 
 The Space takes a 4-second mono audio window at 16kHz and returns:
 
-- **spoof_probability**: Probability that the audio is spoofed (0.0 to 1.0)
+- **spoof_probability**: Probability that the audio is spoofed == the model's **fake** probability (0.0 to 1.0)
+- **fake_probability** / **real_probability**: the two class scores. The mapping is fixed by the checkpoint's documented output order `<Fake score, Real score>` (index 0 = fake, index 1 = real)
 - **speaker_embedding**: Normalized embedding vector for speaker verification (to be compared with enrolled speaker embeddings in the backend)
 - **inference_time_ms**: Time taken for inference on the GPU (in milliseconds)
-- **model_version_antispoof**: Identifier of the anti-spoof model used
-- **model_version_speaker**: Identifier of the speaker embedding model used
+- **model_version_antispoof**: Anti-spoof model identifier (the exact Hugging Face model ID)
+- **model_version_speaker**: Speaker embedding model identifier
 - **sample_rate**: Audio sample rate in Hz (16000)
 - **duration_ms**: Duration of the audio window in milliseconds (4000)
 
@@ -45,22 +46,43 @@ result = client.predict(
 print(result)
 ```
 
+## Models
+
+| Role | Model | Notes |
+|---|---|---|
+| Anti-spoof (deepfake) | `nii-yamagishilab/mms-300m-anti-deepfake` | MMS-300M-AntiDeepfake (MMS-300M / Wav2Vec 2.0 front-end + fully connected binary head), NII / Yamagishi Lab, **CC BY-NC-SA 4.0**. Loaded with the official model-card path: fairseq `Wav2Vec2Config` + `Wav2Vec2Model` + `huggingface_hub.PyTorchModelHubMixin`. **Not** fine-tuned by SatyaVoice, and no accuracy figure is claimed for it. |
+| Speaker embedding | `speechbrain/spkrec-ecapa-voxceleb` | ECAPA-TDNN; produces the normalized speaker embedding. |
+
+Class order comes from the card's documented output `"<Fake score, Real score>"`:
+index 0 = fake, index 1 = real (`config.FAKE_LABEL_INDEX` / `REAL_LABEL_INDEX`).
+`spoof_probability` is therefore the **fake** probability — the same direction the
+risk engine expects for `acoustic_score` (higher score = higher risk).
+
 ## Configuration
 
 The following environment variables can be set to configure the models:
 
-- `ANTISPOOF_MODEL_ID`: Hugging Face model ID for the anti-spoof model (default: `facebook/wav2vec2-xls-r-300m`)
+- `ANTISPOOF_MODEL_ID`: Hugging Face model ID for the anti-spoof model (default: `nii-yamagishilab/mms-300m-anti-deepfake`)
 - `SPEAKER_MODEL_ID`: Hugging Face model ID for the speaker embedding model (default: `speechbrain/spkrec-ecapa-voxceleb`)
 
-Note: For production, you should set `ANTISPOOF_MODEL_ID` to your fine-tuned Wav2Vec2-XLS-R checkpoint.
+Only point `ANTISPOOF_MODEL_ID` at another checkpoint that keeps the same binary
+`<fake, real>` output contract. SatyaVoice-specific fine-tuning is a separate
+future task: until it is evaluated on a labelled dataset, no SatyaVoice accuracy
+may be reported for this model.
 
 ## Model loading
 
-The models are loaded once when the Space starts and are kept in memory for efficient inference.
+Models are loaded exactly once (on the first GPU invocation) and stay resident in
+the ZeroGPU worker; they are never reloaded or reconstructed per request. Failed
+inference returns a structured error payload and **never** a fabricated score.
 
 ## Requirements
 
-See `requirements.txt` for the exact versions.
+See `requirements.txt` for the exact versions. Note the vendored
+`vendor/omegaconf-2.0.6-py3-none-any.whl`: pip >= 24.1 rejects the upstream
+omegaconf 2.0.6 metadata that `fairseq==0.12.2` requires, so that wheel is
+metadata-repaired in place (code unchanged). `vendor/README.md` documents the
+change, the checksums and the reason a `pip<24.1` line cannot fix it.
 
 ## Local testing
 

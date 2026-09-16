@@ -1,21 +1,50 @@
-# HF base image already provides these:
-# - gradio==6.27.0 (with oauth and mcp)
-# - torch==2.13.0
-# - spaces==0.51.3
-# - uvicorn>=0.14.0
-# - websockets>=10.4
+# Hugging Face ZeroGPU Space dependencies.
+#
+# The HF base image already provides: gradio==6.27.0 (oauth + mcp),
+# torch==2.13.0, spaces==0.51.3, uvicorn>=0.14.0, websockets>=10.4, and
+# torchaudio (a hard dependency of speechbrain; relying on the base image
+# version avoids pip rebuilding/replacing the CUDA torch wheel).
+#
+# These are SPACE-ONLY dependencies. The production Render backend never
+# installs them: with VOICETRUST_DETECTOR_MODE=remote_hf it calls this Space
+# through gradio_client and does not load MMS/fairseq locally at all
+# (see docs/model-card.md).
 
-# Additional dependencies we need:
-# NOTE: torchaudio ships with the base image's torch install and is a
-# hard dependency of speechbrain; we rely on the base image version to
-# avoid pip rebuilding/replacing the CUDA torch wheel.
-# MMS/fairseq dependencies belong in the HF Space, not in the lightweight
-# Render backend image. Keep the released fairseq version aligned with the
-# MMS-300M checkpoint's model-card runtime.
-pip<24.1
-fairseq==0.12.2
-hydra-core==1.0.7
+# ---------------------------------------------------------------------------
+# MMS-300M-AntiDeepfake runtime (fairseq path, exactly as the model card documents)
+# ---------------------------------------------------------------------------
+# The card pins fairseq==0.12.2, and fairseq's own metadata requires
+# hydra-core>=1.0.7,<1.1 and omegaconf<2.1. omegaconf 2.0.5 and 2.0.6 are the
+# only releases in that range, and both were published with invalid metadata
+# ("Requires-Dist: PyYAML (>=5.1.*)"), which pip >= 24.1 refuses to parse:
+#
+#   WARNING: Ignoring version 2.0.6 of omegaconf since it has invalid metadata:
+#   omegaconf-2.0.6-py3-none-any.whl has invalid metadata: .* suffix can only be
+#   used with `==` or `!=` operators  ->  PyYAML (>=5.1.*)
+#   ERROR: Could not find a version that satisfies the requirement omegaconf==2.0.6
+#
+# A `pip<24.1` line in this file does NOT fix that: the Space base image has
+# already upgraded pip, and pip resolves every line of this file with the
+# RUNNING pip version before anything in it is installed (verified locally:
+# the failure reproduces with pip 26, succeeds with pip 24.0, and adding
+# `pip<24.1` to the file changes nothing).
+#
+# We therefore vendor a metadata-repaired copy of the official omegaconf 2.0.6
+# wheel: identical code, only the invalid specifier normalised to
+# `PyYAML>=5.1`. Provenance, checksums and the repair are documented in
+# vendor/README.md.
+./vendor/omegaconf-2.0.6-py3-none-any.whl
 omegaconf==2.0.6
-transformers>=4.39.0
+hydra-core==1.0.7
+antlr4-python3-runtime==4.8   # exact version hydra-core 1.0.7 requires
+fairseq==0.12.2               # ships as an sdist -> builds C++ ext. (needs a compiler)
+
+# --- Speaker embedding (ECAPA-TDNN) + checkpoint loading ---
 speechbrain>=0.5.15
-numpy>=1.24.0,<2.0  # Must be <2.0 for torch 2.13.0 compatibility
+# The MMS checkpoint is distributed as model.safetensors, so safetensors must be
+# present for PyTorchModelHubMixin.from_pretrained to load the real weights
+# (without it the mixin looks for pytorch_model.bin, which this repo does not have).
+safetensors>=0.5.3
+soundfile>=0.13.1             # card dependency; torchaudio file backend
+numpy>=1.24.0,<2.0            # fairseq 0.12.2 predates NumPy 2
+

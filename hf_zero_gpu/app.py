@@ -40,10 +40,14 @@ with gr.Blocks() as demo:
         """
         This Space provides anti-spoof detection and speaker embedding extraction.
         Send a 4-second mono audio window at 16kHz to get:
-        - spoof_probability: probability that the audio is spoofed (0-1)
+        - spoof_probability: probability that the audio is spoofed == the
+          MMS-300M-AntiDeepfake FAKE probability (0-1)
+        - fake_probability / real_probability: the two class scores
+          (checkpoint output order is <fake, real>)
         - speaker_embedding: normalized embedding vector for speaker verification
         - inference_time_ms: time taken for inference on the GPU
         - model_version_antispoof: anti-spoof model identifier
+          (nii-yamagishilab/mms-300m-anti-deepfake)
         - model_version_speaker: speaker model identifier
         - sample_rate: audio sample rate (Hz)
         - duration_ms: duration of the audio window (ms)

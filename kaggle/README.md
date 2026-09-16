@@ -10,8 +10,9 @@
 ## What runs on Kaggle
 
 The **same shared pipeline** as production — `hf_zero_gpu/inference.py`
-(mono → real resampling to 16 kHz → 4-second/64 000-sample window → XLS-R
-anti-spoof → ECAPA-TDNN speaker embedding → structured result), executed by
+(mono → real resampling to 16 kHz → 4-second/64 000-sample window →
+MMS-300M-AntiDeepfake anti-spoof → ECAPA-TDNN speaker embedding → structured
+result), executed by
 `app/services/local_provider.LocalInferenceProvider`. There is **no second ML
 implementation**; Kaggle imports the production code.
 
@@ -48,7 +49,7 @@ implementation**; Kaggle imports the production code.
    !python kaggle/benchmark.py --mode sanity --audio /path/one_clip.wav
    ```
 8. **Latency benchmark** (100+ windows after warm-up, CUDA-synchronised,
-   p50/p95/p99 for XLS-R / ECAPA / combined + VRAM; writes JSON+CSV to
+   p50/p95/p99 for anti-spoof / ECAPA / combined + VRAM; writes JSON+CSV to
    `kaggle/reports/`):
    ```python
    !python kaggle/benchmark.py --mode benchmark --runs 100
@@ -71,11 +72,15 @@ implementation**; Kaggle imports the production code.
 
 ## Step-9 checkpoint rule (IMPORTANT)
 
-The default `facebook/wav2vec2-xls-r-300m` is the **BASE model with a randomly
-initialised classifier head — NOT the SatyaVoice anti-spoof model**. Every
-benchmark run prints the loaded checkpoint and flags the base model
-explicitly. Only report "SatyaVoice anti-spoof" once the fine-tuned checkpoint
-is set via `ANTISPOOF_MODEL_ID`. Report numbers as measured p50/p95/p99 only;
+The default `nii-yamagishilab/mms-300m-anti-deepfake` is the **pretrained /
+post-trained AntiDeepfake checkpoint used off-the-shelf**: it is NOT
+SatyaVoice-fine-tuned, and SatyaVoice has not verified its accuracy on any
+dataset. Every benchmark run prints the loaded checkpoint and says so
+explicitly; the legacy `facebook/wav2vec2-xls-r-300m` base model (randomly
+initialised classifier head) is flagged as a warning if it is ever selected.
+Only report "SatyaVoice anti-spoof" once the fine-tuned checkpoint is set via
+`ANTISPOOF_MODEL_ID`, and only with metrics measured on a labelled dataset.
+Report numbers as measured p50/p95/p99 only;
 a single passing run is **not** an "SIH compliance" claim (the <500 ms SIH
 target is the full end-to-end verdict path, not model inference alone).
 

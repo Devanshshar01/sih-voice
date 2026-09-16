@@ -4,7 +4,8 @@ the current process on the machine's GPU.
 
 This is the provider the Kaggle development environment uses. Kaggle does NOT
 have its own copy of the ML pipeline -- it executes this exact provider on its
-GPU. The pipeline (audio contract, XLS-R inference, ECAPA-TDNN embedding,
+GPU. The pipeline (audio contract, MMS-300M-AntiDeepfake inference,
+ECAPA-TDNN embedding,
 result schema, error handling) is imported from the canonical implementation
 in ``hf_zero_gpu/inference.py``, which is the same code the production Hugging
 Face ZeroGPU Space runs. No model code is duplicated.

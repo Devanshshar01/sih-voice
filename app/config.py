@@ -16,7 +16,7 @@ CORS_ORIGINS = [o.strip().rstrip("/") for o in _raw_origins if o.strip()] or ["*
 
 # ---- Canonical audio configuration (single source of truth) ----
 # These constants implement the SIH 2026 presentation specification exactly:
-#   * 16 kHz mono analysis rate (Wav2Vec2-XLS-R / faster-whisper / ECAPA input)
+#   * 16 kHz mono analysis rate (MMS-300M-AntiDeepfake / faster-whisper / ECAPA input)
 #   * 4.0-second inference windows (WINDOW_SAMPLES == 64000)
 #   * 0.5-second hop (HOP_SAMPLES == 8000) -> a decision every 500 ms
 # Every other module must import these values from here; duplicated numeric

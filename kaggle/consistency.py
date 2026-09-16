@@ -144,9 +144,14 @@ def main() -> int:
     print(f"speaker checkpoint   : {cfg.SPEAKER_MODEL_ID}")
     print(f"tolerance            : {args.tolerance}")
     if cfg.ANTISPOOF_MODEL_ID == "facebook/wav2vec2-xls-r-300m":
-        print("WARNING: BASE XLS-R loaded -- NOT the final SatyaVoice "
-              "anti-spoof model. Consistency still validates the pipeline, "
-              "but label results accordingly.")
+        print("WARNING: LEGACY BASE CHECKPOINT loaded (facebook/wav2vec2-xls-r-300m) "
+              "-- a randomly initialised head, NOT a trained anti-spoof model. "
+              "The active Cloud checkpoint is "
+              "nii-yamagishilab/mms-300m-anti-deepfake.")
+    elif "anti-deepfake" in cfg.ANTISPOOF_MODEL_ID:
+        print("NOTE: nii-yamagishilab/mms-300m-anti-deepfake is a pretrained/"
+              "post-trained checkpoint used off-the-shelf (not fine-tuned by "
+              "SatyaVoice); label results accordingly.")
 
     # Build sample set
     samples = []

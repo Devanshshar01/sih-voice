@@ -9,7 +9,7 @@ Render FastAPI (satyavoice-api.onrender.com)
    ↓  risk engine + session/risk state
 Hugging Face ZeroGPU Space (satyavoice-gpu)
    ↓  hf_zero_gpu/inference.py  (@spaces.GPU infer())
-XLS-R anti-spoof + ECAPA-TDNN speaker
+MMS-300M-AntiDeepfake anti-spoof + ECAPA-TDNN speaker
    ↓
 Render risk engine → Vercel UI
 ```
@@ -25,7 +25,7 @@ Render pipeline), which is the behaviour that existed before this integration.
 Kaggle GPU notebook
    ↓  imports app/services/local_provider.py
    ↓  which imports the SAME hf_zero_gpu/inference.py pipeline
-shared pipeline (mono → real resample 16 kHz → 4 s window → XLS-R → ECAPA)
+shared pipeline (mono → real resample 16 kHz → 4 s window → MMS-300M-AntiDeepfake → ECAPA)
    ↓
 kaggle/benchmark.py · kaggle/consistency.py · kaggle/reports/
 ```
@@ -65,9 +65,11 @@ never production configuration.
   (`INFERENCE_UNAVAILABLE`, `INVALID_AUDIO_INPUT`).
 - The 4 s / 16 kHz / mono audio contract and real resampling are shared by all
   providers.
-- Benchmark outputs always print the loaded checkpoint; the base
-  `facebook/wav2vec2-xls-r-300m` is labelled **BASE XLS-R — NOT FINAL
-  SATYAVOICE ANTI-SPOOF MODEL**.
+- Benchmark outputs always print the loaded checkpoint. The active Cloud model
+  `nii-yamagishilab/mms-300m-anti-deepfake` is flagged as a **pretrained /
+  post-trained checkpoint used off-the-shelf (not SatyaVoice-fine-tuned)**, and
+  the legacy `facebook/wav2vec2-xls-r-300m` base model (randomly initialised
+  head) is flagged as a warning.
 - Latency is reported as measured p50/p95/p99 with CUDA synchronisation and
   warm-up excluded; model critical path ≠ end-to-end verdict latency (SIH's
   <500 ms target refers to the latter).

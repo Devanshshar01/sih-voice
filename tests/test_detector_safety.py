@@ -155,7 +155,7 @@ def test_real_provider_success_passthrough() -> None:
         "spoof_probability": 0.88,
         "speaker_embedding": [0.1, 0.2, 0.3],
         "inference_time_ms": 42.0,
-        "model_version_antispoof": "facebook/wav2vec2-xls-r-300m",
+        "model_version_antispoof": "nii-yamagishilab/mms-300m-anti-deepfake",
         "model_version_speaker": "speechbrain/spkrec-ecapa-voxceleb",
         "sample_rate": 16000,
         "duration_ms": 4000.0,
@@ -167,7 +167,7 @@ def test_real_provider_success_passthrough() -> None:
 
     assert result.success is True
     assert result.spoof_probability == pytest.approx(0.88)
-    assert result.model_version_antispoof == "facebook/wav2vec2-xls-r-300m"
+    assert result.model_version_antispoof == "nii-yamagishilab/mms-300m-anti-deepfake"
     assert result.provider == "zerogpu"
 
 

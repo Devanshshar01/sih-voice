@@ -148,9 +148,16 @@ def mode_sanity(provider: LocalInferenceProvider, audio: np.ndarray) -> dict:
         pass
     if pipeline_config.ANTISPOOF_MODEL_ID == "facebook/wav2vec2-xls-r-300m":
         print(
-            "\n*** WARNING: BASE XLS-R -- NOT THE FINAL SATYAVOICE ANTI-SPOOF "
-            "MODEL. Set ANTISPOOF_MODEL_ID to the fine-tuned checkpoint "
-            "before reporting production results. ***"
+            "\n*** WARNING: LEGACY BASE CHECKPOINT (facebook/wav2vec2-xls-r-300m "
+            "has a randomly initialised head, NOT a trained anti-spoof model). "
+            "The active Cloud checkpoint is "
+            "nii-yamagishilab/mms-300m-anti-deepfake. ***"
+        )
+    elif "anti-deepfake" in pipeline_config.ANTISPOOF_MODEL_ID:
+        print(
+            "\nNOTE: MMS-300M-AntiDeepfake is a pretrained/post-trained "
+            "checkpoint used off-the-shelf -- SatyaVoice has NOT fine-tuned it. "
+            "Report results as pretrained-model results only. ***"
         )
     print("=" * 60)
     return {"phases": phases, "result_ok": bool(result.success)}
@@ -398,9 +405,16 @@ def main() -> None:
 
     if pipeline_config.ANTISPOOF_MODEL_ID == "facebook/wav2vec2-xls-r-300m":
         print(
-            "*** CHECKPOINT WARNING: BASE XLS-R (facebook/wav2vec2-xls-r-300m) "
-            "-- NOT THE FINAL SATYAVOICE ANTI-SPOOF MODEL. Any result produced "
-            "with this checkpoint must be labelled as base-model only. ***"
+            "*** CHECKPOINT WARNING: LEGACY BASE CHECKPOINT "
+            "(facebook/wav2vec2-xls-r-300m) -- a randomly initialised head, NOT "
+            "a trained anti-spoof model. The active Cloud checkpoint is "
+            "nii-yamagishilab/mms-300m-anti-deepfake. ***"
+        )
+    elif "anti-deepfake" in pipeline_config.ANTISPOOF_MODEL_ID:
+        print(
+            "*** CHECKPOINT NOTE: nii-yamagishilab/mms-300m-anti-deepfake is a "
+            "pretrained/post-trained checkpoint used off-the-shelf; SatyaVoice "
+            "has NOT fine-tuned it, so results must be labelled accordingly. ***"
         )
 
     if args.mode == "sanity":
