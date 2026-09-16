@@ -46,10 +46,9 @@ import torchaudio.functional as torchaudio_functional
 # fairseq/hydra runtime -- see hf_zero_gpu/requirements.txt.
 from huggingface_hub import PyTorchModelHubMixin
 
-try:
-    import speechbrain  # noqa: F401  (imported for version reporting only)
-except ImportError:  # speechbrain installed via requirements on the Space
-    speechbrain = None
+# Keep SpeechBrain out of module import time. Its lazy optional k2_fsa module
+# crashes the Spaces hot-reload scanner when it inspects loaded modules.
+speechbrain = None
 
 try:  # package import (Kaggle/local provider: `from hf_zero_gpu import inference`)
     from .config import (
@@ -183,6 +182,8 @@ def _load_models():
 
     if _speaker_model is None:
         print(f"Loading speaker model (ECAPA-TDNN): {SPEAKER_MODEL_ID}")
+        global speechbrain
+        speechbrain = importlib.import_module("speechbrain")
         # Real ECAPA-TDNN from SpeechBrain (not a placeholder). The
         # EncoderClassifier class has moved between SpeechBrain releases:
         #   - latest:   speechbrain.inference.classifiers

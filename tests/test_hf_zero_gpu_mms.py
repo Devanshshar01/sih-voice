@@ -720,8 +720,15 @@ def test_space_requirements_reference_the_vendored_omegaconf_wheel() -> None:
     lines = _active_requirement_lines(
         (REPO_ROOT / "hf_zero_gpu" / "requirements.txt").read_text(encoding="utf-8")
     )
-    assert "./vendor/omegaconf-2.0.6-py3-none-any.whl" in lines
-    assert "omegaconf==2.0.6" in lines    # satisfies fairseq's omegaconf<2.1
+    assert any(
+        line.startswith(
+            "omegaconf @ https://huggingface.co/spaces/"
+            "devanshshar01/satyavoice-gpu/resolve/main/vendor/"
+            "omegaconf-2.0.6-py3-none-any.whl"
+        )
+        for line in lines
+    )
+    assert any("omegaconf-2.0.6-py3-none-any.whl" in line for line in lines)
     assert "hydra-core==1.0.7" in lines   # satisfies fairseq's >=1.0.7,<1.1
     assert "fairseq==0.12.2" in lines
     assert "safetensors>=0.5.3" in lines  # MMS ships model.safetensors
