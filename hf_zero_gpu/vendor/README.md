@@ -54,18 +54,11 @@ The unpacked `omegaconf/` sources are byte-identical to the upstream wheel, and
 
 ## How it is referenced
 
-`hf_zero_gpu/requirements.txt` lists `./vendor/omegaconf-2.0.6-py3-none-any.whl`
-next to `omegaconf==2.0.6`. pip resolves relative paths in a requirements file
-against the **current working directory** (verified: the Space build runs
-`pip install -r /tmp/requirements.txt` with `WORKDIR /app`, i.e. the repo root).
-Because the vendored file is a valid candidate for `omegaconf==2.0.6` *and* for
-fairseq's `omegaconf<2.1` constraint, the resolver uses it instead of the
-rejected PyPI artifact (verified with pip 26.2.1: `pip download -r` resolves the
-legacy trio, rc=0, "Successfully downloaded omegaconf hydra-core
-antlr4-python3-runtime").
-
-If a future Hugging Face base image changes the build working directory, switch
-that line to the absolute path `/app/vendor/omegaconf-2.0.6-py3-none-any.whl`.
+`hf_zero_gpu/requirements.txt` references this wheel through the public Space
+URL using a direct `omegaconf @ ...` requirement. This avoids relying on the
+Hugging Face build stage copying `vendor/` into `/app` while it mounts the
+requirements file at `/tmp/requirements.txt`. The direct URL remains a valid
+candidate for fairseq's `omegaconf<2.1` constraint.
 
 ## Removing this file
 

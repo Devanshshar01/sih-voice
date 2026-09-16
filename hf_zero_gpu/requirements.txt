@@ -33,8 +33,7 @@
 # wheel: identical code, only the invalid specifier normalised to
 # `PyYAML>=5.1`. Provenance, checksums and the repair are documented in
 # vendor/README.md.
-./vendor/omegaconf-2.0.6-py3-none-any.whl
-omegaconf==2.0.6
+omegaconf @ https://huggingface.co/spaces/devanshshar01/satyavoice-gpu/resolve/main/vendor/omegaconf-2.0.6-py3-none-any.whl
 hydra-core==1.0.7
 antlr4-python3-runtime==4.8   # exact version hydra-core 1.0.7 requires
 fairseq==0.12.2               # ships as an sdist -> builds C++ ext. (needs a compiler)
