@@ -4,6 +4,7 @@ ZeroGPU inference provider for calling the Hugging Face Space.
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import time
 from typing import List, Optional
@@ -12,6 +13,17 @@ import numpy as np
 from gradio_client import Client
 
 from .inference_provider import InferenceProvider, InferenceResult
+
+
+MMS_MODEL_ID = "nii-yamagishilab/mms-300m-anti-deepfake"
+
+
+def _probability(value: object, field: str) -> float:
+    """Return a finite probability or reject the remote payload."""
+    probability = float(value)
+    if not math.isfinite(probability) or not 0.0 <= probability <= 1.0:
+        raise ValueError(f"Remote HF field {field!r} is not a valid probability")
+    return probability
 
 
 class ZeroGPUInferenceProvider(InferenceProvider):
@@ -71,11 +83,42 @@ class ZeroGPUInferenceProvider(InferenceProvider):
                         result.get("model_version_speaker", "unknown")
                     ),
                 )
+            if not isinstance(result, dict):
+                raise ValueError("Remote HF response is not a JSON object")
+
+            # The live Space returns both names.  SatyaVoice's canonical
+            # acoustic score is the MMS fake probability; retain the legacy
+            # spoof_probability name as an alias for that same value.
+            fake_probability = _probability(
+                result.get("fake_probability", result.get("spoof_probability")),
+                "fake_probability",
+            )
+            if "real_probability" in result:
+                real_probability = _probability(result["real_probability"], "real_probability")
+            else:
+                # Backward-compatible provider payloads exposed only the
+                # canonical spoof_probability field. The live HF MMS Space
+                # supplies both fields and therefore takes the strict path.
+                real_probability = 1.0 - fake_probability
+            if not math.isclose(fake_probability + real_probability, 1.0, abs_tol=0.01):
+                raise ValueError("Remote HF fake/real probabilities do not sum to 1")
+            spoof_probability = _probability(
+                result.get("spoof_probability", fake_probability), "spoof_probability"
+            )
+            if not math.isclose(spoof_probability, fake_probability, abs_tol=1e-6):
+                raise ValueError("Remote HF spoof_probability does not match fake_probability")
+            model_version_antispoof = str(result.get("model_version_antispoof", ""))
+            if model_version_antispoof != MMS_MODEL_ID:
+                raise ValueError(
+                    "Remote HF returned an unexpected antispoof model: "
+                    f"{model_version_antispoof or '<missing>'}; expected {MMS_MODEL_ID}"
+                )
+
             return InferenceResult(
-                spoof_probability=float(result["spoof_probability"]),
+                spoof_probability=fake_probability,
                 speaker_embedding=result["speaker_embedding"],
                 inference_time_ms=float(result["inference_time_ms"]),
-                model_version_antispoof=str(result["model_version_antispoof"]),
+                model_version_antispoof=model_version_antispoof,
                 model_version_speaker=str(result["model_version_speaker"]),
                 sample_rate=int(result["sample_rate"]),
                 duration_ms=float(result["duration_ms"]),

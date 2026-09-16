@@ -116,7 +116,9 @@ def _ok_payload() -> dict:
         "speaker_embedding": [0.5, -0.5],
         "speaker_embedding_dim": 2,
         "inference_time_ms": 88.0,
-        "model_version_antispoof": "satyavoice/xlsr-antipoof",
+        "fake_probability": 0.31,
+        "real_probability": 0.69,
+        "model_version_antispoof": "nii-yamagishilab/mms-300m-anti-deepfake",
         "model_version_speaker": "speechbrain/spkrec-ecapa-voxceleb",
         "sample_rate": 16000,
         "duration_ms": 4000.0,
@@ -131,7 +133,29 @@ def test_local_provider_success_mapping() -> None:
     r = p.infer_audio_window_sync(WINDOW)
     assert r.success and r.spoof_probability == pytest.approx(0.31)
     assert r.provider == "local"
-    assert r.model_version_antispoof == "satyavoice/xlsr-antipoof"
+    assert r.model_version_antispoof == "nii-yamagishilab/mms-300m-anti-deepfake"
+
+
+def test_remote_hf_mms_fake_probability_is_canonical_score() -> None:
+    with mock.patch("app.services.zerogpu_provider.Client"):
+        provider = ZeroGPUInferenceProvider("https://huggingface.co/spaces/test/space")
+    provider._client = mock.MagicMock()
+    provider._client.predict = mock.MagicMock(return_value={
+        "status": "ok",
+        "fake_probability": 0.7482935,
+        "real_probability": 0.2517065,
+        "spoof_probability": 0.7482935,
+        "speaker_embedding": [0.1],
+        "inference_time_ms": 10.0,
+        "model_version_antispoof": "nii-yamagishilab/mms-300m-anti-deepfake",
+        "model_version_speaker": "speechbrain/spkrec-ecapa-voxceleb",
+        "sample_rate": 16000,
+        "duration_ms": 4000.0,
+    })
+    result = provider.infer_audio_window_sync(WINDOW)
+    assert result.success is True
+    assert result.spoof_probability == pytest.approx(0.7482935)
+    assert result.model_version_antispoof == "nii-yamagishilab/mms-300m-anti-deepfake"
 
 
 def test_local_provider_structured_error_is_explicit_failure() -> None:

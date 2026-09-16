@@ -5,7 +5,7 @@ or teammates sanity-check the detector without spinning up a full call.
 from __future__ import annotations
 
 import numpy as np
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app import config
 from app.models.schemas import AudioAnalyzeResponse
@@ -33,6 +33,25 @@ async def analyze_audio(audio_file: UploadFile = File(...), language: str = Form
 
     result = detector.predict(samples)
     score = result["acoustic_score"]
+    if (
+        not result.get("success", True)
+        or score is None
+        or not np.isfinite(score)
+        or not 0.0 <= score <= 1.0
+    ):
+        # A failed detector is not evidence of either class.  Preserve the
+        # explicit degraded state instead of converting None into a verdict.
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "error",
+                "error_code": result.get("error_code", "INFERENCE_UNAVAILABLE"),
+                "error_message": result.get(
+                    "error_message", "Audio inference did not produce a valid score"
+                ),
+                "detector_status": result.get("detector_status", "unavailable"),
+            },
+        )
     classification = "AI_GENERATED" if score >= 0.5 else "HUMAN"
     confidence = score if classification == "AI_GENERATED" else 1 - score
 

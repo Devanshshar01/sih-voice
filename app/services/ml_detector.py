@@ -384,6 +384,9 @@ class ZeroGPUVoiceDetectorAdapter(BaseVoiceDetector):
                 "mode": "zerogpu",
                 "model": result.model_version_antispoof,
                 "inference_time_ms": result.inference_time_ms,
+                "fake_probability": result.spoof_probability,
+                "real_probability": round(1.0 - result.spoof_probability, 6),
+                "model_version_antispoof": result.model_version_antispoof,
             },
         }
 
