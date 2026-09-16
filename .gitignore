@@ -16,3 +16,5 @@ build/
 
 public/models/*.onnx.data
 
+e2e_test.wav
+
