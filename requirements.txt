@@ -17,22 +17,21 @@ websockets>=12.0      # used by scripts/demo_client.py (real WS client)
 # AMR-NB/AMR-WB require a native AMR decoder binding and are correctly
 # reported as unsupported until one is installed.
 
-# --- Real detector runtime ---
-# The active acoustic deepfake detector (nii-yamagishilab/mms-300m-anti-deepfake)
-# is a fairseq Wav2Vec2 front-end + FC head packaged with
-# PyTorchModelHubMixin. Versions follow the official model card; fairseq
-# 0.12.2 is pinned because it is the version the checkpoint was released
-# with. Known caveat: fairseq 0.12.2 predates NumPy 2; if the fairseq import
-# fails under NumPy 2, pin numpy<2 (this does not affect mock mode).
-# fairseq is only needed when VOICETRUST_DETECTOR_MODE=real.
+# --- Remote detector runtime (production path) ---
+# VOICETRUST_DETECTOR_MODE=remote_hf (canonical alias: zerogpu): the Render
+# backend calls the Hugging Face Space through gradio_client and does not load
+# MMS locally, so the build-heavy fairseq/hydra MMS runtime is intentionally
+# NOT installed here -- it lives in hf_zero_gpu/requirements.txt for the Space.
+gradio-client>=1.0,<2
+
+# --- Optional local detector runtime (development only) ---
+# Keep the local detector dependencies here only where the backend itself
+# still supports local development/inference.
 torch>=2.2
 transformers>=4.39,<5
-fairseq==0.12.2
 safetensors>=0.5,<0.6
 soundfile>=0.12,<0.14
 huggingface-hub>=0.31,<1
-hydra-core==1.0.7
-omegaconf==2.0.6
 protobuf>=4.25
 faster-whisper>=1.1,<2
 silero-vad>=6.2,<7

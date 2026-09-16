@@ -186,8 +186,10 @@ class RealAntiSpoofDetector(BaseVoiceDetector):
             raise RuntimeError(
                 "Real detector mode requires torch, fairseq, and huggingface-hub "
                 "(see the official nii-yamagishilab/mms-300m-anti-deepfake model "
-                "card). Install requirements.txt before setting "
-                "VOICETRUST_DETECTOR_MODE=real."
+                "card). Install hf_zero_gpu/requirements.txt, which pins the "
+                "fairseq/hydra MMS runtime, before setting "
+                "VOICETRUST_DETECTOR_MODE=real -- the production "
+                "remote_hf/zerogpu path does not need it."
             ) from exc
 
         try:
@@ -411,7 +413,9 @@ def get_detector(
         )
 
 
-    if normalized_mode == "zerogpu":
+    # "remote_hf" is the Render deployment spelling of the ZeroGPU remote
+    # provider; both route to the Hugging Face Space through gradio_client.
+    if normalized_mode in {"zerogpu", "remote_hf"}:
         return ZeroGPUVoiceDetectorAdapter()
     if normalized_mode == "real":
         return RealAntiSpoofDetector(
@@ -427,6 +431,6 @@ def get_detector(
 
     raise ValueError(
         f"Unknown VOICE_DETECTOR_MODE '{mode}'. "
-        f"Expected one of: 'zerogpu', 'real', 'ml', 'mock'."
+        f"Expected one of: 'zerogpu'/'remote_hf', 'real', 'ml', 'mock'."
     )
 

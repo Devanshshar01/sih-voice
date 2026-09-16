@@ -65,11 +65,16 @@ VOICETRUST_MODEL_PATH=
 Face on first inference and caches it locally. The checkpoint is several
 hundred MB and is intentionally not committed to this repository.
 
-Dependencies (see `requirements.txt`): `torch`, `fairseq==0.12.2`,
-`safetensors`, `soundfile`, `huggingface-hub`, pinned per the official model
-card. `fairseq` is only required when `VOICETRUST_DETECTOR_MODE=real`.
+Dependencies: the production path (`VOICETRUST_DETECTOR_MODE=remote_hf`, alias
+`zerogpu`) calls the Hugging Face Space over `gradio-client` and does not load
+MMS locally. Running the detector in-process needs `torch`, `fairseq==0.12.2`,
+`hydra-core==1.0.7`, `omegaconf==2.0.6`, `safetensors`, `soundfile`, and
+`huggingface-hub`, pinned per the official model card. The build-heavy
+fairseq/hydra trio compiles native extensions and needs `g++`, so it is
+deliberately kept out of the root `requirements.txt` that the Render image
+installs; it lives in `hf_zero_gpu/requirements.txt` for the Space.
 Known caveat: fairseq 0.12.2 predates NumPy 2; if the fairseq import fails
-under NumPy 2, pin `numpy<2` (this does not affect mock mode).
+under NumPy 2, pin `numpy<2` (this does not affect the remote/zerogpu path).
 
 ## Streaming behavior
 
@@ -131,7 +136,9 @@ standalone identity or financial authorization mechanism.
 
 ## Reproducibility
 
-1. Install `requirements.txt` in the project virtual environment.
+1. Install `requirements.txt` in the project virtual environment, plus the
+   fairseq/hydra runtime from `hf_zero_gpu/requirements.txt` (needed only for
+   in-process `real` mode; the production remote path does not need it).
 2. Set `VOICETRUST_DETECTOR_MODE=real`.
 3. Run `python scripts/real_detector_check.py` (one inference, verified
    output structure, fake/real probabilities, no exception) or start the API.

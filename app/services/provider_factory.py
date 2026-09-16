@@ -6,7 +6,10 @@ Provider factory: selects the inference provider via configuration.
                                   in-process detectors (ml_detector.py +
                                   speaker_vault.py). Nothing changes.
     INFERENCE_PROVIDER=zerogpu    route windows to the Hugging Face ZeroGPU
-                                  Space (production HF path).
+                                  Space (production HF path). The Render
+                                  deployment spelling
+                                  VOICETRUST_DETECTOR_MODE=remote_hf is a
+                                  pure alias of this provider.
     INFERENCE_PROVIDER=local      run the SAME shared ML pipeline
                                   (hf_zero_gpu/inference.py) directly in the
                                   current process on CUDA -- this is what the
@@ -25,6 +28,7 @@ from typing import Optional
 from .inference_provider import InferenceProvider, InferenceResult
 
 PROVIDER_ZEROGPU = "zerogpu"
+PROVIDER_REMOTE_HF = "remote_hf"
 PROVIDER_LOCAL = "local"
 PROVIDER_REAL = "real"
 PROVIDER_DETECTOR = "detector"
@@ -32,11 +36,14 @@ PROVIDER_MOCK = "mock"
 
 # "local" is what Kaggle sets; documented alias "kaggle" maps onto it because
 # Kaggle does not need a redundant provider of its own (it IS local GPU).
+# "remote_hf" is the Render deployment spelling of the same Hugging Face
+# ZeroGPU remote provider -- a pure alias, not a separate implementation.
 _PROVIDER_ALIASES = {
     "kaggle": PROVIDER_LOCAL,
     "real": PROVIDER_REAL,
     "mock": PROVIDER_MOCK,
     "detector": PROVIDER_MOCK,  # legacy detector mode maps to mock unless explicitly real
+    PROVIDER_REMOTE_HF: PROVIDER_ZEROGPU,
 }
 
 

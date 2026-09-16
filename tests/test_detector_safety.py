@@ -45,6 +45,26 @@ def test_production_real_provider_selected() -> None:
 
 
 # ---------------------------------------------------------------------------
+# TEST 1b: Production + Render alias VOICETRUST_DETECTOR_MODE=remote_hf ->
+# resolves to the same ZeroGPU remote provider (no separate code path).
+# ---------------------------------------------------------------------------
+def test_production_remote_hf_alias_selects_zerogpu() -> None:
+    env = {
+        "ENVIRONMENT": "production",
+        "VOICETRUST_DETECTOR_MODE": "remote_hf",
+        "HF_ZERO_GPU_SPACE": "https://huggingface.co/spaces/test/space",
+    }
+    with mock.patch.dict(os.environ, env, clear=True):
+        assert config.validate_detector_config(env) == "zerogpu"
+        provider = provider_factory.get_inference_provider(env)
+        assert isinstance(provider, ZeroGPUInferenceProvider)
+        assert isinstance(
+            ml_detector.get_detector("remote_hf"),
+            ml_detector.ZeroGPUVoiceDetectorAdapter,
+        )
+
+
+# ---------------------------------------------------------------------------
 # TEST 2: Production + mock configuration -> startup/config is rejected.
 # ---------------------------------------------------------------------------
 def test_production_mock_configuration_rejected() -> None:

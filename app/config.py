@@ -220,6 +220,13 @@ VOICE_MODEL_REVISION = os.getenv("VOICETRUST_MODEL_REVISION", "main")
 HF_ZERO_GPU_SPACE = os.getenv("HF_ZERO_GPU_SPACE", "")
 HF_TOKEN = os.getenv("HF_TOKEN", "")
 
+# "remote_hf" is the Render deployment spelling of the Hugging Face ZeroGPU
+# remote provider. Keep it as a pure alias of the canonical "zerogpu" mode so
+# provider selection and the production safety checks behave identically.
+_DETECTOR_MODE_ALIASES = {
+    "remote_hf": "zerogpu",
+}
+
 # ---- WebSocket authentication ----
 # JWT secret for signing/verifying WebSocket access tokens.
 # MUST be set to a strong random value in production (openssl rand -hex 32).
@@ -253,6 +260,10 @@ def validate_detector_config(env_dict: dict | None = None) -> str:
         or env_source.get("INFERENCE_PROVIDER")
         or VOICE_DETECTOR_MODE
     ).strip().lower()
+
+    # Normalize the Render deployment alias so the production safety check
+    # below (HF_ZERO_GPU_SPACE presence) applies to remote_hf as well.
+    mode = _DETECTOR_MODE_ALIASES.get(mode, mode)
 
     if is_prod:
         if mode == "mock":

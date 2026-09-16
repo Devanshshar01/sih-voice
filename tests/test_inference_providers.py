@@ -81,6 +81,7 @@ def test_explicit_mock_provider_in_development() -> None:
     "value,expected",
     [
         ("zerogpu", "zerogpu"),
+        ("remote_hf", "zerogpu"),  # Render deployment alias for the HF ZeroGPU path
         ("local", "local"),
         ("kaggle", "local"),  # documented alias
         ("LOCAL", "local"),

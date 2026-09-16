@@ -9,6 +9,13 @@
 # NOTE: torchaudio ships with the base image's torch install and is a
 # hard dependency of speechbrain; we rely on the base image version to
 # avoid pip rebuilding/replacing the CUDA torch wheel.
+# MMS/fairseq dependencies belong in the HF Space, not in the lightweight
+# Render backend image. Keep the released fairseq version aligned with the
+# MMS-300M checkpoint's model-card runtime.
+pip<24.1
+fairseq==0.12.2
+hydra-core==1.0.7
+omegaconf==2.0.6
 transformers>=4.39.0
 speechbrain>=0.5.15
 numpy>=1.24.0,<2.0  # Must be <2.0 for torch 2.13.0 compatibility
