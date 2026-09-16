@@ -31,7 +31,21 @@ def _quiet_unraisable_hook(unraisable):
 
 sys.unraisablehook = _quiet_unraisable_hook
 
-from inference import infer
+from inference import _run_inference, _structured_error
+
+
+if spaces is not None:
+    @spaces.GPU
+    def infer(audio):
+        try:
+            return _run_inference(audio)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"Invalid audio input: {exc}") from exc
+        except Exception as exc:  # noqa: BLE001 - return structured API errors
+            print(f"Inference error: {type(exc).__name__}: {exc}")
+            return _structured_error(exc)
+else:
+    from inference import infer
 
 # Create the interface
 with gr.Blocks() as demo:
