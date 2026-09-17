@@ -299,6 +299,12 @@ def _split_audio_input(audio):
         if source is None:
             raise ValueError("Audio file representation has no path")
         return _decode_audio_file(source)
+    # Gradio 6 sends API uploads as a FileData object with a server-side path.
+    # Handle it before the generic NumPy conversion; otherwise the object can
+    # reach model code as an object array and produce an ambiguous truth error.
+    file_path = getattr(audio, "path", None)
+    if isinstance(file_path, (str, os.PathLike)):
+        return _decode_audio_file(file_path)
     if isinstance(audio, (str, os.PathLike, bytes, bytearray, memoryview)) or hasattr(
         audio, "read"
     ):
