@@ -35,16 +35,37 @@ It returns a JSON object with the fields listed above.
 
 ### Example usage with `gradio_client`
 
+The `/infer` endpoint's `audio` input is a `gr.Audio` component. With
+`gradio_client>=1.0` you must upload a **file** (`handle_file`), not a bare
+numpy array — passing an ndarray fails inside `gradio_client`'s argument
+builder with "The truth value of an array with more than one element is
+ambiguous" before any request is sent.
+
 ```python
-from gradio_client import Client
+import numpy as np
+import wave, tempfile, os
+from gradio_client import Client, handle_file
 
 client = Client("your-username/your-space-name")
+
+# Serialize the float32 window ([-1, 1], mono, 16 kHz) to a temp WAV
+sr = 16000
+fd, path = tempfile.mkstemp(suffix=".wav"); os.close(fd)
+pcm = (np.clip(audio, -1, 1) * 32767).astype("<i2")  # int16 little-endian
+with wave.open(path, "wb") as w:
+    w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
+    w.writeframes(pcm.tobytes())
+
 result = client.predict(
-    audio=your_audio_numpy_array,  # numpy array of audio samples
-    api_name="/predict"
+    handle_file(path),  # audio uploaded as a WAV file
+    api_name="/infer"
 )
 print(result)
+os.remove(path)
 ```
+
+The production caller (`app/services/zerogpu_provider.py` on Render) does
+exactly this automatically.
 
 ## Models
 

@@ -6,16 +6,21 @@ from __future__ import annotations
 import asyncio
 import math
 import os
+import tempfile
 import time
+import wave
 from typing import List, Optional
 
 import numpy as np
-from gradio_client import Client
+from gradio_client import Client, handle_file
 
 from .inference_provider import InferenceProvider, InferenceResult
 
 
 MMS_MODEL_ID = "nii-yamagishilab/mms-300m-anti-deepfake"
+
+# Canonical SatyaVoice acoustic window: 4 s @ 16 kHz, mono, float32 in [-1, 1].
+TARGET_SAMPLE_RATE = 16000
 
 
 def _probability(value: object, field: str) -> float:
@@ -62,10 +67,26 @@ class ZeroGPUInferenceProvider(InferenceProvider):
         self, audio_window: np.ndarray
     ) -> InferenceResult:
         """Run inference by calling the Hugging Face Space (blocking)."""
+        tmp_path: Optional[str] = None
         try:
             client = self._get_client()
+            # gradio_client>=1.0 cannot serialize a bare numpy array for the
+            # Space's gr.Audio input: construct_args() raises "The truth value
+            # of an array with more than one element is ambiguous" BEFORE any
+            # HTTP request is sent. Serialize the window to a 16 kHz mono WAV
+            # and upload it via handle_file() instead (verified against the
+            # live Space).
+            samples = np.asarray(audio_window, dtype=np.float32).reshape(-1)
+            fd, tmp_path = tempfile.mkstemp(suffix=".wav")
+            os.close(fd)
+            pcm = (np.clip(samples, -1.0, 1.0) * 32767.0).astype("<i2")
+            with wave.open(tmp_path, "wb") as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(TARGET_SAMPLE_RATE)
+                wav_file.writeframes(pcm.tobytes())
             result = client.predict(
-                audio_window,  # the audio input
+                handle_file(tmp_path),  # the audio input, uploaded as a WAV
                 api_name=self.api_name,
             )
             # The Space returns a structured error payload (status="error")
@@ -134,6 +155,12 @@ class ZeroGPUInferenceProvider(InferenceProvider):
                 f"Failed to call ZeroGPU Space: {e}",
                 provider="zerogpu",
             )
+        finally:
+            if tmp_path:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
 
 
     def is_available(self) -> bool:
