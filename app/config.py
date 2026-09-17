@@ -11,7 +11,7 @@ from dataclasses import dataclass
 # ---- Server ----
 APP_NAME = "SatyaVoice API"
 API_V1_PREFIX = "/api/v1"
-_raw_origins = os.getenv("VOICETRUST_CORS_ORIGINS", "*").split(",")
+_raw_origins = os.getenv("VOICETRUST_CORS_ORIGINS", "https://satyavoice.vercel.app").split(",")
 CORS_ORIGINS = [o.strip().rstrip("/") for o in _raw_origins if o.strip()] or ["*"]
 
 # ---- Canonical audio configuration (single source of truth) ----
@@ -141,6 +141,17 @@ class RiskStatus:
 # cannot spawn unbounded threads; the stream awaits with a timeout.
 INFERENCE_EXECUTOR_MAX_WORKERS = int(os.getenv("VOICETRUST_INFERENCE_WORKERS", "6"))
 INFERENCE_TIMEOUT_SECONDS = float(os.getenv("VOICETRUST_INFERENCE_TIMEOUT", "4.0"))
+
+# Batch classification threshold. This affects only the displayed class, never
+# the raw probabilities returned by the detector.
+SPOOF_THRESHOLD = float(os.getenv("SPOOF_THRESHOLD", "0.50"))
+if not 0.0 <= SPOOF_THRESHOLD <= 1.0:
+    raise ValueError("SPOOF_THRESHOLD must be between 0 and 1")
+
+# Batch upload guardrails. The deployed API accepts a 4-second analysis window;
+# bounds prevent accidental/untrusted memory exhaustion.
+MAX_ANALYZE_UPLOAD_BYTES = int(os.getenv("VOICETRUST_MAX_ANALYZE_UPLOAD_BYTES", str(10 * 1024 * 1024)))
+MAX_ANALYZE_DURATION_SECONDS = float(os.getenv("VOICETRUST_MAX_ANALYZE_DURATION_SECONDS", "30"))
 
 # ---- Risk engine fusion weights (legacy; see RiskFusionConfig above) ----
 

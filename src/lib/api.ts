@@ -14,6 +14,7 @@ import type {
 // connection refused, which browsers often report as a CORS error).
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000/api/v1";
 export const WS_BASE = (import.meta.env.VITE_WS_BASE_URL as string | undefined) ?? API_BASE.replace(/^http/, "ws");
+export const REQUEST_TIMEOUT_MS = 30_000;
 
 function connectionError(operation: string, err: unknown): Error {
   const detail = err instanceof Error ? err.message : String(err);
@@ -27,12 +28,16 @@ function connectionError(operation: string, err: unknown): Error {
 
 async function request(operation: string, url: string, init?: RequestInit): Promise<Response> {
   let response: Response;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    response = await fetch(url, init);
+    response = await fetch(url, { ...init, signal: init?.signal ?? controller.signal });
   } catch (err) {
     // fetch() rejects on network/DNS/CORS-blocked failures; translate into a
     // message the operator can act on instead of a bare "Failed to fetch".
     throw connectionError(operation, err);
+  } finally {
+    window.clearTimeout(timeout);
   }
   return response;
 }

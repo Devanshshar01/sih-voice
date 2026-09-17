@@ -51,9 +51,17 @@ class RiskTelemetry(BaseModel):
 
 
 class AudioAnalyzeResponse(BaseModel):
+    status: str = "ok"
     classification: str  # AI_GENERATED | HUMAN
     confidence: float
     explanation: str
+    spoof_probability: Optional[float] = None
+    fake_probability: Optional[float] = None
+    real_probability: Optional[float] = None
+    model_version_antispoof: Optional[str] = None
+    inference_time_ms: Optional[float] = None
+    sample_rate: Optional[int] = None
+    duration_ms: Optional[float] = None
 
 
 class SpeakerEnrollRequest(BaseModel):
