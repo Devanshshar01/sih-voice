@@ -32,9 +32,14 @@ except ImportError:  # local dev / tests: `spaces` only exists on Hugging Face
     spaces = None
 
 import importlib
+import io
+import logging
+import os
 import time
+from numbers import Integral, Real
 
 import numpy as np
+import soundfile as sf
 import torch
 import torchaudio
 import torchaudio.functional as torchaudio_functional
@@ -77,6 +82,7 @@ except ImportError:  # Space runtime: app dir is on sys.path, flat import works
 _antispoof_model = None
 _speaker_model = None
 _models_on_device = False
+_logger = logging.getLogger("satyavoice.hf")
 
 
 class SSLModel(torch.nn.Module):
@@ -231,13 +237,74 @@ def _ensure_models_on_device():
         _models_on_device = True
 
 def _to_mono_float32(audio_data: np.ndarray) -> np.ndarray:
-    """Return a 1-D float32 array."""
+    """Return a finite, non-empty 1-D float32 mono array."""
     audio_data = np.asarray(audio_data)
+    if audio_data.ndim == 0:
+        audio_data = audio_data.reshape(1)
+    if audio_data.ndim > 2:
+        raise ValueError(f"Audio must be 1-D or 2-D; got shape {audio_data.shape}")
     if audio_data.dtype != np.float32:
         audio_data = audio_data.astype(np.float32)
-    if audio_data.ndim > 1:
+    if audio_data.ndim == 2:
         audio_data = np.mean(audio_data, axis=1)
+    if audio_data.size == 0:
+        raise ValueError("Audio is empty")
+    if not np.isfinite(audio_data).all():
+        raise ValueError("Audio contains NaN/Inf samples")
     return audio_data
+
+
+def _decode_audio_file(source) -> tuple[np.ndarray, int]:
+    """Decode an encoded WAV/FLAC/file-like source without treating bytes as PCM."""
+    if isinstance(source, (str, os.PathLike)):
+        samples, sample_rate = sf.read(os.fspath(source), dtype="float32", always_2d=False)
+    elif isinstance(source, (bytes, bytearray, memoryview)):
+        samples, sample_rate = sf.read(
+            io.BytesIO(bytes(source)), dtype="float32", always_2d=False
+        )
+    elif hasattr(source, "read"):
+        samples, sample_rate = sf.read(source, dtype="float32", always_2d=False)
+    else:
+        raise TypeError(f"Unsupported encoded audio input: {type(source).__name__}")
+    return _to_mono_float32(samples), int(sample_rate)
+
+
+def _split_audio_input(audio):
+    """Return decoded samples and their source rate from Gradio/client inputs."""
+    if audio is None:
+        raise ValueError("No audio provided")
+
+    # Gradio type="numpy" normally supplies (sample_rate, ndarray). Only treat
+    # a two-item tuple/list as that form when its first item is scalar; a list of
+    # samples must remain a waveform, not be unpacked.
+    if isinstance(audio, (tuple, list)) and len(audio) == 2 and isinstance(
+        audio[0], (Integral, Real, np.integer, np.floating)
+    ):
+        sample_rate, samples = audio
+        if not np.isfinite(float(sample_rate)) or float(sample_rate) <= 0:
+            raise ValueError("Audio sample rate must be positive")
+        return _to_mono_float32(samples), int(sample_rate)
+
+    # Gradio/API file representations may be a local path, bytes, file object,
+    # or a dict containing a local path. Encoded data must go through libsndfile.
+    if isinstance(audio, dict):
+        # Do not use ``or`` here: a malformed/alternate Gradio representation
+        # may contain an ndarray, whose truth value is ambiguous in NumPy.
+        source = None
+        for key in ("path", "name", "file"):
+            candidate = audio.get(key)
+            if candidate is not None:
+                source = candidate
+                break
+        if source is None:
+            raise ValueError("Audio file representation has no path")
+        return _decode_audio_file(source)
+    if isinstance(audio, (str, os.PathLike, bytes, bytearray, memoryview)) or hasattr(
+        audio, "read"
+    ):
+        return _decode_audio_file(audio)
+
+    return _to_mono_float32(audio), SAMPLE_RATE
 
 
 def _resample(audio_data: np.ndarray, orig_sr: int) -> np.ndarray:
@@ -267,16 +334,20 @@ def _enforce_window(audio_data: np.ndarray) -> np.ndarray:
 
 def _prepare_audio(audio) -> np.ndarray:
     """Convert arbitrary Gradio audio input to the 4 s / 16 kHz mono window."""
-    if audio is None:
-        raise ValueError("No audio provided")
-    if isinstance(audio, (tuple, list)):
-        sr, audio_data = audio
-    else:
-        audio_data = audio
-        sr = SAMPLE_RATE
+    audio_data, sr = _split_audio_input(audio)
     audio_data = _to_mono_float32(audio_data)
     audio_data = _resample(audio_data, sr)
-    return _enforce_window(audio_data)
+    audio_data = _to_mono_float32(audio_data)
+    audio_data = _enforce_window(audio_data)
+    _logger.info(
+        "Normalized audio input: type=%s shape=%s dtype=%s source_sample_rate=%d target_sample_rate=%d",
+        type(audio).__name__,
+        tuple(audio_data.shape),
+        audio_data.dtype,
+        sr,
+        SAMPLE_RATE,
+    )
+    return audio_data
 
 
 def _binary_probabilities(logits):

@@ -26,6 +26,7 @@ Coverage:
 from __future__ import annotations
 
 import importlib
+import io
 import sys
 import types
 import zipfile
@@ -34,6 +35,7 @@ from unittest import mock
 
 import numpy as np
 import pytest
+import soundfile as sf
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -113,6 +115,17 @@ class _FakeProbs:
         return float(self._values.reshape(-1)[0])
 
 
+class _FakeBatchProbs:
+    """Batched softmax stand-in: indexing row zero returns class scores."""
+
+    def __init__(self, values):
+        self._row = _FakeProbs(values)
+
+    def __getitem__(self, index):
+        assert index == 0
+        return self._row
+
+
 class _FakeContext:
     def __enter__(self):
         return self
@@ -167,7 +180,7 @@ class _FakeTorch:
         return _FakeBool(np.isfinite(tensor.data).all())
 
     def softmax(self, logits, dim=-1):
-        return _FakeProbs(self._probabilities)
+        return _FakeBatchProbs(self._probabilities)
 
     def inference_mode(self):
         return _FakeContext()
@@ -182,12 +195,12 @@ def _import_pipeline(monkeypatch, torch_stub=None):
 
     hub = types.ModuleType("huggingface_hub")
 
-    class _HubMixin:
+    class PyTorchModelHubMixin:
         @classmethod
         def from_pretrained(cls, *args, **kwargs):  # pragma: no cover
             raise AssertionError("from_pretrained must be mocked per test")
 
-    hub.PyTorchModelHubMixin = _HubMixin
+    hub.PyTorchModelHubMixin = PyTorchModelHubMixin
 
     monkeypatch.setitem(sys.modules, "torch", torch_stub)
     monkeypatch.setitem(sys.modules, "torchaudio", torchaudio)
@@ -445,6 +458,51 @@ def test_prepare_audio_rejects_none_and_builds_the_exact_window(monkeypatch) -> 
     pipeline = _install_fake_models(_import_pipeline(monkeypatch))
     window = pipeline._prepare_audio(np.ones(1000, dtype=np.float32))
     assert len(window) == 64000           # padded to the 4 s contract
+
+
+@pytest.mark.parametrize("file_format", ["WAV", "FLAC"])
+def test_prepare_audio_decodes_encoded_file_bytes_without_numpy_truthiness(
+    monkeypatch, file_format
+) -> None:
+    """Encoded uploads must be decoded, not passed to np.frombuffer as PCM."""
+    pipeline = _install_fake_models(_import_pipeline(monkeypatch))
+    source = np.zeros(16000, dtype=np.float32)
+    encoded = io.BytesIO()
+    sf.write(encoded, source, 16000, format=file_format)
+
+    window = pipeline._prepare_audio(encoded.getvalue())
+
+    assert window.dtype == np.float32
+    assert window.shape == (64000,)
+    assert np.isfinite(window).all()
+
+
+def test_prepare_audio_dict_does_not_evaluate_numpy_array_truthiness(monkeypatch) -> None:
+    """A non-path ndarray field must fail explicitly, not via truthiness."""
+    pipeline = _install_fake_models(_import_pipeline(monkeypatch))
+    samples = np.zeros(16000, dtype=np.float32)
+
+    with pytest.raises(TypeError, match="Unsupported encoded audio input"):
+        pipeline._prepare_audio({"path": None, "file": samples})
+
+
+@pytest.mark.parametrize("file_format", ["WAV", "FLAC"])
+def test_encoded_audio_reaches_mms_and_returns_contract(monkeypatch, file_format) -> None:
+    """WAV and FLAC uploads both reach the mocked MMS/ECAPA inference path."""
+    pipeline = _install_fake_models(_import_pipeline(monkeypatch))
+    source = np.zeros(64000, dtype=np.float32)
+    encoded = io.BytesIO()
+    sf.write(encoded, source, 16000, format=file_format)
+
+    payload = pipeline.infer(encoded.getvalue())
+
+    assert payload["status"] == "ok"
+    assert payload["fake_probability"] == pytest.approx(0.9)
+    assert payload["real_probability"] == pytest.approx(0.1)
+    assert payload["model_version_antispoof"] == MMS_MODEL_ID
+    assert payload["sample_rate"] == 16000
+    assert payload["duration_ms"] == pytest.approx(4000.0)
+    assert isinstance(payload["inference_time_ms"], float)
     window = pipeline._prepare_audio(np.ones(200000, dtype=np.float32))
     assert len(window) == 64000           # truncated to the 4 s contract
 
@@ -489,6 +547,12 @@ def test_missing_fairseq_is_reported_as_structured_error(monkeypatch) -> None:
     """A host without the fairseq runtime must degrade, not fake a score."""
     monkeypatch.setitem(sys.modules, "fairseq", None)  # None -> ImportError
     pipeline = _import_pipeline(monkeypatch)
+    monkeypatch.setattr(
+        pipeline.AntiDeepfakeDetector,
+        "from_pretrained",
+        classmethod(lambda cls, model_id: cls()),
+    )
+    monkeypatch.setattr(pipeline, "_speaker_model", _FakeModule())
     payload = pipeline.infer(WINDOW)
 
     assert payload["status"] == "error"
@@ -659,7 +723,7 @@ def test_active_modules_never_reference_the_legacy_checkpoint(rel_path) -> None:
 def test_space_pipeline_uses_fairseq_not_a_transformers_audio_classifier() -> None:
     source = (REPO_ROOT / "hf_zero_gpu" / "inference.py").read_text(encoding="utf-8")
 
-    assert "AutoModelForAudioClassification" not in source
+    assert "from transformers import AutoModelForAudioClassification" not in source
     assert "Wav2Vec2FeatureExtractor" not in source
     assert "from fairseq.models.wav2vec import Wav2Vec2Config, Wav2Vec2Model" in source
     assert "PyTorchModelHubMixin" in source
@@ -686,7 +750,12 @@ def test_backend_selects_remote_hf_without_importing_fairseq(monkeypatch) -> Non
     monkeypatch.setitem(sys.modules, "fairseq", None)  # any import would fail
     from app.services import ml_detector, provider_factory
 
-    detector = ml_detector.get_detector("remote_hf")
+    with mock.patch.dict(
+        "os.environ",
+        {"HF_ZERO_GPU_SPACE": "https://huggingface.co/spaces/test/space"},
+        clear=True,
+    ):
+        detector = ml_detector.get_detector("remote_hf")
     assert isinstance(detector, ml_detector.ZeroGPUVoiceDetectorAdapter)
 
     real = ml_detector.get_detector("real")
