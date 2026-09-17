@@ -1,4 +1,5 @@
 import type { UseCallSession } from "../hooks/useCallSession";
+import { formatRiskScore, formatVectorPercent } from "../lib/riskFormat";
 import TrustGauge from "./TrustGauge";
 import Spectrograph from "./Spectrograph";
 import StatusBanner from "./StatusBanner";
@@ -81,10 +82,10 @@ export default function CallDashboard({ session }: CallDashboardProps) {
           <StatusBanner status={verified ? "ALLOW" : status} rationale={rationale} verified={verified} />
 
           <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Metric label="Overall risk" value={`${Math.round(score * 100)}%`} detail="Fused session risk score" tone={statusTone} />
+            <Metric label="Overall risk" value={`${formatRiskScore(score)}%`} detail="Fused session risk score" tone={statusTone} />
             <Metric label="Risk status" value={currentStatus} detail={verified ? "Verification override active" : "Current policy decision"} tone={statusTone} />
-            <Metric label="Acoustic anti-spoof" value={`${Math.round(acousticScore * 100)}%`} detail="Synthetic voice likelihood" tone={acousticScore > 0.7 ? "text-danger" : "text-paper"} />
-            <Metric label="Intent pressure" value={`${Math.round(intentScore * 100)}%`} detail="Urgency / sensitive-request signal" tone={intentScore > 0.7 ? "text-danger" : "text-paper"} />
+            <Metric label="Acoustic anti-spoof" value={`${formatVectorPercent(acousticScore)}%`} detail="Synthetic voice likelihood" tone={acousticScore > 0.7 ? "text-danger" : "text-paper"} />
+            <Metric label="Intent pressure" value={`${formatVectorPercent(intentScore)}%`} detail="Urgency / sensitive-request signal" tone={intentScore > 0.7 ? "text-danger" : "text-paper"} />
           </div>
 
           <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
@@ -95,7 +96,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
                     <p className="eyebrow">Primary decision surface</p>
                     <h2 className="mt-1 text-lg font-medium text-paper">Why this call is {currentStatus.toLowerCase()}</h2>
                   </div>
-                  <div className="text-right"><span className={`font-mono text-3xl font-semibold ${statusTone}`}>{Math.round(score * 100)}</span><span className="ml-1 text-xs text-mute">/ 100</span></div>
+                  <div className="text-right"><span className={`font-mono text-3xl font-semibold ${statusTone}`}>{formatRiskScore(score)}</span><span className="ml-1 text-xs text-mute">/ 100</span></div>
                 </div>
                 <div className="mt-5 grid gap-5 md:grid-cols-[180px_minmax(0,1fr)] md:items-center">
                   <div className="flex justify-center">{telemetry ? <TrustGauge score={score} status={status} /> : <p className="py-10 text-sm text-mute">Calibrating…</p>}</div>

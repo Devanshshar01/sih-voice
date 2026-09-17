@@ -174,6 +174,15 @@ DATABASE_ECHO = os.getenv("VOICETRUST_DATABASE_ECHO", "false").lower() in {
 SESSION_STORE_BACKEND = os.getenv("VOICETRUST_SESSION_STORE_BACKEND", "sqlite").lower()
 REDIS_URL = os.getenv("VOICETRUST_REDIS_URL", "redis://localhost:6379/0")
 
+# ---- Session persistence policy ----
+# A monitored call is persisted to the durable audit trail at /call/start. That
+# row is required for the per-window RiskEvent foreign key, so "required" is the
+# default: if persistence fails, /call/start fails loudly (503) instead of
+# pretending the session was stored. Set VOICETRUST_DB_PERSISTENCE=best_effort
+# to explicitly accept a degraded call (persistence skipped, no repeated writes).
+DB_PERSISTENCE_MODE = os.getenv("VOICETRUST_DB_PERSISTENCE", "required").strip().lower()
+PERSISTENCE_REQUIRED = DB_PERSISTENCE_MODE != "best_effort"
+
 # ---- Background tasks (Celery + Redis) ----
 # Celery is OPTIONAL infrastructure. The lightweight Render deployment has no
 # Redis: ML inference runs on the HF ZeroGPU Space, so report generation must

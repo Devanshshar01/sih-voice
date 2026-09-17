@@ -68,8 +68,10 @@ export function buildStreamUrl(callId: string): string {
   return `${WS_BASE}/call/${callId}/stream`;
 }
 
-export async function fetchRisk(callId: string): Promise<CallRiskResponse> {
-  const response = await request("loading the risk snapshot", `${API_BASE}/call/${callId}/risk`);
+export async function fetchRisk(callId: string, token?: string): Promise<CallRiskResponse> {
+  const response = await request("loading the risk snapshot", `${API_BASE}/call/${callId}/risk`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
   return asJson<CallRiskResponse>("loading the risk snapshot", response);
 }
 
@@ -134,6 +136,10 @@ export async function verifyForensicsEvidence(
   return asJson<ForensicsVerificationResponse>("verifying evidence", response);
 }
 
-export async function terminateCall(callId: string): Promise<void> {
-  await request("terminating the call", `${API_BASE}/call/${callId}/terminate`, { method: "POST" });
+export async function terminateCall(callId: string, token?: string): Promise<void> {
+  const response = await request("terminating the call", `${API_BASE}/call/${callId}/terminate`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  await asJson<unknown>("terminating the call", response);
 }

@@ -30,6 +30,7 @@ working without a live microphone.
 """
 import json
 import logging
+import math
 import time
 from typing import Any, Dict, Optional
 
@@ -43,7 +44,7 @@ from app.core.risk_engine import compute_risk
 from app.core.session_manager import session_manager
 from app.core.ws_auth import authenticate_websocket
 from app.db import models as db_models
-from app.db.database import SessionLocal
+from app.db.database import SessionLocal, commit_with_retry
 from app.services import codec_normalizer, vad
 from app.services.audio_processor import RingBuffer
 from app.services.intent_analyzer import IntentAnalyzer
@@ -104,6 +105,105 @@ def _run_acoustic_detector(window, forced_score: Optional[float]):
     return detector.predict(window)
 
 
+# Model id reported when the detector cannot report its own provenance (e.g. the
+# provider failed before it could identify the checkpoint it was using).
+_ACOUSTIC_MODEL_ID = config.VOICE_MODEL_ID
+
+
+class _AcousticTrace:
+    """Structured, low-noise tracing of the live anti-spoof provider lane.
+
+    Answers "where did anti_spoof become degraded?" from production logs by
+    recording, per window: window duration, sample rate, provider start/finish
+    timing, model id, detector mode, the provider's error type/message, and
+    whether the returned score normalized into the expected 0-1 range.
+
+    Steady-state success is logged once rather than every window; failures and
+    ok<->degraded transitions are always logged. Raw audio, JWTs, tokens and
+    credentials are never logged -- only derived metrics.
+    """
+
+    def __init__(self, call_id: str) -> None:
+        self.call_id = call_id
+        self.windows = 0
+        self.last_status: Optional[str] = None
+
+    def record(
+        self,
+        *,
+        acoustic_result: Dict[str, Any],
+        degraded: Dict[str, str],
+        window,
+        elapsed_ms: float,
+    ) -> None:
+        self.windows += 1
+        details = acoustic_result.get("details") or {}
+        reason = degraded.get("anti_spoof")
+        status = "degraded" if reason else "ok"
+
+        # Quiet in steady state: one INFO per call while healthy.
+        if status == "ok" and self.last_status is not None:
+            return
+        self.last_status = status
+
+        try:
+            window_samples = int(window.size)
+        except AttributeError:
+            window_samples = len(window)
+
+        score = acoustic_result.get("acoustic_score")
+        try:
+            score_normalized = (
+                score is not None
+                and math.isfinite(float(score))
+                and 0.0 <= float(score) <= 1.0
+            )
+        except (TypeError, ValueError):
+            score_normalized = False
+
+        error_type, _, error_message = (reason or "").partition(":")
+        payload = {
+            "call_id": self.call_id,
+            "window_index": self.windows,
+            "window_samples": window_samples,
+            "window_ms": round(window_samples / config.TARGET_SAMPLE_RATE * 1000.0, 1),
+            "sample_rate": config.TARGET_SAMPLE_RATE,
+            "provider_invoked": True,
+            "provider_finished": True,
+            "provider_ms": round(elapsed_ms, 1),
+            "model_id": (
+                details.get("model_version_antispoof")
+                or details.get("model")
+                or _ACOUSTIC_MODEL_ID
+            ),
+            "detector_mode": details.get("mode"),
+            "detector_status": acoustic_result.get("detector_status"),
+            "status": status,
+            "error_type": error_type.strip() or None,
+            "error_message": error_message.strip() or None,
+            "score_normalized": bool(score_normalized),
+        }
+        rendered = json.dumps(payload, sort_keys=True)
+        if status == "degraded":
+            _logger.error("anti_spoof_provider %s", rendered)
+        else:
+            _logger.info("anti_spoof_provider %s", rendered)
+
+    def summary(self) -> Optional[str]:
+        """One-line outcome for the end of the call (None when never degraded)."""
+        if self.last_status != "degraded":
+            return None
+        return json.dumps(
+            {
+                "call_id": self.call_id,
+                "windows_inferred": self.windows,
+                "final_status": self.last_status,
+                "degraded_stage": "anti_spoof",
+            },
+            sort_keys=True,
+        )
+
+
 def _run_asr_blocking(window) -> str:
     """Blocking faster-whisper transcription for the ASR lane.
 
@@ -129,13 +229,54 @@ def _run_speaker_blocking(window) -> Dict[str, Any]:
     return speaker_vault.match(window)
 
 
-def _persist_risk_event(db: DBSession, call_id: str, result: dict) -> None:
-    """Persist a risk event to the database.
+class _PersistState:
+    """Per-call database write state.
 
-    DB failures are logged and suppressed so that a transient DB issue does
-    not crash the WebSocket session (B6 resilience requirement).
+    Two guarantees:
+      1. A SQLAlchemy session whose commit failed is never reused — every failure
+         is rolled back and the connection pool is disposed so the next write
+         runs on a fresh connection.
+      2. The same failure is never logged once per audio event: after the first
+         unrecoverable failure, persistence is disabled for the remainder of the
+         call (the stream itself keeps running).
     """
-    try:
+
+    def __init__(self, call_id: str, *, enabled: bool = True) -> None:
+        self.call_id = call_id
+        self.enabled = enabled
+        self.failures = 0
+
+    def disable(self) -> None:
+        self.enabled = False
+        self.failures += 1
+        _logger.warning(
+            "DB persistence disabled for call_id=%s after %d failed write(s); "
+            "no further RiskEvent writes for this call — stream continues",
+            self.call_id,
+            self.failures,
+        )
+
+
+def _persist_risk_event(
+    db: DBSession,
+    call_id: str,
+    result: dict,
+    state: Optional[_PersistState] = None,
+) -> None:
+    """Persist a risk event, recovering from a transiently closed connection.
+
+    A failed commit is rolled back and the pooled connections disposed, then the
+    write is re-staged once so a transiently closed managed-PostgreSQL
+    connection (Render closes idle sockets) recovers transparently. If the retry
+    also fails, persistence is switched off for the rest of the call so a
+    permanent failure cannot emit one identical error per incoming audio event.
+
+    The WebSocket is never crashed by a DB error (B6 resilience requirement).
+    """
+    if state is not None and not state.enabled:
+        return
+
+    def _stage() -> None:
         db.add(
             db_models.RiskEvent(
                 call_id=call_id,
@@ -148,17 +289,16 @@ def _persist_risk_event(db: DBSession, call_id: str, result: dict) -> None:
         session_row = db.query(db_models.Session).filter_by(call_id=call_id).first()
         if session_row and result["risk_score"] > session_row.max_risk_score:
             session_row.max_risk_score = result["risk_score"]
-        db.commit()
-    except Exception as exc:
-        _logger.error(
-            "DB persist error for call_id=%s: %s — event not saved, stream continues",
-            call_id,
-            type(exc).__name__,
-        )
-        try:
-            db.rollback()
-        except Exception:
-            pass
+
+    _stage()
+    if commit_with_retry(db, _stage, context=f"risk_event_persist call_id={call_id}"):
+        if state is not None:
+            # A recovered transient failure re-arms the "logged once" latch.
+            state.failures = 0
+        return
+
+    if state is not None:
+        state.disable()
 
 
 def _apply_codec_config(payload: Dict[str, Any], state: Dict[str, Any]) -> None:
@@ -196,6 +336,10 @@ async def stream_audio(websocket: WebSocket, call_id: str):
     manual_transcript = False
     stream_language: Optional[str] = config.ASR_LANGUAGE or None
     db = SessionLocal()
+    # Persistence is skipped entirely when /call/start already established that
+    # the durable audit row could not be written (explicit best-effort mode).
+    persist_state = _PersistState(call_id, enabled=not session.persistence_degraded)
+    acoustic_trace = _AcousticTrace(call_id)
 
     codec_state: Dict[str, Any] = {
         "codec": "pcm",
@@ -325,11 +469,32 @@ async def stream_audio(websocket: WebSocket, call_id: str):
                 # (anti-spoof ∥ ASR ∥ speaker; each lane serialized, bounded) ----
                 _run_asr_blocking.language = stream_language  # language hint for the lane
 
+                # Anti-spoof provider lane. Timing wraps the actual provider
+                # invocation so logs separate provider latency from lane queueing.
+                acoustic_timing: Dict[str, float] = {}
+
+                def _timed_acoustic(window_data):
+                    _provider_start = time.perf_counter()
+                    try:
+                        return _run_acoustic_detector(
+                            window_data, session.forced_acoustic_score
+                        )
+                    finally:
+                        acoustic_timing["ms"] = (
+                            time.perf_counter() - _provider_start
+                        ) * 1000.0
+
                 (acoustic_result, transcript, speaker_match, degraded) = await run_window_inference(
                     window,
-                    run_anti_spoof=lambda w: _run_acoustic_detector(w, session.forced_acoustic_score),
+                    run_anti_spoof=_timed_acoustic,
                     run_asr=_run_asr_blocking if (config.ASR_MODE == "real" and not manual_transcript) else None,
                     run_speaker=_run_speaker_blocking if speaker_vault.enabled else None,
+                )
+                acoustic_trace.record(
+                    acoustic_result=acoustic_result,
+                    degraded=degraded,
+                    window=window,
+                    elapsed_ms=acoustic_timing.get("ms", 0.0),
                 )
                 if transcript is not None:
                     latest_transcript = transcript
@@ -377,12 +542,15 @@ async def stream_audio(websocket: WebSocket, call_id: str):
                 last_risk_result = dict(risk_result)
                 session.record_risk_point(risk_result)
                 session_manager.sync_session(session)
-                _persist_risk_event(db, call_id, risk_result)
+                _persist_risk_event(db, call_id, risk_result, persist_state)
 
                 await websocket.send_json(risk_result)
 
     except WebSocketDisconnect:
         pass
     finally:
+        summary = acoustic_trace.summary()
+        if summary:
+            _logger.error("anti_spoof_provider_summary %s", summary)
         db.close()
         session.ring_buffer.reset()

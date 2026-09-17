@@ -30,6 +30,10 @@ class CallSession:
     status: str = "ACTIVE"
     verified: bool = False
     forced_acoustic_score: Optional[float] = None
+    # True when the call is running in best-effort persistence mode: the DB
+    # audit row could not be written, so per-window RiskEvent writes are skipped
+    # instead of failing once per audio event.
+    persistence_degraded: bool = False
 
     def touch(self) -> None:
         self.last_seen = time.time()
@@ -117,6 +121,7 @@ class SessionManager:
             "status": session.status,
             "verified": session.verified,
             "forced_acoustic_score": session.forced_acoustic_score,
+            "persistence_degraded": session.persistence_degraded,
             "risk_timeline": session.risk_timeline,
         }
         self._redis_client.setex(f"call:{call_id}", SESSION_TTL_SECONDS, json.dumps(payload))
@@ -138,6 +143,7 @@ class SessionManager:
             status=data.get("status", "ACTIVE"),
             verified=data.get("verified", False),
             forced_acoustic_score=data.get("forced_acoustic_score"),
+            persistence_degraded=bool(data.get("persistence_degraded", False)),
         )
         session.risk_timeline = data.get("risk_timeline", [])
         return session

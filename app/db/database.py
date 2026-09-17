@@ -29,6 +29,7 @@ import logging
 import os
 
 from sqlalchemy import create_engine
+from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 from app import config
@@ -40,9 +41,115 @@ logger = logging.getLogger("satyavoice.db")
 # ---------------------------------------------------------------------------
 
 connect_args = {"check_same_thread": False} if config.DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(config.DATABASE_URL, connect_args=connect_args)
+# Production-safe pooling (managed PostgreSQL such as Render closes idle
+# connections server-side):
+#   - pool_pre_ping: transparently discard dead pooled connections instead of
+#     raising "SSL connection has been closed unexpectedly" on first use.
+#   - pool_recycle: bound connection age below the server's idle timeout so
+#     long-lived Render workers never sit on a stale socket.
+engine = create_engine(
+    config.DATABASE_URL,
+    connect_args=connect_args,
+    pool_pre_ping=True,
+    pool_recycle=300,  # seconds; Render's Postgres idle cutoff is ~5 minutes
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+
+# ---------------------------------------------------------------------------
+# Connection-loss recovery
+# ---------------------------------------------------------------------------
+# Managed PostgreSQL (Render, RDS, Cloud SQL) closes idle connections server
+# side. The socket can be dead by the time SQLAlchemy checks it out, which
+# surfaces as `OperationalError: SSL connection has been closed unexpectedly`.
+# These helpers reacquire a healthy connection instead of failing forever on
+# the same broken socket.
+
+_DISCONNECT_MARKERS = (
+    "ssl connection has been closed",
+    "connection has been closed",
+    "server closed the connection",
+    "connection reset",
+    "connection already closed",
+    "connection refused",
+    "terminating connection",
+    "could not receive data",
+    "eof detected",
+    "broken pipe",
+    "gone away",
+)
+
+
+def is_transient_disconnect(exc: BaseException) -> bool:
+    """True when ``exc`` looks like a dropped/closed connection (retryable)."""
+    if isinstance(exc, InterfaceError):
+        return True
+    if isinstance(exc, DBAPIError) and getattr(exc, "connection_invalidated", False):
+        return True
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return any(marker in text for marker in _DISCONNECT_MARKERS)
+
+
+def dispose_engine_pool() -> None:
+    """Drop every pooled connection so the next checkout is brand new."""
+    try:
+        engine.dispose()
+    except Exception:  # pragma: no cover - defensive
+        logger.warning("engine.dispose() failed during DB recovery", exc_info=True)
+
+
+def commit_with_retry(db, redo=None, *, attempts: int = 2, context: str = "db.commit") -> bool:
+    """Commit ``db``, recovering from a transiently closed connection.
+
+    On ANY commit failure the session is rolled back first -- a session whose
+    commit failed must never be reused -- and the pooled connections are
+    disposed so the next checkout cannot hand back the dead socket.
+
+    A single bounded retry happens only when the error looks like a dropped
+    connection AND the caller supplied ``redo`` to re-stage the work.
+    Non-transient errors (constraint violations, programming errors) are never
+    retried.
+
+    Returns True on success. On failure the original exception is logged with a
+    traceback and False is returned, so callers must choose their own failure
+    semantics (e.g. HTTP 503) instead of treating the write as successful.
+    """
+    total = max(1, attempts)
+    attempt = 0
+    while attempt < total:
+        attempt += 1
+        try:
+            db.commit()
+            return True
+        except Exception as exc:
+            # Never keep using a failed session.
+            try:
+                db.rollback()
+            except Exception:  # pragma: no cover - rollback on a dead session
+                logger.debug("rollback failed after commit error", exc_info=True)
+            dispose_engine_pool()
+
+            retryable = redo is not None and is_transient_disconnect(exc)
+            if retryable and attempt < total:
+                logger.warning(
+                    "%s failed on attempt %d/%d (%s) — reacquiring a fresh "
+                    "connection and retrying",
+                    context,
+                    attempt,
+                    total,
+                    type(exc).__name__,
+                )
+                try:
+                    redo()
+                except Exception:
+                    logger.error("%s re-stage failed; aborting retry", context, exc_info=True)
+                    return False
+                continue
+
+            logger.error("%s failed (%s): %s", context, type(exc).__name__, exc, exc_info=True)
+            return False
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -114,9 +221,23 @@ def init_db() -> None:
 
 
 def get_db():
-    """FastAPI dependency that yields a DB session and always closes it."""
+    """FastAPI dependency that yields a DB session and always closes it.
+
+    A request handler that raises leaves an open transaction behind; rolling it
+    back explicitly returns the connection to the pool in a clean state instead
+    of leaking a poisoned session into the next checkout.
+    """
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:  # pragma: no cover - session may already be dead
+            logger.debug("rollback failed while closing request session", exc_info=True)
+        raise
     finally:
         db.close()
+
+
+

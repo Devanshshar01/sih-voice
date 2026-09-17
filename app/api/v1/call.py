@@ -12,6 +12,7 @@ SECURITY (B2 / B10):
   - POST /start does NOT require auth (creates a new session for the caller).
 """
 from datetime import datetime, timezone
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
@@ -21,7 +22,7 @@ from app.core.http_auth import require_call_owner
 from app.core.session_manager import session_manager
 from app.core.ws_auth import create_access_token
 from app.db import models as db_models
-from app.db.database import get_db
+from app.db.database import commit_with_retry, get_db
 from app.models.schemas import (
     CallActionRequest,
     CallActionResponse,
@@ -33,6 +34,8 @@ from app.models.schemas import (
 
 router = APIRouter(prefix="/call", tags=["call"])
 
+_logger = logging.getLogger("satyavoice.call")
+
 # Action gating uses the central LOCK_VERIFY threshold from config — no magic
 # numbers here (see RiskFusionConfig in app/config.py).
 HIGH_RISK_THRESHOLD = config.RISK.LOCK_VERIFY_THRESHOLD
@@ -42,19 +45,54 @@ HIGH_RISK_THRESHOLD = config.RISK.LOCK_VERIFY_THRESHOLD
 def start_call(payload: CallStartRequest, db: DBSession = Depends(get_db)):
     session = session_manager.create_session(payload.caller_id, payload.recipient_id)
 
-    db.add(
-        db_models.Session(
-            call_id=session.call_id,
-            caller_id=payload.caller_id,
-            recipient_id=payload.recipient_id,
-            status="ACTIVE",
+    def _stage_session_row() -> None:
+        # Re-staged on retry: a rolled-back session has no pending inserts, and
+        # building a fresh ORM object avoids reusing an expired instance.
+        db.add(
+            db_models.Session(
+                call_id=session.call_id,
+                caller_id=payload.caller_id,
+                recipient_id=payload.recipient_id,
+                status="ACTIVE",
+            )
         )
+
+    _stage_session_row()
+    persisted = commit_with_retry(
+        db,
+        _stage_session_row,
+        context=f"call_start_persist call_id={session.call_id}",
     )
-    db.commit()
+
+    if not persisted:
+        # The audit row is the FK parent for every per-window RiskEvent, so a
+        # missed write is NOT reported as a successfully persisted session.
+        if config.PERSISTENCE_REQUIRED:
+            session_manager.end_session(session.call_id, status="FAILED")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "status": "error",
+                    "error_code": "SESSION_PERSISTENCE_UNAVAILABLE",
+                    "error_message": (
+                        "Call session could not be persisted; no monitored "
+                        "session was created. Retry shortly."
+                    ),
+                },
+            )
+        # Explicit best-effort mode: proceed without durable persistence and
+        # tell every downstream writer to stop attempting DB writes.
+        session.persistence_degraded = True
+        session_manager.sync_session(session)
+        _logger.warning(
+            "Call %s started WITHOUT durable persistence "
+            "(VOICETRUST_DB_PERSISTENCE=best_effort); DB writes skipped",
+            session.call_id,
+        )
 
     return CallStartResponse(
         call_id=session.call_id,
-        status="INITIATED",
+        status="INITIATED_DEGRADED" if session.persistence_degraded else "INITIATED",
         ws_url=f"/api/v1/call/{session.call_id}/stream",
         token=create_access_token(payload.caller_id),
     )
@@ -110,11 +148,29 @@ def terminate_call(
     if not session:
         raise HTTPException(status_code=404, detail="Call session not found.")
 
-    db_session = db.query(db_models.Session).filter_by(call_id=call_id).first()
-    if db_session:
-        db_session.status = session.status
-        db_session.max_risk_score = session.current_risk_score
-        db_session.end_time = db_session.end_time or datetime.now(timezone.utc)
-        db.commit()
+    def _apply_termination() -> None:
+        # Re-applied on retry so the bounded retry has an UPDATE to commit.
+        row = db.query(db_models.Session).filter_by(call_id=call_id).first()
+        if row:
+            row.status = session.status
+            row.max_risk_score = session.current_risk_score
+            row.end_time = row.end_time or datetime.now(timezone.utc)
 
-    return {"call_id": call_id, "status": session.status}
+    _apply_termination()
+    persisted = commit_with_retry(
+        db, _apply_termination, context=f"call_terminate_persist call_id={call_id}"
+    )
+    if not persisted:
+        # The call IS terminated in memory (the authoritative session store); the
+        # audit-trail write failed, and that is reported instead of hidden.
+        _logger.error(
+            "Termination of call_id=%s completed in memory but the audit row "
+            "was not updated; persistence=degraded",
+            call_id,
+        )
+
+    return {
+        "call_id": call_id,
+        "status": session.status,
+        "persistence": "ok" if persisted else "degraded",
+    }

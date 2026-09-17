@@ -67,6 +67,8 @@ export function useCallSession() {
   const [localRisk, setLocalRisk] = useState<LocalRisk | null>(null);
   const [localModelError, setLocalModelError] = useState<string | null>(null);
 
+  // Memory-only credential, shared by WebSocket and call-scoped HTTP requests.
+  const callTokenRef = useRef<string | undefined>(undefined);
   const wsRef = useRef<WebSocket | null>(null);
   const audioCaptureRef = useRef<LiveAudioCapture | null>(null);
   const localEngineRef = useRef<LocalAntiSpoofEngine | null>(null);
@@ -105,6 +107,7 @@ export function useCallSession() {
 
   const startNewCall = useCallback(
     async (callerId: string, recipientId: string, audioMode: AudioMode) => {
+      callTokenRef.current = undefined;
       setError(null);
       setPhase("connecting");
       setTelemetry(null);
@@ -132,6 +135,7 @@ export function useCallSession() {
         try {
           const startRes = await startCall(callerId, recipientId);
           callId = startRes.call_id;
+          callTokenRef.current = startRes.token;
         } catch {
           // Fully offline: proceed without a backend call record; only
           // local telemetry exists (capability explicitly degraded).
@@ -203,6 +207,7 @@ export function useCallSession() {
 
       try {
         const startRes = await startCall(callerId, recipientId);
+        callTokenRef.current = startRes.token;
         const startedAt = Date.now();
         setMeta({ callId: startRes.call_id, callerId, recipientId, audioMode, startedAt });
 
@@ -331,20 +336,28 @@ export function useCallSession() {
 
   const endCall = useCallback(async () => {
     const callId = meta?.callId;
+    const token = callTokenRef.current;
     teardown();
     setPhase("ended");
-    if (callId) {
+    if (callId && callId !== "edge-local") {
       try {
-        const snapshot = await fetchRisk(callId);
+        const snapshot = await fetchRisk(callId, token);
         setServerRiskSnapshot(snapshot);
-      } catch {
-        // The in-memory session may already be gone; client telemetry history still covers the forensic view.
+      } catch (snapshotError) {
+        // Keep client telemetry, but make authentication/server failures visible.
+        setError(snapshotError instanceof Error ? snapshotError.message : "Could not load the risk snapshot.");
       }
-      void terminateCall(callId);
+      try {
+        await terminateCall(callId, token);
+      } catch (terminateError) {
+        setError(terminateError instanceof Error ? terminateError.message : "Could not terminate the call on the server.");
+      }
     }
+    callTokenRef.current = undefined;
   }, [meta, teardown]);
 
   const startOver = useCallback(() => {
+    callTokenRef.current = undefined;
     setPhase("idle");
     setMeta(null);
     setError(null);
