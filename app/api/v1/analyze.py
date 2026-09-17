@@ -4,6 +4,8 @@ or teammates sanity-check the detector without spinning up a full call.
 """
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 import soundfile as sf
@@ -12,8 +14,9 @@ from io import BytesIO
 from app import config
 from app.models.schemas import AudioAnalyzeResponse
 from app.services.ml_detector import get_detector
-from app.tasks import generate_forensic_report
+from app.tasks import CELERY_AVAILABLE, generate_forensic_report
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/audio", tags=["audio"])
 
 detector = get_detector(
@@ -82,15 +85,29 @@ async def analyze_audio(audio_file: UploadFile = File(...), language: str = Form
     classification = "AI_GENERATED" if score >= config.SPOOF_THRESHOLD else "HUMAN"
     confidence = score if classification == "AI_GENERATED" else 1 - score
 
-    task = generate_forensic_report.delay(
-        call_id="batch-analysis",
-        payload={
-            "summary": (
-                f"Batch analysis completed for {audio_file.filename or 'uploaded sample'}"
-            ),
-            "generated_at": None,
-        },
-    )
+    # Reports are optional: a broker outage must not discard valid inference.
+    report_note = "Background report generation disabled."
+    if config.CELERY_ENABLED and not CELERY_AVAILABLE:
+        logger.warning("Optional forensic report queue is not configured or Celery is unavailable")
+        report_note = "Background report generation unavailable."
+    elif config.CELERY_ENABLED:
+        try:
+            task = generate_forensic_report.delay(
+                call_id="batch-analysis",
+                payload={
+                    "summary": (
+                        f"Batch analysis completed for {audio_file.filename or 'uploaded sample'}"
+                    ),
+                    "generated_at": None,
+                },
+            )
+            report_note = f"Background task queued: {task.id}."
+        except Exception:
+            logger.exception(
+                "Failed to queue optional forensic report for batch-analysis; "
+                "returning successful audio analysis"
+            )
+            report_note = "Background report generation unavailable."
 
     return AudioAnalyzeResponse(
         classification=classification,
@@ -107,6 +124,6 @@ async def analyze_audio(audio_file: UploadFile = File(...), language: str = Form
             f"Acoustic synthesis likelihood {score:.0%} "
             f"based on the {result['details'].get('mode', 'mock')} detector "
             f"({details.get('model', 'deterministic demo')}). "
-            f"Background task queued: {task.id}."
+            f"{report_note}"
         ),
     )

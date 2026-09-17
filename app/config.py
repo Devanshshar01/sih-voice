@@ -175,8 +175,18 @@ SESSION_STORE_BACKEND = os.getenv("VOICETRUST_SESSION_STORE_BACKEND", "sqlite").
 REDIS_URL = os.getenv("VOICETRUST_REDIS_URL", "redis://localhost:6379/0")
 
 # ---- Background tasks (Celery + Redis) ----
-CELERY_BROKER_URL = os.getenv("VOICETRUST_CELERY_BROKER_URL", REDIS_URL)
-CELERY_RESULT_BACKEND = os.getenv("VOICETRUST_CELERY_RESULT_BACKEND", REDIS_URL)
+# Celery is OPTIONAL infrastructure. The lightweight Render deployment has no
+# Redis: ML inference runs on the HF ZeroGPU Space, so report generation must
+# never require a broker. When CELERY_ENABLED is false the API never calls
+# .delay() and never touches CELERY_BROKER_URL/CELERY_RESULT_BACKEND.
+CELERY_ENABLED = os.getenv("VOICETRUST_CELERY_ENABLED", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+CELERY_BROKER_URL = os.getenv("VOICETRUST_CELERY_BROKER_URL", os.getenv("VOICETRUST_REDIS_URL", "")).strip()
+CELERY_RESULT_BACKEND = os.getenv("VOICETRUST_CELERY_RESULT_BACKEND", os.getenv("VOICETRUST_REDIS_URL", "")).strip()
 
 # ---- Evidence anchoring (Phase 8) ----
 EVIDENCE_SCHEMA_VERSION = os.getenv("VOICETRUST_EVIDENCE_SCHEMA_VERSION", "phase7-v1")

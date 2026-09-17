@@ -17,7 +17,7 @@ class _FallbackCelery:
     def task(self, *args, **kwargs):
         def decorator(func):
             def _delay(*task_args, **task_kwargs):
-                return func(*task_args, **task_kwargs)
+                raise RuntimeError("Celery reporting is disabled or unavailable")
 
             func.delay = _delay
             return func
@@ -27,7 +27,10 @@ class _FallbackCelery:
         return decorator
 
 
-if Celery is None:
+# Disabled deployments do not construct a Celery app or initialize its backend.
+# The fallback never executes work synchronously on the request path.
+CELERY_AVAILABLE = bool(config.CELERY_ENABLED and Celery is not None and config.CELERY_BROKER_URL)
+if not CELERY_AVAILABLE:
     celery_app = _FallbackCelery()
 else:
     celery_app = Celery(
