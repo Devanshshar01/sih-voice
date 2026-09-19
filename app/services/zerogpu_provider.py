@@ -13,6 +13,7 @@ import time
 import wave
 from typing import List, Optional
 
+import gradio_client
 import numpy as np
 from gradio_client import Client, handle_file
 
@@ -93,15 +94,44 @@ class ZeroGPUInferenceProvider(InferenceProvider):
         # Version-aware auth: 1.x wants hf_token=, 2.x+ wants token=. Never
         # log the token value itself.
         self._token_kwarg = _auth_token_kwarg()
+        # Reported in the startup diagnostic so production logs can prove WHICH
+        # gradio_client version selected WHICH auth kwarg. Without it, the
+        # 1.x/2.x rename that silently produced UNAUTHENTICATED Space calls is
+        # invisible from the logs. The version string is not a secret.
+        self.gradio_client_version = getattr(gradio_client, "__version__", "unknown")
         self.client_kwargs: dict = {"verbose": False}
         if self.hf_token:
             self.client_kwargs[self._token_kwarg] = self.hf_token
+        # ``self.timeout`` is NOT yet forwarded to gradio_client, so it is not
+        # what bounds a live anti-spoof call. The budget actually in force is the
+        # shared inference-lane timeout (app/core/parallel_inference.py). Both are
+        # reported so the diagnostic never implies a budget that is not applied.
+        try:
+            from app import config as _runtime_config
+
+            lane_timeout_s = f"{_runtime_config.INFERENCE_TIMEOUT_SECONDS:.1f}"
+        except Exception:  # pragma: no cover - defensive only
+            lane_timeout_s = "unknown"
         logger.info(
-            "ZeroGPU provider initialised: space=%s auth_kwarg=%s token_configured=%s",
+            "ZeroGPU provider initialised: space=%s gradio_client=%s auth_kwarg=%s "
+            "token_configured=%s timeout_s=%.1f lane_timeout_s=%s",
             self.space_url,
+            self.gradio_client_version,
             self._token_kwarg,
             bool(self.hf_token),
+            self.timeout,
+            lane_timeout_s,
         )
+        if not self.hf_token:
+            # WARNING, not INFO: a missing token is the single most common cause
+            # of the ZeroGPU quota error in production, and WARNING survives
+            # hosts that surface only WARNING+ application logs. Only the
+            # ABSENCE of the token is logged — never its value.
+            logger.warning(
+                "ZeroGPU provider started WITHOUT a Hugging Face token: Space calls "
+                "will be unauthenticated and limited to the anonymous ZeroGPU quota. "
+                "Set HF_TOKEN in the backend environment."
+            )
         self._client = None
 
         # We'll use the predict API endpoint

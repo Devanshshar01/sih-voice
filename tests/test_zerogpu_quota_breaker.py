@@ -104,9 +104,14 @@ class _Handler(logging.Handler):
     def __init__(self) -> None:
         super().__init__(level=logging.DEBUG)
         self.messages: list[str] = []
+        # Levels are captured alongside messages so tests can assert the
+        # SEVERITY a diagnostic is emitted at. Severity decides visibility:
+        # hosts without root-logger configuration only surface WARNING+.
+        self.levels: list[int] = []
 
     def emit(self, record: logging.LogRecord) -> None:
         self.messages.append(record.getMessage())
+        self.levels.append(record.levelno)
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +149,117 @@ def test_client_receives_configured_hf_token_without_leaking_it(recording_client
     # The token value must never appear in logs — only its presence flag.
     assert all(SECRET_TOKEN not in m for m in handler.messages)
     assert any("token_configured=True" in m for m in handler.messages)
+
+
+class _LogCapture:
+    """Capture this module's diagnostics, neutralizing logger state.
+
+    Mirrors the pattern used above: a suite-wide
+    ``dictConfig(disable_existing_loggers=True)`` can leave this logger disabled
+    or above INFO, so level, ``disabled`` and ``propagate`` are forced for the
+    duration and restored afterwards.
+    """
+
+    def __enter__(self) -> _Handler:
+        self.handler = _Handler()
+        zgp.logger.addHandler(self.handler)
+        self.prev_level = zgp.logger.level
+        self.prev_disabled = zgp.logger.disabled
+        self.prev_propagate = zgp.logger.propagate
+        zgp.logger.setLevel(logging.DEBUG)
+        zgp.logger.disabled = False
+        zgp.logger.propagate = False
+        return self.handler
+
+    def __exit__(self, *_exc) -> bool:
+        zgp.logger.removeHandler(self.handler)
+        zgp.logger.setLevel(self.prev_level)
+        zgp.logger.disabled = self.prev_disabled
+        zgp.logger.propagate = self.prev_propagate
+        return False
+
+
+def test_startup_diagnostic_reports_client_version_and_auth_kwarg(recording_client) -> None:
+    """The startup diagnostic must be self-supporting from a production log.
+
+    A Render log line alone has to distinguish "no token reached the process"
+    from "wrong auth kwarg for the installed gradio_client". That requires the
+    client version, the selected kwarg, the token presence flag and the timeout
+    — all without ever printing the token value.
+    """
+    with _LogCapture() as capture:
+        provider = zgp.ZeroGPUInferenceProvider(
+            space_url="https://example-space.hf.space",
+            hf_token=SECRET_TOKEN,
+        )
+
+    diagnostic = [m for m in capture.messages if "provider initialised" in m]
+    assert len(diagnostic) == 1, capture.messages
+    line = diagnostic[0]
+    assert f"gradio_client={provider.gradio_client_version}" in line
+    assert provider.gradio_client_version != "unknown"  # a real version, usable in ops
+    assert f"auth_kwarg={zgp._auth_token_kwarg()}" in line
+    assert "token_configured=True" in line
+    assert "timeout_s=" in line
+    # The token value must never appear in ANY captured record.
+    assert all(SECRET_TOKEN not in m for m in capture.messages)
+
+
+def test_startup_diagnostic_is_info_level_so_hosts_can_configure_it(recording_client) -> None:
+    """The success diagnostic is INFO; the failure diagnostic is WARNING.
+
+    Severity is load-bearing: hosts that never configure root logging (uvicorn
+    does not) only surface WARNING and above, so a missing token MUST be WARNING
+    to be visible, while the routine startup line stays INFO.
+    """
+    with _LogCapture() as capture_with_token:
+        zgp.ZeroGPUInferenceProvider(
+            space_url="https://example-space.hf.space",
+            hf_token=SECRET_TOKEN,
+        )
+    levels = dict(zip(capture_with_token.messages, capture_with_token.levels))
+    assert levels[
+        next(m for m in capture_with_token.messages if "provider initialised" in m)
+    ] == logging.INFO
+
+
+def test_startup_diagnostic_warns_when_token_missing(recording_client) -> None:
+    """A missing token must be loudly attributable, never silent.
+
+    An unauthenticated Space call is the most common cause of the ZeroGPU
+    quota-exhaustion error, so the absence of the token has to be recorded at a
+    severity that survives hosts filtering application logs to WARNING+.
+    """
+    with _LogCapture() as capture:
+        zgp.ZeroGPUInferenceProvider(space_url="https://example-space.hf.space")
+
+    warnings = [
+        m
+        for m, level in zip(capture.messages, capture.levels)
+        if "WITHOUT a Hugging Face token" in m and level == logging.WARNING
+    ]
+    assert len(warnings) == 1, capture.messages
+    assert "HF_TOKEN" in warnings[0]  # names the fix, not the value
+    assert SECRET_TOKEN not in warnings[0]
+
+
+def test_app_logging_bootstrap_enables_info_diagnostics() -> None:
+    """app.configure_app_logging() must make INFO diagnostics emittable.
+
+    Regression guard for the production symptom where the provider had
+    initialised but its diagnostics never appeared: uvicorn's default config
+    supplies no root handlers, so application INFO records were dropped by
+    ``logging.lastResort`` (WARNING+ only).
+    """
+    import app as app_pkg
+
+    app_pkg.configure_app_logging()
+    app_logger = logging.getLogger("satyavoice")
+    assert app_logger.level <= logging.INFO  # an int level, INFO or more verbose
+    assert app_logger.disabled is False
+    # Must be idempotent — ``app`` is imported many times per process.
+    app_pkg.configure_app_logging()
+    assert app_logger.level <= logging.INFO
 
 
 def test_provider_without_token_omits_auth_kwarg(recording_client) -> None:
