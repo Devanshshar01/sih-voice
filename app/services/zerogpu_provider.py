@@ -4,6 +4,8 @@ ZeroGPU inference provider for calling the Hugging Face Space.
 from __future__ import annotations
 
 import asyncio
+import inspect
+import logging
 import math
 import os
 import tempfile
@@ -21,6 +23,47 @@ MMS_MODEL_ID = "nii-yamagishilab/mms-300m-anti-deepfake"
 
 # Canonical SatyaVoice acoustic window: 4 s @ 16 kHz, mono, float32 in [-1, 1].
 TARGET_SAMPLE_RATE = 16000
+
+logger = logging.getLogger("satyavoice.zerogpu")
+
+# ZeroGPU free-tier quota exhaustion. When the Space (or gradio_client) rejects
+# a call because the account is out of GPU minutes, every further attempt burns
+# nothing but latency — and the failure is per-account, not per-request. The
+# circuit breaker latches this state so the stream stops issuing GPU requests
+# for every 4-second window and instead degrades safely (risk engine treats
+# anti-spoof as unavailable, which raises — not lowers — the risk score).
+QUOTA_EXHAUSTED_MARKERS = (
+    "You have exceeded your ZeroGPU runs limit",
+    "exceeded your ZeroGPU",
+    "ZeroGPU runs limit",
+    "GPU quota",
+    "quota exceeded",
+    "Quota exceeded",
+)
+
+
+def _auth_token_kwarg() -> str:
+    """Return the auth keyword gradio_client.Client accepts on THIS install.
+
+    gradio_client renamed its authentication parameter over major versions:
+      - 1.x: Client(..., hf_token=...)
+      - 2.x+ (Gradio 6 era): Client(..., token=...)
+    Passing the wrong name either raises TypeError or (worse on 1.x) is
+    silently forwarded as an unknown kwarg and dropped, leaving every Space
+    call UNAUTHENTICATED — which surfaces to users as the quota-exhaustion
+    error even when a perfectly valid HF_TOKEN is configured.
+    """
+    try:
+        params = inspect.signature(Client.__init__).parameters
+        if "token" in params:
+            return "token"
+        if "hf_token" in params:
+            return "hf_token"
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        pass
+    # Sensible default for unknown signatures: 1.x name.
+    return "hf_token"
+
 
 
 def _probability(value: object, field: str) -> float:
@@ -47,9 +90,18 @@ class ZeroGPUInferenceProvider(InferenceProvider):
         self.space_url = space_url.rstrip("/")
         self.hf_token = hf_token
         self.timeout = timeout
+        # Version-aware auth: 1.x wants hf_token=, 2.x+ wants token=. Never
+        # log the token value itself.
+        self._token_kwarg = _auth_token_kwarg()
         self.client_kwargs: dict = {"verbose": False}
         if self.hf_token:
-            self.client_kwargs["token"] = self.hf_token
+            self.client_kwargs[self._token_kwarg] = self.hf_token
+        logger.info(
+            "ZeroGPU provider initialised: space=%s auth_kwarg=%s token_configured=%s",
+            self.space_url,
+            self._token_kwarg,
+            bool(self.hf_token),
+        )
         self._client = None
 
         # We'll use the predict API endpoint
@@ -57,6 +109,49 @@ class ZeroGPUInferenceProvider(InferenceProvider):
         # /gradio_api/call/infer). "/predict" does not exist on this Space.
         self.api_name = "/infer"
         self._available = True
+        # Quota-exhaustion circuit breaker: latched when the Space reports the
+        # ZeroGPU runs limit is spent. Only reset by process restart or by an
+        # explicitly defined cooldown (see QUOTA_COOLDOWN_SECONDS below).
+        self._quota_exhausted_at: Optional[float] = None
+
+    # Cooldown after quota exhaustion before the breaker allows a single probe
+    # call again. ZeroGPU free quota resets on a rolling window (~minutes per
+    # account tier); 10 minutes is conservative and bounded — not per-window.
+    QUOTA_COOLDOWN_SECONDS = 600.0
+
+    def _is_quota_error(self, exc: BaseException) -> bool:
+        text = str(exc)
+        return any(marker in text for marker in QUOTA_EXHAUSTED_MARKERS)
+
+    def _mark_quota_exhausted(self, exc: BaseException) -> None:
+        self._quota_exhausted_at = time.monotonic()
+        logger.error(
+            "ZeroGPU quota exhausted — circuit breaker OPEN for %.0fs. "
+            "error_type=%s",
+            self.QUOTA_COOLDOWN_SECONDS,
+            type(exc).__name__,
+        )
+
+    def _quota_breaker_open(self) -> bool:
+        if self._quota_exhausted_at is None:
+            return False
+        elapsed = time.monotonic() - self._quota_exhausted_at
+        if elapsed >= self.QUOTA_COOLDOWN_SECONDS:
+            # Cooldown elapsed: allow one probe attempt (half-open state).
+            self._quota_exhausted_at = None
+            self._available = True
+            logger.info("ZeroGPU quota cooldown elapsed — breaker half-open, allowing probe")
+            return False
+        return True
+
+    def quota_exhausted(self) -> bool:
+        """True while the quota circuit breaker is latched open.
+
+        Lazily evaluates the cooldown so a caller that only polls this method
+        (without invoking inference) still sees the breaker half-open once the
+        cooldown has elapsed.
+        """
+        return self._quota_breaker_open()
 
     def _get_client(self) -> Client:
         if self._client is None:
@@ -67,6 +162,14 @@ class ZeroGPUInferenceProvider(InferenceProvider):
         self, audio_window: np.ndarray
     ) -> InferenceResult:
         """Run inference by calling the Hugging Face Space (blocking)."""
+        # Circuit breaker: fail fast WITHOUT any GPU request while latched.
+        if self._quota_breaker_open():
+            return InferenceResult.failure(
+                "QUOTA_EXHAUSTED",
+                "ZeroGPU quota exhausted (circuit breaker open); "
+                "anti-spoof evidence unavailable until cooldown elapses.",
+                provider="zerogpu",
+            )
         tmp_path: Optional[str] = None
         try:
             client = self._get_client()
@@ -147,9 +250,24 @@ class ZeroGPUInferenceProvider(InferenceProvider):
                 success=True,
             )
         except Exception as e:
-            # If the call fails, mark the provider unavailable and return an explicit failure.
-            # NEVER fabricate a score or return a mock score on transport failure.
+            # Quota exhaustion is a distinct, latched failure mode: stop issuing
+            # GPU requests entirely instead of retrying every audio window.
+            if self._is_quota_error(e):
+                self._mark_quota_exhausted(e)
+                return InferenceResult.failure(
+                    "QUOTA_EXHAUSTED",
+                    f"ZeroGPU quota exhausted: {e}",
+                    provider="zerogpu",
+                )
+            # Any other failure: mark the provider unavailable and return an
+            # explicit failure. NEVER fabricate a score or return a mock score
+            # on transport failure.
             self._available = False
+            logger.warning(
+                "ZeroGPU call failed: error_type=%s message=%s",
+                type(e).__name__,
+                str(e)[:300],
+            )
             return InferenceResult.failure(
                 "INFERENCE_UNAVAILABLE",
                 f"Failed to call ZeroGPU Space: {e}",
@@ -164,28 +282,13 @@ class ZeroGPUInferenceProvider(InferenceProvider):
 
 
     def is_available(self) -> bool:
-        """
-        Check if the provider is available.
+        """Check if the provider can currently serve requests.
 
-        We do a lightweight check by trying to call the API with a dummy input.
-        We cache the result to avoid repeated checks.
+        The quota circuit breaker participates: while latched open the provider
+        is NOT available, so callers that consult is_available() skip it. No
+        network probe is performed here (a health check that itself consumes
+        quota would defeat the breaker).
         """
-        if not self._available:
+        if self._quota_breaker_open():
             return False
-        try:
-            # Create a dummy audio window of 4 seconds of silence
-            dummy_audio = np.zeros(16000 * 4, dtype=np.float32)
-            # We'll call the predict method with a timeout
-            # We'll use a simple blocking call with a timeout
-            # We'll use the client.predict method with a timeout parameter? 
-            # The gradio_client does not have a timeout parameter in the predict method.
-            # We'll rely on the timeout we set in the constructor? Actually, the Client
-            # has a timeout parameter for the HTTP requests.
-            # We'll create a new client with a short timeout for the health check.
-            # But to avoid complexity, we'll assume that if the provider was available
-            # at initialization, it remains available unless we get an error.
-            # We'll return True if we haven't encountered an error.
-            return self._available
-        except Exception:
-            self._available = False
-            return False
+        return self._available
