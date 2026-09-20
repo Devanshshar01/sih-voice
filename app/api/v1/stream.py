@@ -39,13 +39,14 @@ from sqlalchemy.orm import Session as DBSession
 
 from app import config
 from app.core.latency import LatencyStats, LatencyTracker
-from app.core.parallel_inference import run_window_inference
+from app.core.parallel_inference import run_anti_spoof_lane, run_window_inference
 from app.core.risk_engine import compute_risk
 from app.core.session_manager import session_manager
 from app.core.ws_auth import authenticate_websocket
 from app.db import models as db_models
 from app.db.database import SessionLocal, commit_with_retry
 from app.services import codec_normalizer, vad
+from app.services.acoustic_evidence import AcousticEvidenceScheduler
 from app.services.audio_processor import RingBuffer
 from app.services.intent_analyzer import IntentAnalyzer
 from app.services.ml_detector import MockVoiceDetector, get_detector
@@ -77,6 +78,30 @@ speaker_vault = get_speaker_vault()
 # The deterministic mock detector is demo scaffolding, not ML inference, so
 # the VAD gate is bypassed in mock mode to keep the forced-score demo working.
 _VAD_GATES_INFERENCE = not isinstance(detector, MockVoiceDetector)
+
+# Remote anti-spoof cadence gate. A 4-second window becomes ready every 0.5 s
+# while one remote MMS inference costs ~8 s of wall-clock, so a request per
+# window cannot be sustained (it backlogged the ring buffer and scored audio
+# that was already stale). The gate applies ONLY to real remote providers: the
+# deterministic mock demo keeps its per-window scoring.
+_ACOUSTIC_CADENCE_ENABLED = not isinstance(detector, MockVoiceDetector)
+
+
+def _acoustic_provider_available() -> bool:
+    """Whether a new remote anti-spoof request may be started right now.
+
+    Consults the provider (and therefore its quota circuit breaker) before
+    spending GPU quota, so a latched provider is not asked once per window.
+    The provider still fail-fasts internally as the final guard.
+    """
+    provider = getattr(detector, "provider", None)
+    checker = getattr(provider, "is_available", None)
+    if not callable(checker):
+        return True
+    try:
+        return bool(checker())
+    except Exception:  # pragma: no cover - defensive
+        return True
 
 # Rolling p50/p95 latency statistics for the decision pipeline, exposed in
 # every telemetry frame as `latency_stats` (SIH <500 ms measurability).
@@ -127,6 +152,10 @@ class _AcousticTrace:
         self.call_id = call_id
         self.windows = 0
         self.last_status: Optional[str] = None
+        # Freshness of the acoustic evidence is tracked separately from provider
+        # health: with remote cadence the provider can be healthy while the
+        # retained result is stale, and that distinction must be visible.
+        self.last_evidence_status: Optional[str] = None
 
     def record(
         self,
@@ -135,16 +164,26 @@ class _AcousticTrace:
         degraded: Dict[str, str],
         window,
         elapsed_ms: float,
+        evidence=None,
+        provider_invoked: bool = True,
+        provider_finished: bool = True,
     ) -> None:
         self.windows += 1
         details = acoustic_result.get("details") or {}
         reason = degraded.get("anti_spoof")
         status = "degraded" if reason else "ok"
+        evidence_status = getattr(evidence, "status", None) or "fresh"
 
-        # Quiet in steady state: one INFO per call while healthy.
-        if status == "ok" and self.last_status is not None:
+        # Quiet in steady state: log the first window and then only transitions
+        # in provider health or evidence freshness -- never once per 0.5 s hop.
+        if (
+            self.last_status is not None
+            and status == "ok"
+            and evidence_status == self.last_evidence_status
+        ):
             return
         self.last_status = status
+        self.last_evidence_status = evidence_status
 
         try:
             window_samples = int(window.size)
@@ -168,9 +207,12 @@ class _AcousticTrace:
             "window_samples": window_samples,
             "window_ms": round(window_samples / config.TARGET_SAMPLE_RATE * 1000.0, 1),
             "sample_rate": config.TARGET_SAMPLE_RATE,
-            "provider_invoked": True,
-            "provider_finished": True,
+            "provider_invoked": bool(provider_invoked),
+            "provider_finished": bool(provider_finished),
             "provider_ms": round(elapsed_ms, 1),
+            "evidence_status": evidence_status,
+            "evidence_age_ms": getattr(evidence, "evidence_age_ms", None),
+            "inference_latency_ms": getattr(evidence, "inference_latency_ms", None),
             "model_id": (
                 details.get("model_version_antispoof")
                 or details.get("model")
@@ -341,6 +383,33 @@ async def stream_audio(websocket: WebSocket, call_id: str):
     persist_state = _PersistState(call_id, enabled=not session.persistence_degraded)
     acoustic_trace = _AcousticTrace(call_id)
 
+    # Remote anti-spoof cadence: at most ONE MMS request in flight for this call,
+    # spaced by the configured interval, with the retained result reused between
+    # requests. Audio ingestion below is untouched -- windows keep being emitted
+    # every 0.5 s.
+    acoustic_scheduler: Optional[AcousticEvidenceScheduler] = None
+    if _ACOUSTIC_CADENCE_ENABLED:
+        async def _infer_remote(window_data):
+            # Runs on the shared anti-spoof lane: the same serialization and
+            # timeout as the per-window fan-out, so MMS is never run against
+            # itself.
+            return await run_anti_spoof_lane(
+                lambda w: _run_acoustic_detector(w, session.forced_acoustic_score),
+                window_data,
+            )
+
+        acoustic_scheduler = AcousticEvidenceScheduler(
+            _infer_remote,
+            interval_seconds=config.ACOUSTIC_INFERENCE_INTERVAL_SECONDS,
+            max_stale_seconds=config.ACOUSTIC_EVIDENCE_MAX_STALE_SECONDS,
+            is_available=_acoustic_provider_available,
+        )
+        _logger.info(
+            "acoustic cadence enabled: interval_s=%.1f max_stale_s=%.1f",
+            config.ACOUSTIC_INFERENCE_INTERVAL_SECONDS,
+            config.ACOUSTIC_EVIDENCE_MAX_STALE_SECONDS,
+        )
+
     codec_state: Dict[str, Any] = {
         "codec": "pcm",
         "sample_rate": config.TARGET_SAMPLE_RATE,
@@ -472,21 +541,54 @@ async def stream_audio(websocket: WebSocket, call_id: str):
                 # Anti-spoof provider lane. Timing wraps the actual provider
                 # invocation so logs separate provider latency from lane queueing.
                 acoustic_timing: Dict[str, float] = {}
+                evidence = None
+                provider_invoked = True
+                provider_finished = True
 
-                def _timed_acoustic(window_data):
-                    _provider_start = time.perf_counter()
-                    try:
-                        return _run_acoustic_detector(
-                            window_data, session.forced_acoustic_score
-                        )
-                    finally:
-                        acoustic_timing["ms"] = (
-                            time.perf_counter() - _provider_start
-                        ) * 1000.0
+                if acoustic_scheduler is not None:
+                    # Remote cadence path: resolve evidence WITHOUT awaiting
+                    # inference. At most one remote request is in flight; the
+                    # retained result is reused as fresh/stale, or reported
+                    # unavailable once expired -- never as a synthetic score.
+                    _started_before = acoustic_scheduler.inferences_started
+                    _finished_before = (
+                        acoustic_scheduler.inferences_completed
+                        + acoustic_scheduler.inferences_failed
+                    )
+                    evidence = acoustic_scheduler.resolve(window)
+                    provider_invoked = (
+                        acoustic_scheduler.inferences_started > _started_before
+                    )
+                    provider_finished = (
+                        acoustic_scheduler.inferences_completed
+                        + acoustic_scheduler.inferences_failed
+                    ) > _finished_before
+                    acoustic_timing["ms"] = float(evidence.inference_latency_ms or 0.0)
+                    _resolved_acoustic = evidence.to_acoustic_result()
+
+                    def _reuse_acoustic(_window_data, _result=_resolved_acoustic):
+                        """The evidence for this window is already resolved; the
+                        remote call (if any) is owned by the scheduler."""
+                        return _result
+
+                    acoustic_runner = _reuse_acoustic
+                else:
+                    def _timed_acoustic(window_data):
+                        _provider_start = time.perf_counter()
+                        try:
+                            return _run_acoustic_detector(
+                                window_data, session.forced_acoustic_score
+                            )
+                        finally:
+                            acoustic_timing["ms"] = (
+                                time.perf_counter() - _provider_start
+                            ) * 1000.0
+
+                    acoustic_runner = _timed_acoustic
 
                 (acoustic_result, transcript, speaker_match, degraded) = await run_window_inference(
                     window,
-                    run_anti_spoof=_timed_acoustic,
+                    run_anti_spoof=acoustic_runner,
                     run_asr=_run_asr_blocking if (config.ASR_MODE == "real" and not manual_transcript) else None,
                     run_speaker=_run_speaker_blocking if speaker_vault.enabled else None,
                 )
@@ -495,6 +597,9 @@ async def stream_audio(websocket: WebSocket, call_id: str):
                     degraded=degraded,
                     window=window,
                     elapsed_ms=acoustic_timing.get("ms", 0.0),
+                    evidence=evidence,
+                    provider_invoked=provider_invoked,
+                    provider_finished=provider_finished,
                 )
                 if transcript is not None:
                     latest_transcript = transcript
@@ -528,6 +633,10 @@ async def stream_audio(websocket: WebSocket, call_id: str):
                 risk_result["intent_risks"] = intent_result.get("intent_risks", [])
 
                 risk_result["detector"] = acoustic_result.get("details", {})
+                if acoustic_scheduler is not None:
+                    # Cadence/freshness diagnostics for the dashboard: how often
+                    # remote inference ran, how much evidence was reused.
+                    risk_result["acoustic_cadence"] = acoustic_scheduler.telemetry()
                 risk_result["speaker"] = speaker_match
                 risk_result["timestamp"] = time.time()
                 risk_result.update(vad_telemetry)
@@ -552,5 +661,9 @@ async def stream_audio(websocket: WebSocket, call_id: str):
         summary = acoustic_trace.summary()
         if summary:
             _logger.error("anti_spoof_provider_summary %s", summary)
+        if acoustic_scheduler is not None:
+            # Stop scheduling immediately and unwind any in-flight inference, so
+            # a closed session never leaves GPU work running against a dead call.
+            await acoustic_scheduler.aclose()
         db.close()
         session.ring_buffer.reset()

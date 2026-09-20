@@ -92,6 +92,23 @@ def _speaker_lane() -> _Lane:
     return _SPEAKER_LANE
 
 
+async def run_anti_spoof_lane(
+    fn: Callable[[Any], Any],
+    window,
+    timeout: Optional[float] = None,
+) -> Any:
+    """Run ONE blocking anti-spoof call on the dedicated anti-spoof lane.
+
+    Public wrapper around the module-private lane so the remote-cadence
+    scheduler (app/services/acoustic_evidence.py) reuses the SAME serialization
+    and timeout as the per-window fan-out instead of duplicating lane logic.
+    A model is still never executed concurrently with itself.
+    """
+    return await _anti_spoof_lane().run(
+        fn, window, timeout=config.INFERENCE_TIMEOUT_SECONDS if timeout is None else timeout
+    )
+
+
 _EMPTY_SPEAKER = {
     "speaker_id": None,
     "speaker_match_score": None,  # None = identity evidence unavailable/neutral

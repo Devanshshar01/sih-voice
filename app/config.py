@@ -142,6 +142,33 @@ class RiskStatus:
 INFERENCE_EXECUTOR_MAX_WORKERS = int(os.getenv("VOICETRUST_INFERENCE_WORKERS", "6"))
 INFERENCE_TIMEOUT_SECONDS = float(os.getenv("VOICETRUST_INFERENCE_TIMEOUT", "4.0"))
 
+# ---- Remote anti-spoof cadence (ZeroGPU / MMS scheduling) ----
+# The stream emits a 4-second window every 0.5 s, but one remote MMS inference
+# costs ~8 s of wall-clock on ZeroGPU. Requesting inference per window is
+# therefore unsustainable and piles up work that is already obsolete when it
+# returns. These two knobs decouple the DECISION cadence (unchanged: 0.5 s hop)
+# from the REMOTE INFERENCE cadence, and are intentionally conservative
+# diagnostic defaults -- measure real production behaviour before tightening
+# them (do not treat them as a final tuning).
+#
+#   ACOUSTIC_INFERENCE_INTERVAL_SECONDS
+#       Minimum spacing between two remote inference STARTS. 0.0 disables the
+#       cadence gate (one remote inference per emitted window = legacy behaviour).
+#   ACOUSTIC_EVIDENCE_MAX_STALE_SECONDS
+#       How long a previously successful result may still be reported as `stale`
+#       before it becomes `unavailable` (and fusion degrades honestly). 0.0
+#       disables expiry.
+ACOUSTIC_INFERENCE_INTERVAL_SECONDS = float(
+    os.getenv("VOICETRUST_ACOUSTIC_INTERVAL_SECONDS", "15.0")
+)
+ACOUSTIC_EVIDENCE_MAX_STALE_SECONDS = float(
+    os.getenv("VOICETRUST_ACOUSTIC_MAX_STALE_SECONDS", "30.0")
+)
+if ACOUSTIC_INFERENCE_INTERVAL_SECONDS < 0:
+    raise ValueError("VOICETRUST_ACOUSTIC_INTERVAL_SECONDS must be >= 0")
+if ACOUSTIC_EVIDENCE_MAX_STALE_SECONDS < 0:
+    raise ValueError("VOICETRUST_ACOUSTIC_MAX_STALE_SECONDS must be >= 0")
+
 # Batch classification threshold. This affects only the displayed class, never
 # the raw probabilities returned by the detector.
 SPOOF_THRESHOLD = float(os.getenv("SPOOF_THRESHOLD", "0.50"))
