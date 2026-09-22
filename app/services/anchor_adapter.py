@@ -97,6 +97,62 @@ class NoopAnchorAdapter(BaseAnchorAdapter):
         return result
 
 
+class DryRunAnchorAdapter(BaseAnchorAdapter):
+    """Deterministic simulated anchoring for staging/demo (BLOCKCHAIN_MODE=DRY_RUN).
+
+    CONTRACT (must never be violated):
+      - The result status is ALWAYS ``"dry_run"`` — a distinct status, never
+        ``"anchored"``, so no renderer can confuse it with a confirmed anchor.
+      - The simulated tx hash is deterministic (``sha256("dry-run-anchor:" + root)``)
+        so the same root always yields the same metadata. It is deliberately
+        real-format hex so downstream code does not crash on shape; the
+        authoritative markers are the ``status: "dry_run"`` and
+        ``simulated: True`` fields, and every consumer (PDF, API, UI) must
+        render DRY_RUN data as "SIMULATED".
+      - No network calls. No private key required. Nothing is committed.
+    """
+
+    def __init__(self) -> None:
+        self.network = config.BLOCKCHAIN_NETWORK
+        self.contract_address = config.BLOCKCHAIN_CONTRACT_ADDRESS or "0xSIMULATED-CONTRACT"
+
+    def _simulated_tx(self, root_hash: str) -> str:
+        normalized = root_hash if root_hash.startswith("0x") else f"0x{root_hash}"
+        digest = hashlib.sha256(("dry-run-anchor:" + normalized.lower()).encode("utf-8")).hexdigest()
+        return "0x" + digest
+
+    def anchor_root(self, root_hash: str, evidence_id: str) -> dict[str, Any]:
+        return {
+            "status": "dry_run",
+            "simulated": True,
+            "network": self.network,
+            "contract_address": self.contract_address,
+            "tx_hash": self._simulated_tx(root_hash),
+            "block_number": None,
+            "anchor_timestamp": None,
+            "failure_reason": None,
+            "dry_run_note": (
+                "SIMULATED anchor (VOICETRUST_BLOCKCHAIN_MODE=DRY_RUN): no "
+                "transaction was submitted to any blockchain."
+            ),
+        }
+
+    def verify_anchor(self, root_hash: str) -> dict[str, Any]:
+        return {
+            "anchored": False,
+            "status": "dry_run",
+            "simulated": True,
+            "evidence_id_matches": None,
+            "on_chain_evidence_id": None,
+            "failure_reason": "DRY_RUN mode: no real on-chain anchor exists.",
+        }
+
+    def verify_evidence(self, root_hash: str, evidence_id: str | None = None) -> dict[str, Any]:
+        result = self.verify_anchor(root_hash)
+        result.setdefault("evidence_id_matches", None)
+        return result
+
+
 class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
     """Polygon Amoy (testnet) adapter using the hardened AnchorRoot contract.
 
@@ -579,9 +635,19 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
 
 
 def get_anchor_adapter() -> BaseAnchorAdapter:
-    """Factory: return the appropriate adapter based on runtime configuration."""
+    """Factory: return the appropriate adapter based on runtime configuration.
+
+    Mode resolution (VOICETRUST_BLOCKCHAIN_MODE):
+      DRY_RUN  -> DryRunAnchorAdapter (deterministic simulated metadata only).
+      LIVE     -> PolygonAmoyAnchorAdapter, but only when RPC + contract are
+                  configured; otherwise fall back to Noop (misconfigured LIVE
+                  degrades to "unavailable" rather than crashing).
+      DISABLED -> NoopAnchorAdapter. Evidence remains valid; nothing anchors.
+    """
+    if config.BLOCKCHAIN_MODE == "DRY_RUN":
+        return DryRunAnchorAdapter()
     if (
-        config.BLOCKCHAIN_ANCHORING_ENABLED
+        config.BLOCKCHAIN_MODE == "LIVE"
         and config.BLOCKCHAIN_RPC_URL
         and config.BLOCKCHAIN_CONTRACT_ADDRESS
     ):

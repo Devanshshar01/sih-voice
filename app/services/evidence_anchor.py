@@ -524,6 +524,124 @@ class EvidenceAnchorService:
             "ledger_record_count": len(ledger_records),
         }
 
+    def verify_ledger(self, evidence_id: str) -> dict[str, Any]:
+        """Structured hash-chain verification for one evidence id (Phase 3).
+
+        Recomputes every record hash from the stored fields and walks the chain
+        from the genesis boundary, detecting:
+          - changed payload/evidence_digest      -> record_hash mismatch
+          - changed previous_hash                -> link mismatch
+          - missing event                        -> chain-root head mismatch
+          - reordered events                     -> link/hash mismatch
+          - broken sequence                      -> chain-root mismatch
+
+        Returns exactly the structured contract:
+            {"valid", "entries_checked", "first_invalid_sequence",
+             "expected_hash", "actual_hash", "reason"}
+        ``first_invalid_sequence`` is the 1-based position of the first record
+        that failed (the chain walk stops there), ``None`` when valid.
+        """
+        ledger_records = (
+            self.db.query(db_models.EvidenceLedgerRecord)
+            .filter(db_models.EvidenceLedgerRecord.evidence_id == evidence_id)
+            .order_by(db_models.EvidenceLedgerRecord.record_id.asc())
+            .all()
+        )
+        package = (
+            self.db.query(db_models.EvidencePackage)
+            .filter(db_models.EvidencePackage.evidence_id == evidence_id)
+            .first()
+        )
+
+        def _result(valid: bool, first_invalid: int | None, expected: str | None, actual: str | None, reason: str | None) -> dict[str, Any]:
+            return {
+                "valid": valid,
+                "entries_checked": len(ledger_records),
+                "first_invalid_sequence": first_invalid,
+                "expected_hash": expected,
+                "actual_hash": actual,
+                "reason": reason,
+            }
+
+        if package is None:
+            return _result(False, None, None, None, f"evidence package '{evidence_id}' not found")
+        if not ledger_records:
+            return _result(False, None, None, None, "no ledger records for this evidence id")
+
+        expected_previous_hash: str | None = None  # None = use stored genesis link
+        for position, record in enumerate(ledger_records, start=1):
+            # The first record of THIS package links to the global chain tip at
+            # registration time; its stored previous_record_hash is trusted as
+            # the chain boundary and verified against the previous record below.
+            previous = (
+                record.previous_record_hash
+                if expected_previous_hash is None
+                else expected_previous_hash
+            )
+
+            ts = record.timestamp
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+
+            expected_record_hash = _sha256_hex(
+                _canonical_json(
+                    {
+                        "previous_record_hash": previous,
+                        "timestamp": ts.isoformat(),
+                        "schema_version": record.schema_version,
+                        "evidence_digest": record.evidence_digest,
+                    }
+                )
+            )
+            expected_chain_root = _sha256_hex(
+                _canonical_json(
+                    {
+                        "record_hash": expected_record_hash,
+                        "previous_record_hash": previous,
+                    }
+                )
+            )
+
+            if record.previous_record_hash != previous:
+                return _result(
+                    False,
+                    position,
+                    previous,
+                    record.previous_record_hash,
+                    f"previous_hash mismatch at sequence {position} "
+                    "(missing, reordered, or tampered event)",
+                )
+            if record.record_hash != expected_record_hash:
+                return _result(
+                    False,
+                    position,
+                    expected_record_hash,
+                    record.record_hash,
+                    f"record_hash mismatch at sequence {position} (payload tampered)",
+                )
+            if record.chain_root_hash != expected_chain_root:
+                return _result(
+                    False,
+                    position,
+                    expected_chain_root,
+                    record.chain_root_hash,
+                    f"chain_root mismatch at sequence {position}",
+                )
+
+            expected_previous_hash = expected_chain_root
+
+        # Head check: the package's stored chain root must be the walked head.
+        if package.local_chain_root != expected_previous_hash:
+            return _result(
+                False,
+                len(ledger_records),
+                expected_previous_hash,
+                package.local_chain_root,
+                "ledger head mismatch (missing or appended event)",
+            )
+
+        return _result(True, None, None, None, None)
+
     def _get_latest_chain_root(self) -> str:
         latest_record = (
             self.db.query(db_models.EvidenceLedgerRecord)

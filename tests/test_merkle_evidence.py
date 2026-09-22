@@ -123,14 +123,22 @@ def test_manifest_contains_no_raw_payloads():
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
-def db_session():
-    from app.db.database import Base, SessionLocal, engine
+def db_session(tmp_path_factory):
+    """Isolated per-module DB: fixed evidence ids in tests must not collide with
+    rows left behind by previous runs on the shared persistent database."""
+    from app.db.database import Base
     from app.db import models  # noqa: F401
 
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    db_path = tmp_path_factory.mktemp("merkle-evidence") / "merkle-evidence.db"
+    engine = create_engine(f"sqlite:///{db_path}")
     Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
+    session = sessionmaker(bind=engine)()
     yield session
     session.close()
+    engine.dispose()
 
 
 def test_register_and_verify_roundtrip(db_session):

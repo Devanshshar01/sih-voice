@@ -71,8 +71,13 @@ functional and evidence packet status is `"unavailable"`.
 
 ## Scope / honesty
 
-This provides **tamper-evident integrity verification**, not legal admissibility
-or a guarantee of guilt. Legal certification (`IT Act §65B`, ISO/IEC 27043, etc.)
-remains a human/legal process. The legacy flat ledger
-(`app/services/evidence_anchor.py`) is retained unchanged so already-anchored
-evidence keeps verifying.
+This provides **tamper-evident integrity verification** — NOT legal admissibility
+and NOT a guarantee of guilt. No formal legal or signing process exists in this
+repository; statutory forensic certification remains a human/legal process.
+
+Full forensic-pipeline documentation (evidence package model, ledger, Merkle
+construction, PDF, anchoring, verification flow, and what each hash does and does
+not prove): [`docs/forensic-evidence.md`](forensic-evidence.md).
+
+The legacy flat ledger (`app/services/evidence_anchor.py`) is retained unchanged
+so already-anchored evidence keeps verifying.

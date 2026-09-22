@@ -2,6 +2,7 @@ import type {
   CallActionResult,
   CallRiskResponse,
   CallStartResponse,
+  ForensicsIntegritySummary,
   ForensicsVerificationResponse,
   VerificationChallengeResponse,
   VerificationRequestResponse,
@@ -134,6 +135,15 @@ export async function verifyForensicsEvidence(
     method: "POST",
   });
   return asJson<ForensicsVerificationResponse>("verifying evidence", response);
+}
+
+export async function verifyEvidenceIntegrity(
+  evidenceId: string
+): Promise<ForensicsIntegritySummary> {
+  const response = await request("verifying evidence integrity", `${API_BASE}/forensics/${evidenceId}/verify`, {
+    method: "GET",
+  });
+  return asJson<ForensicsIntegritySummary>("verifying evidence integrity", response);
 }
 
 export async function terminateCall(callId: string, token?: string): Promise<void> {

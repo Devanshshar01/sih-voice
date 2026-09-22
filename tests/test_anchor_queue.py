@@ -32,14 +32,22 @@ ITEMS = {"audio": b"queue-audio", "transcript": "queue transcript"}
 
 
 @pytest.fixture(scope="module")
-def db_session():
-    from app.db.database import Base, SessionLocal, engine
+def db_session(tmp_path_factory):
+    """Isolated per-module DB: fixed root hashes in tests must not collide with
+    rows left behind by previous runs on the shared persistent database."""
+    from app.db.database import Base
     from app.db import models  # noqa: F401
 
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    db_path = tmp_path_factory.mktemp("anchor-queue") / "anchor-queue.db"
+    engine = create_engine(f"sqlite:///{db_path}")
     Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
+    session = sessionmaker(bind=engine)()
     yield session
     session.close()
+    engine.dispose()
 
 
 def _anchor_ok(root: str = "0x" + "aa" * 32):

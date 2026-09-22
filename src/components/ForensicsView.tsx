@@ -1,10 +1,10 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { CheckCircle2, ClipboardCheck, Download, FileWarning, Fingerprint, LockKeyhole, RotateCcw, ShieldAlert, UserRound, Waves } from "lucide-react";
+import { Check, CheckCircle2, ClipboardCheck, Copy, Download, FileWarning, Fingerprint, LockKeyhole, RotateCcw, ShieldAlert, UserRound, Waves } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { UseCallSession } from "../hooks/useCallSession";
-import { registerForensicsEvidence, verifyForensicsEvidence } from "../lib/api";
+import { registerForensicsEvidence, verifyEvidenceIntegrity, verifyForensicsEvidence } from "../lib/api";
 import { buildTechnicalEvidenceReport, createTechnicalEvidencePdf } from "../lib/forensicPdf";
-import type { ForensicsVerificationResponse } from "../types";
+import type { BlockchainAnchorState, ForensicsIntegritySummary, ForensicsVerificationResponse } from "../types";
 
 interface ForensicsViewProps { session: UseCallSession }
 
@@ -13,12 +13,74 @@ const shortHash = (value: string | null | undefined) => value ? `${value.slice(0
 const statusLabel = (value: string) => value.replace(/_/g, " ");
 const scoreTone = (score: number) => score >= 70 ? "text-danger" : score >= 40 ? "text-warn" : "text-safe";
 
+/**
+ * Status labels for an anchor state. A DRY_RUN (simulated) anchor and an
+ * unconfirmed submission must never render like a real, mined anchor, so the
+ * label is derived from `simulated`/`confirmed` rather than from `status`
+ * alone. "Immutable" is deliberately never used: the claim is only that the
+ * commitment is hash-linked and, when confirmed, anchored on-chain.
+ */
+const ANCHOR_STATUS_LABELS: Record<string, string> = {
+  disabled: "Not anchored (disabled)",
+  unavailable: "Not anchored",
+  dry_run: "Simulated (dry run)",
+  pending: "Pending",
+  queued: "Queued",
+  submitted: "Submitted (awaiting confirmation)",
+  confirmed: "Confirmed",
+  failed: "Failed",
+  permanently_failed: "Permanently failed",
+};
+
+const anchorLabel = (state?: BlockchainAnchorState) => {
+  if (!state) return "PENDING VERIFICATION";
+  const base = ANCHOR_STATUS_LABELS[state.status] ?? statusLabel(state.status);
+  if (state.simulated) return `SIMULATED — not a blockchain anchor (${base})`;
+  return state.confirmed ? `ANCHORED / ${base}` : base;
+};
+
+const ledgerLabel = (integrity: ForensicsIntegritySummary | null) => {
+  if (!integrity) return "PENDING VERIFICATION";
+  if (!integrity.ledger) return "NOT AVAILABLE";
+  if (integrity.ledger.valid) return `VERIFIED / ${integrity.ledger.entries_checked} entries`;
+  return `MISMATCH / first invalid sequence ${integrity.ledger.first_invalid_sequence ?? "unknown"}`;
+};
+
 function EvidenceCard({ title, eyebrow, icon, children, className = "" }: { title: string; eyebrow: string; icon: ReactNode; children: ReactNode; className?: string }) {
   return <section className={`panel p-4 sm:p-5 ${className}`}><div className="mb-4 flex items-start justify-between gap-3"><div><p className="eyebrow">{eyebrow}</p><h2 className="mt-1 text-sm font-semibold tracking-tight text-paper">{title}</h2></div><span className="text-signal">{icon}</span></div>{children}</section>;
 }
 
 function DataRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return <div className="flex items-start justify-between gap-4 border-t border-ink-700/70 py-2.5 first:border-t-0"><span className="text-xs text-mute">{label}</span><span className={`max-w-[65%] break-all text-right text-xs text-paper-dim ${mono ? "font-mono" : ""}`}>{value}</span></div>;
+}
+
+/**
+ * A cryptographic hash row. The full digest is never crammed into the column:
+ * it is collapsed to a short form and can be expanded and copied in full, which
+ * is what an analyst needs when comparing against an independent verifier.
+ * Only complete digests are shown as valid; a missing value renders as an
+ * explicit "NOT AVAILABLE" and is never presented as a passing check.
+ */
+function HashRow({ label, value, pendingLabel = "NOT AVAILABLE", status }: { label: string; value?: string | null; pendingLabel?: string; status?: "ok" | "bad" | null }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    if (!value) return;
+    try { await navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { setCopied(false); }
+  };
+  const tone = status === "bad" ? "text-danger" : status === "ok" ? "text-safe" : "text-paper-dim";
+  return <div className="border-t border-ink-700/70 py-2.5 first:border-t-0">
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-xs text-mute">{label}</span>
+      <span className="flex items-center gap-2">
+        {value
+          ? <button type="button" onClick={copy} title="Copy full value" aria-label={`Copy ${label}`} className="flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-mute hover:text-signal">{copied ? <Check size={12} /> : <Copy size={12} />}{copied ? "Copied" : "Copy"}</button>
+          : null}
+        {value ? <button type="button" onClick={() => setExpanded((v) => !v)} className="text-[10px] uppercase tracking-[0.12em] text-mute hover:text-signal">{expanded ? "Collapse" : "Expand"}</button> : null}
+      </span>
+    </div>
+    <p className={`mt-1 ${expanded ? "text-[11px] leading-4" : "text-xs"} break-all text-right font-mono ${value ? tone : "text-mute"}`}>{value ?? pendingLabel}</p>
+  </div>;
 }
 
 function SignalBar({ label, value, tone }: { label: string; value: number; tone: string }) {
@@ -29,6 +91,8 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
   const { meta, telemetryHistory, serverRiskSnapshot, durationSeconds, liveTranscript, startOver } = session;
   const [verificationResult, setVerificationResult] = useState<ForensicsVerificationResponse | null>(null);
   const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [integrity, setIntegrity] = useState<ForensicsIntegritySummary | null>(null);
+  const [integrityError, setIntegrityError] = useState<string | null>(null);
   const chartData = useMemo(() => { const t0 = telemetryHistory[0]?.timestamp ?? 0; return telemetryHistory.map((p) => ({ t: Number((p.timestamp - t0).toFixed(1)), score: p.risk_score, acoustic: p.acoustic_score * 100, intent: p.intent_score * 100 })); }, [telemetryHistory]);
   const maxScore = telemetryHistory.reduce((max, p) => Math.max(max, p.risk_score), 0);
   const flaggedEvents = telemetryHistory.filter((p) => p.status !== "ALLOW");
@@ -46,8 +110,15 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
 
   const handleVerify = async () => { if (!meta) return; try { setVerificationResult(await verifyForensicsEvidence(meta.callId)); setVerificationError(null); } catch (error) { setVerificationError(error instanceof Error ? error.message : "Verification could not be completed."); setVerificationResult(null); } };
 
+  /**
+   * Fetch the stored EvidenceIntegritySummary. The server derives every field
+   * from persisted evidence — nothing is regenerated client-side — so an
+   * absent hash stays absent instead of being presented as a passing check.
+   */
+  const handleIntegrityCheck = async () => { if (!meta) return; try { setIntegrity(await verifyEvidenceIntegrity(meta.callId)); setIntegrityError(null); } catch (error) { setIntegrityError(error instanceof Error ? error.message : "Integrity verification could not be completed."); setIntegrity(null); } };
+
   return <div className="console-grid mx-auto max-w-[1480px] px-4 py-5 sm:px-6 lg:px-8">
-    <header className="border-b border-ink-600/80 pb-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div><div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-signal"><span className="h-1.5 w-1.5 bg-danger" /> Forensic incident viewer <span className="text-mute">/ case closeout</span></div><h1 className="mt-2 text-2xl font-semibold tracking-tight text-paper sm:text-3xl">{incidentDetected ? "Potential voice impersonation incident" : "Voice session forensic record"}</h1><p className="mt-2 text-sm text-paper-dim">{meta?.callerId ?? "Unknown caller"} <span className="px-2 text-mute">→</span> {meta?.recipientId ?? "Protected desk"}</p></div><div className="flex flex-wrap gap-2"><button onClick={handleVerify} className="flex items-center gap-2 border border-signal/40 bg-signal/10 px-3 py-2 text-xs text-signal hover:bg-signal/15"><ClipboardCheck size={14} /> Verify chain</button><button onClick={handleExport} className="flex items-center gap-2 border border-ink-600 px-3 py-2 text-xs text-paper-dim hover:border-signal/50 hover:text-signal"><Download size={14} /> Export evidence PDF</button><button onClick={startOver} aria-label="Start new call" className="border border-ink-600 px-3 py-2 text-paper-dim hover:text-signal"><RotateCcw size={14} /></button></div></div><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><div><p className="eyebrow">Case ID</p><p className="mt-1 break-all font-mono text-xs text-paper-dim">{meta?.callId ?? "—"}</p></div><div><p className="eyebrow">Disposition</p><p className={`mt-1 font-mono text-xs ${incidentDetected ? "text-danger" : "text-safe"}`}>{incidentDetected ? "CONTAINED / REVIEW" : "ALLOW / CLOSED"}</p></div><div><p className="eyebrow">Duration</p><p className="mt-1 font-mono text-xs text-paper-dim">{Math.floor(durationSeconds / 60)}:{(durationSeconds % 60).toString().padStart(2, "0")}</p></div><div><p className="eyebrow">Analysis windows</p><p className="mt-1 font-mono text-xs text-paper-dim">{telemetryHistory.length}</p></div><div><p className="eyebrow">Policy state</p><p className="mt-1 font-mono text-xs text-paper-dim">{statusLabel(finalPoint?.status ?? "PENDING")}</p></div></div></header>
+    <header className="border-b border-ink-600/80 pb-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div><div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-signal"><span className="h-1.5 w-1.5 bg-danger" /> Forensic incident viewer <span className="text-mute">/ case closeout</span></div><h1 className="mt-2 text-2xl font-semibold tracking-tight text-paper sm:text-3xl">{incidentDetected ? "Potential voice impersonation incident" : "Voice session forensic record"}</h1><p className="mt-2 text-sm text-paper-dim">{meta?.callerId ?? "Unknown caller"} <span className="px-2 text-mute">→</span> {meta?.recipientId ?? "Protected desk"}</p></div><div className="flex flex-wrap gap-2"><button onClick={handleVerify} className="flex items-center gap-2 border border-signal/40 bg-signal/10 px-3 py-2 text-xs text-signal hover:bg-signal/15"><ClipboardCheck size={14} /> Verify chain</button><button onClick={handleIntegrityCheck} className="flex items-center gap-2 border border-ink-600 px-3 py-2 text-xs text-paper-dim hover:border-signal/50 hover:text-signal"><Fingerprint size={14} /> Verify integrity</button><button onClick={handleExport} className="flex items-center gap-2 border border-ink-600 px-3 py-2 text-xs text-paper-dim hover:border-signal/50 hover:text-signal"><Download size={14} /> Export evidence PDF</button><button onClick={startOver} aria-label="Start new call" className="border border-ink-600 px-3 py-2 text-paper-dim hover:text-signal"><RotateCcw size={14} /></button></div></div><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><div><p className="eyebrow">Case ID</p><p className="mt-1 break-all font-mono text-xs text-paper-dim">{meta?.callId ?? "—"}</p></div><div><p className="eyebrow">Disposition</p><p className={`mt-1 font-mono text-xs ${incidentDetected ? "text-danger" : "text-safe"}`}>{incidentDetected ? "CONTAINED / REVIEW" : "ALLOW / CLOSED"}</p></div><div><p className="eyebrow">Duration</p><p className="mt-1 font-mono text-xs text-paper-dim">{Math.floor(durationSeconds / 60)}:{(durationSeconds % 60).toString().padStart(2, "0")}</p></div><div><p className="eyebrow">Analysis windows</p><p className="mt-1 font-mono text-xs text-paper-dim">{telemetryHistory.length}</p></div><div><p className="eyebrow">Policy state</p><p className="mt-1 font-mono text-xs text-paper-dim">{statusLabel(finalPoint?.status ?? "PENDING")}</p></div></div></header>
 
     <div className={`mt-5 flex items-start gap-3 border px-4 py-3 ${incidentDetected ? "border-danger/50 bg-danger-bg" : "border-safe/40 bg-safe-bg"}`}><span className={incidentDetected ? "text-danger" : "text-safe"}>{incidentDetected ? <ShieldAlert size={19} /> : <CheckCircle2 size={19} />}</span><div><p className={`text-sm font-medium ${incidentDetected ? "text-danger" : "text-safe"}`}>{incidentDetected ? "Protected action was gated after high-confidence risk escalation." : "No high-risk activity was detected in the monitored workflow."}</p><p className="mt-1 text-xs text-paper-dim">This view is an operational evidence summary for analyst review. It is not a legal certification.</p></div></div>
 
@@ -56,6 +127,6 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
       <EvidenceCard eyebrow="02 / trajectory" title="Risk trajectory" icon={<ShieldAlert size={17} />}><div className="h-64">{chartData.length ? <ResponsiveContainer width="100%" height="100%"><LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}><CartesianGrid stroke="#1b262e" vertical={false} /><ReferenceArea y1={0} y2={40} fill="#1a4a3a" fillOpacity={0.35} /><ReferenceArea y1={40} y2={70} fill="#4a3a17" fillOpacity={0.35} /><ReferenceArea y1={70} y2={100} fill="#4a2320" fillOpacity={0.35} /><XAxis dataKey="t" tickFormatter={(v) => `${v}s`} stroke="#546069" fontSize={10} /><YAxis domain={[0, 100]} stroke="#546069" fontSize={10} /><Tooltip contentStyle={{ background: "#0f171d", border: "1px solid #25333c", fontSize: 11 }} labelFormatter={(v) => `T+${v}s`} formatter={(value: number, name: string) => [`${value.toFixed(1)}`, name === "score" ? "Risk" : name]} /><Line type="monotone" dataKey="score" stroke="#f06a5b" strokeWidth={2.5} dot={false} /></LineChart></ResponsiveContainer> : <p className="flex h-full items-center justify-center text-sm text-mute">Awaiting telemetry.</p>}</div><div className="mt-3 grid grid-cols-3 gap-2 border-t border-ink-700 pt-3 text-xs"><div><span className="text-mute">Peak</span><p className={`mt-1 font-mono ${scoreTone(maxScore)}`}>{maxScore}/100</p></div><div><span className="text-mute">Transitions</span><p className="mt-1 font-mono text-paper-dim">{transitions.length}</p></div><div><span className="text-mute">Flagged</span><p className="mt-1 font-mono text-paper-dim">{flaggedEvents.length}</p></div></div></EvidenceCard>
       <div className="grid gap-4 md:grid-cols-2"><EvidenceCard eyebrow="03 / acoustic" title="Acoustic evidence" icon={<Waves size={17} />}><div className="space-y-4"><SignalBar label="Peak anti-spoof signal" value={acousticPeak * 100} tone={scoreTone(acousticPeak * 100)} /><DataRow label="Pipeline" value={meta?.audioMode ?? "unavailable"} mono /><DataRow label="Capture" value="PCM sliding windows" mono /><DataRow label="Interpretation" value={acousticPeak > 0.7 ? "Elevated synthetic-voice signal" : "No elevated acoustic signal"} /></div></EvidenceCard><EvidenceCard eyebrow="04 / speaker" title="Speaker evidence" icon={<UserRound size={17} />}><div className="space-y-3"><div className="border border-ink-700 bg-ink-950/50 p-3"><p className="text-xs text-mute">Speaker identity evidence</p><p className="mt-1 text-sm text-paper-dim">Unavailable from current evidence payload</p></div><DataRow label="Voiceprint match" value="Not provided" /><DataRow label="Enrollment reference" value="Not provided" /><DataRow label="Analyst action" value="Request independent verification" /></div></EvidenceCard></div>
       <div className="grid gap-4 md:grid-cols-2"><EvidenceCard eyebrow="05 / transcript" title="Transcript & context evidence" icon={<FileWarning size={17} />}><div className="border border-ink-700 bg-ink-950/50 p-3"><p className="text-xs text-mute">Captured context</p><p className="mt-2 text-sm leading-6 text-paper-dim">{liveTranscript || "Transcript evidence was not persisted in this forensic payload."}</p></div><p className="mt-3 text-xs leading-5 text-mute">Use call rationale and policy transitions as the authoritative context available in this record.</p></EvidenceCard><EvidenceCard eyebrow="06 / response" title="Action & verification history" icon={<LockKeyhole size={17} />}><div className="space-y-0"><DataRow label="Protected action" value={incidentDetected ? "Gated pending verification" : "No action blocked"} /><DataRow label="Verification challenge" value={session.verified ? "Completed successfully" : "Not completed"} /><DataRow label="Policy transitions" value={String(transitions.length)} /><DataRow label="Final control state" value={statusLabel(finalPoint?.status ?? "PENDING")} /></div></EvidenceCard></div>
-    </div><aside className="grid content-start gap-4"><EvidenceCard eyebrow="07 / chain of custody" title="Cryptographic integrity" icon={<Fingerprint size={17} />}><div className="space-y-0"><DataRow label="Evidence hash" value={shortHash(verificationResult?.evidence_hash)} mono /><DataRow label="Local chain root" value={shortHash(verificationResult?.local_chain_root)} mono /><DataRow label="Ledger records" value={String(verificationResult?.ledger_record_count ?? telemetryHistory.length)} mono /><DataRow label="Evidence hash integrity" value={verificationResult ? (verificationResult.evidence_hash_integrity ? "VERIFIED" : "MISMATCH") : "PENDING VERIFICATION"} /><DataRow label="Local chain integrity" value={verificationResult ? (verificationResult.local_chain_integrity ? "VERIFIED" : "MISMATCH") : "PENDING VERIFICATION"} /></div>{verificationError && <p className="mt-3 border border-danger/40 bg-danger-bg p-2 text-xs text-danger">{verificationError}</p>}</EvidenceCard><EvidenceCard eyebrow="08 / anchoring" title="Blockchain anchor status" icon={<LockKeyhole size={17} />}><div className="space-y-0"><DataRow label="Anchor status" value={verificationResult?.anchor_status ?? "PENDING REGISTRATION"} /><DataRow label="Public consistency" value={verificationResult ? (verificationResult.public_anchor_consistent ? "CONFIRMED" : "NOT CONFIRMED") : "NOT CHECKED"} /><DataRow label="Network" value={verificationResult?.blockchain_network ?? "polygon-amoy / pending"} mono /><DataRow label="Transaction hash" value={shortHash(verificationResult?.tx_hash)} mono /><DataRow label="Anchor timestamp" value={verificationResult?.anchor_timestamp ?? "Not confirmed"} /></div></EvidenceCard><EvidenceCard eyebrow="09 / provenance" title="Model versions & capture" icon={<ClipboardCheck size={17} />}><DataRow label="Application" value="SatyaVoice 0.1.0" mono /><DataRow label="Detector mode" value={meta?.audioMode ?? "unknown"} mono /><DataRow label="Acoustic model" value="Server snapshot / configured pipeline" /><DataRow label="Intent model" value="Server snapshot / configured pipeline" /><DataRow label="Export operator" value={meta?.callerId || "operator"} mono /></EvidenceCard><div className="border border-ink-700 bg-ink-900/80 p-4"><p className="eyebrow">Analyst note</p><p className="mt-2 text-xs leading-5 text-paper-dim">Review rationale, acoustic indicators, and the chain verification result together before clearing this incident. Evidence fields marked unavailable were not synthesized.</p></div></aside></main>
+    </div><aside className="grid content-start gap-4"><EvidenceCard eyebrow="07 / chain of custody" title="Cryptographic integrity" icon={<Fingerprint size={17} />}><div className="space-y-0"><DataRow label="Evidence hash" value={shortHash(verificationResult?.evidence_hash)} mono /><DataRow label="Local chain root" value={shortHash(verificationResult?.local_chain_root)} mono /><DataRow label="Ledger records" value={String(verificationResult?.ledger_record_count ?? telemetryHistory.length)} mono /><DataRow label="Evidence hash integrity" value={verificationResult ? (verificationResult.evidence_hash_integrity ? "VERIFIED" : "MISMATCH") : "PENDING VERIFICATION"} /><DataRow label="Local chain integrity" value={verificationResult ? (verificationResult.local_chain_integrity ? "VERIFIED" : "MISMATCH") : "PENDING VERIFICATION"} /></div>{verificationError && <p className="mt-3 border border-danger/40 bg-danger-bg p-2 text-xs text-danger">{verificationError}</p>}</EvidenceCard><EvidenceCard eyebrow="08 / anchoring" title="Blockchain anchor status" icon={<LockKeyhole size={17} />}><div className="space-y-0"><DataRow label="Anchor status" value={verificationResult?.anchor_status ?? "PENDING REGISTRATION"} /><DataRow label="Public consistency" value={verificationResult ? (verificationResult.public_anchor_consistent ? "CONFIRMED" : "NOT CONFIRMED") : "NOT CHECKED"} /><DataRow label="Network" value={verificationResult?.blockchain_network ?? "polygon-amoy / pending"} mono /><DataRow label="Transaction hash" value={shortHash(verificationResult?.tx_hash)} mono /><DataRow label="Anchor timestamp" value={verificationResult?.anchor_timestamp ?? "Not confirmed"} /></div></EvidenceCard><EvidenceCard eyebrow="09 / provenance" title="Model versions & capture" icon={<ClipboardCheck size={17} />}><DataRow label="Application" value="SatyaVoice 0.1.0" mono /><DataRow label="Detector mode" value={meta?.audioMode ?? "unknown"} mono /><DataRow label="Acoustic model" value="Server snapshot / configured pipeline" /><DataRow label="Intent model" value="Server snapshot / configured pipeline" /><DataRow label="Export operator" value={meta?.callerId || "operator"} mono /></EvidenceCard><EvidenceCard eyebrow="10 / integrity detail" title="Evidence integrity (package, ledger, anchor)" icon={<Fingerprint size={17} />}><div className="space-y-0">{integrity ? <><div className="flex items-start justify-between gap-4 py-2.5"><span className="text-xs text-mute">Ledger status</span><span className="text-right text-xs text-paper-dim">{ledgerLabel(integrity)}</span></div><div className="flex items-start justify-between gap-4 border-t border-ink-700/70 py-2.5"><span className="text-xs text-mute">Anchor status</span><span className="text-right text-xs text-paper-dim">{anchorLabel(integrity.blockchain)}</span></div><HashRow label="Canonical package hash" value={integrity.package_sha256} status={integrity.package_sha256 ? "ok" : null} /><HashRow label="Merkle root" value={integrity.merkle_root} status={integrity.merkle_root ? "ok" : null} /><HashRow label="Ledger head hash" value={integrity.ledger_head} status={integrity.ledger?.valid ? "ok" : integrity.ledger && !integrity.ledger.valid ? "bad" : null} /><HashRow label="Report hash" value={integrity.report.sha256} /><HashRow label="Anchor transaction" value={integrity.blockchain.confirmed ? integrity.blockchain.tx_hash : null} pendingLabel={integrity.blockchain.simulated ? "SIMULATED - no chain submission" : "NOT CONFIRMED"} status={integrity.blockchain.confirmed ? "ok" : null} /></> : <p className="text-xs text-mute">{integrityError ? integrityError : "Run Verify integrity for the stored package hash, ledger verification, Merkle root, and anchor state."}</p>}</div></EvidenceCard><div className="border border-ink-700 bg-ink-900/80 p-4"><p className="eyebrow">Analyst note</p><p className="mt-2 text-xs leading-5 text-paper-dim">Review rationale, acoustic indicators, and the chain verification result together before clearing this incident. Evidence fields marked unavailable were not synthesized.</p></div></aside></main>
   </div>;
 }

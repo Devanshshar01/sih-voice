@@ -256,7 +256,9 @@ class MerkleEvidenceService:
             self.db.flush()
 
             anchor_result: dict[str, Any] | None = None
-            if anchor and config.BLOCKCHAIN_ANCHORING_ENABLED:
+            if anchor and (
+                config.BLOCKCHAIN_ANCHORING_ENABLED or config.BLOCKCHAIN_MODE == "DRY_RUN"
+            ):
                 anchor_result = self._anchor(eid, package["merkle_root"])
                 row.anchor_status = anchor_result.get("status", "failed")
                 row.anchor_tx_hash = anchor_result.get("tx_hash")
@@ -274,7 +276,9 @@ class MerkleEvidenceService:
                 )
 
             queue_entry = None
-            if config.BLOCKCHAIN_ANCHORING_ENABLED and anchor_result is not None:
+            if (
+                config.BLOCKCHAIN_ANCHORING_ENABLED or config.BLOCKCHAIN_MODE == "DRY_RUN"
+            ) and anchor_result is not None:
                 from app.services.anchor_queue import record_anchor_result
 
                 queue_entry = record_anchor_result(self.db, eid, package["merkle_root"], anchor_result)
@@ -365,10 +369,16 @@ class MerkleEvidenceService:
                 items_verified[name] = expected is not None and hash_evidence_item(raw) == expected
             items_all_verified = bool(items_verified) and all(items_verified.values())
 
-        # 4. On-chain cross-check.
+        # 4. On-chain cross-check. DRY_RUN ("dry_run") anchors are simulated:
+        # there is provably nothing on-chain, so the check is skipped (None)
+        # instead of failing the whole verification.
         on_chain_verified: bool | None = None
         evidence_id_matches: bool | None = None
-        if verify_on_chain and config.BLOCKCHAIN_ANCHORING_ENABLED and row.anchor_status not in {"unavailable", None}:
+        if (
+            verify_on_chain
+            and config.BLOCKCHAIN_ANCHORING_ENABLED
+            and row.anchor_status not in {"unavailable", "dry_run", None}
+        ):
             try:
                 adapter = get_anchor_adapter()
                 anchor_check = adapter.verify_evidence(row.merkle_root, evidence_id)

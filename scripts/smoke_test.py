@@ -75,7 +75,12 @@ def test_genuine_call_stays_low_risk(client: TestClient) -> None:
         print("[ok] final telemetry (genuine):", telemetry)
         assert telemetry["status"] == "ALLOW", "Genuine call should stay ALLOW"
 
-    r = client.get(f"/api/v1/call/{call_id}/risk")
+    # GET /{call_id}/risk requires the authenticated call owner (BOLA/IDOR
+    # prevention via require_call_owner), so the owner's token must be sent.
+    r = client.get(
+        f"/api/v1/call/{call_id}/risk",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert r.status_code == 200, r.text
     print("[ok] risk snapshot:", r.json())
 

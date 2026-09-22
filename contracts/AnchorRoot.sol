@@ -7,6 +7,9 @@ import {MerkleProof} from "./MerkleProof.sol";
  * @title AnchorRoot
  * @notice Append-only evidence root anchoring for SatyaVoice forensic packages.
  *
+ * CONTRACT VERSION: 1.1.0 — reported by `contractVersion()` so
+ * verifiers can pin the exact anchoring semantics they are checking against.
+ *
  * TWO ANCHORING MODES (both append-only, both onlyOwner):
  *
  *   1. `anchor(bytes32 rootHash)` — the original single-digest commitment. It
@@ -56,6 +59,9 @@ contract AnchorRoot {
     // -------------------------------------------------------------------------
     // State
     // -------------------------------------------------------------------------
+
+    /// @notice Semantic version of the anchoring semantics (not the compiler).
+    string public constant CONTRACT_VERSION = "1.1.0";
 
     address public owner;
 

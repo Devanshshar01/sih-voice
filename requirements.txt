@@ -44,3 +44,8 @@ psycopg2-binary>=2.9,<3
 
 # --- Phase 8 public-chain anchoring ---
 web3>=7,<8
+
+# --- Forensic PDF report (server-side) + verification QR ---
+reportlab>=4,<6
+qrcode>=7,<9
+pypdf>=4,<7  # PDF smoke tests (render/inspect generated reports)

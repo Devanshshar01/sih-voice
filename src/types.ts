@@ -107,6 +107,51 @@ export interface ForensicsVerificationResponse {
   anchor_timestamp: string | null;
   failure_reason: string | null;
   ledger_record_count: number;
+  /** Integrity-summary additions (Phase 13) — present on newer responses. */
+  package_sha256?: string | null;
+  merkle_root?: string | null;
+  report_sha256?: string | null;
+  ledger?: { valid?: boolean; entries_checked?: number };
+}
+
+/** One cryptographic identity, kept distinct (never collapsed into one field). */
+export interface LedgerVerification {
+  valid: boolean;
+  entries_checked: number;
+  first_invalid_sequence: number | null;
+  expected_hash: string | null;
+  actual_hash: string | null;
+  reason: string | null;
+}
+
+/** Blockchain anchoring state — DRY_RUN is never representable as confirmed. */
+export interface BlockchainAnchorState {
+  status: string;
+  confirmed: boolean;
+  simulated: boolean;
+  network: string | null;
+  contract: string | null;
+  tx_hash: string | null;
+  block_number: number | null;
+  anchored_at: string | null;
+  note: string | null;
+}
+
+/**
+ * EvidenceIntegritySummary (Phase 5/9) — the one verification summary, served by
+ * `GET /forensics/{evidence_id}/verify`. Derived from stored evidence only; no
+ * field is regenerated and no fresh timestamp is injected server-side.
+ */
+export interface ForensicsIntegritySummary {
+  evidence_id: string;
+  schema_version: string | null;
+  package_sha256: string | null;
+  merkle_root: string | null;
+  ledger_head: string | null;
+  ledger: LedgerVerification | null;
+  report: { sha256: string | null; generated_at: string | null; schema_version: string | null };
+  blockchain: BlockchainAnchorState;
+  verification?: { url: string; api_path: string };
 }
 
 /** Audio source driving the pipeline for this call. */
@@ -134,20 +179,6 @@ export interface CallMeta {
   recipientId: string;
   audioMode: AudioMode;
   startedAt: number;
-}
-
-/** Local (browser-side) anti-spoof result + model provenance/perf. */
-export interface LocalRisk {
-  acousticScore: number;
-  label: string;
-  modelId: string;
-  modelLoadMs: number | null;
-  inferenceMs: number;
-  p50Ms: number | null;
-  p95Ms: number | null;
-  inferenceCount: number;
-  heapUsedMb: number | null;
-  windowId: number;
 }
 
 /** Local (browser-side) anti-spoof result + model provenance/perf. */

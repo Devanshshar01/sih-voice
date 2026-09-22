@@ -297,14 +297,42 @@ class EvidenceMerkleLeaf(Base):
     )
 
 
+class EvidenceReportRecord(Base):
+    """The authoritative forensic PDF deliverable, hashed outside itself.
+
+    Phase 7 rule: the PDF never contains its own final byte hash (that would be
+    circular). Instead the pipeline freezes the evidence package, renders the
+    PDF, hashes the actual bytes, and stores that digest HERE. A verifier can
+    recompute ``sha256(pdf_bytes)`` and compare against ``report_sha256``.
+
+    One row per evidence id; regeneration replaces the row (the newest report
+    is authoritative) while the evidence package itself stays immutable.
+    """
+
+    __tablename__ = "evidence_report_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    evidence_id = Column(
+        String, ForeignKey("evidence_merkle_packages.evidence_id"), nullable=False, unique=True
+    )
+    # sha256 of the rendered PDF bytes (never stored inside the PDF itself).
+    report_sha256 = Column(String, nullable=False)
+    schema_version = Column(String, nullable=False)
+    page_count = Column(Integer, nullable=False, default=0)
+    generated_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class AnchorQueueEntry(Base):
-    """Offline anchor queue entry (OFFLINE → PENDING → CONFIRMED / FAILED).
+    """Offline anchor queue entry (OFFLINE → PENDING → CONFIRMED / FAILED /
+    PERMANENTLY_FAILED).
 
     When the device is offline (rural/edge deployment), an evidence root is
     queued here instead of being dropped. On reconnect a worker dequeues it,
     submits ``anchorEvidence`` and records the transaction. A failed anchor is
-    never silently discarded — it stays with ``status='failed'`` and a reason so
-    an operator can retry.
+    never silently discarded — it stays with ``status='FAILED'`` plus a reason
+    and a scheduled retry time; a *non-retryable* failure (contract revert,
+    invalid root) is moved to ``PERMANENTLY_FAILED`` so it never retries.
     """
 
     __tablename__ = "anchor_queue_entries"
@@ -317,10 +345,18 @@ class AnchorQueueEntry(Base):
     evidence_id_bytes32 = Column(String, nullable=False)    # 0x hex bytes32 id
     blockchain_network = Column(String, nullable=True)
     contract_address = Column(String, nullable=True)
-    # OFFLINE | PENDING | CONFIRMED | FAILED
+    # OFFLINE | PENDING | CONFIRMED | FAILED | PERMANENTLY_FAILED
     status = Column(String, nullable=False, default="OFFLINE")
+    # Idempotency key for submission: sha256(root_hash || evidence_id) — one
+    # logical anchor per key, so an ambiguous client timeout can be detected
+    # and resolved without double-submitting the same root.
+    idempotency_key = Column(String, nullable=True, unique=True)
     attempts = Column(Integer, nullable=False, default=0)
     last_error = Column(Text, nullable=True)
+    # Earliest time the next submission attempt is allowed (exponential backoff).
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
+    # False once a non-retryable failure (contract revert, invalid input) is seen.
+    retryable = Column(Boolean, nullable=False, default=True)
     tx_hash = Column(String, nullable=True)
     block_number = Column(Integer, nullable=True)
     anchor_timestamp = Column(DateTime(timezone=True), nullable=True)

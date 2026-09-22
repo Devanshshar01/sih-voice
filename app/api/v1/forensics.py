@@ -227,33 +227,78 @@ def get_merkle_proof(evidence_id: str, item_name: str, db: Session = Depends(get
         )
 
 
+@router.get("/{evidence_id}/verify")
+def verify_evidence_integrity(
+    evidence_id: str,
+    db: Session = Depends(get_db),
+):
+    """The one verification summary (EvidenceIntegritySummary, Phase 5/9).
+
+    Derived entirely from stored evidence — nothing is regenerated, no fresh
+    timestamps are injected. Distinct identities are kept distinct:
+    package hash, Merkle root, ledger head, report hash, blockchain anchor.
+    """
+    _validate_evidence_id(evidence_id)
+    from app.services.evidence_package import build_integrity_summary
+    from app.services.merkle_evidence import MerkleEvidenceError
+
+    try:
+        summary = build_integrity_summary(db, evidence_id)
+    except MerkleEvidenceError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Merkle evidence package '{evidence_id}' was not found.",
+        )
+    from app.services.forensic_report import (
+        build_verification_url,
+        verification_api_path,
+    )
+
+    summary["verification"] = {
+        "url": build_verification_url(evidence_id),
+        "api_path": verification_api_path(evidence_id),
+    }
+    return summary
+
+
 @router.get("/merkle/{evidence_id}/report.pdf")
 def get_merkle_report_pdf(
     evidence_id: str,
     verify_on_chain: bool = True,
     db: Session = Depends(get_db),
 ):
-    """Render the forensic report PDF (Blockchain Integrity section + QR code)."""
+    """Render the authoritative five-page forensic PDF and register its hash.
+
+    Phase 7: the PDF is rendered from the frozen stored package, hashed after
+    rendering, and the digest is persisted (evidence_report_records) — the PDF
+    never contains its own hash.
+    """
     _validate_evidence_id(evidence_id)
-    from app.services.forensic_report import build_forensic_report_pdf
+    from app.services.evidence_package import build_integrity_summary
+    from app.services.forensic_report import render_and_register_report
+    from app.services.merkle_evidence import MerkleEvidenceError
 
     service = MerkleEvidenceService(db)
     try:
         verification = service.verify_merkle_package(
             evidence_id, verify_on_chain=verify_on_chain
         )
+        integrity = build_integrity_summary(db, evidence_id)
     except MerkleEvidenceError:
         raise HTTPException(
             status_code=404,
             detail=f"Merkle evidence package '{evidence_id}' was not found.",
         )
 
-    pdf = build_forensic_report_pdf(evidence_id=evidence_id, verification=verification)
+    rendered = render_and_register_report(
+        db, evidence_id=evidence_id, verification=verification, integrity=integrity
+    )
     return Response(
-        content=pdf,
+        content=rendered["pdf"],
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="satyavoice-evidence-{evidence_id}.pdf"'
+            "Content-Disposition": f'attachment; filename="satyavoice-evidence-{evidence_id}.pdf"',
+            "X-Report-SHA256": rendered["report_sha256"],
         },
     )
 

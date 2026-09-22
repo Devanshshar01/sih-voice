@@ -239,6 +239,29 @@ BLOCKCHAIN_PRIVATE_KEY = os.getenv("VOICETRUST_BLOCKCHAIN_PRIVATE_KEY", "")
 BLOCKCHAIN_CHAIN_ID = int(os.getenv("VOICETRUST_BLOCKCHAIN_CHAIN_ID", "80002"))
 BLOCKCHAIN_GAS_LIMIT = int(os.getenv("VOICETRUST_BLOCKCHAIN_GAS_LIMIT", "300000"))
 
+# ---- Blockchain adapter mode (DISABLED | DRY_RUN | LIVE) ----
+# DISABLED: no blockchain calls; evidence stays valid; reports say "not anchored".
+# DRY_RUN:  deterministic simulated anchoring metadata, clearly marked simulated —
+#           it must NEVER be displayed or persisted as a confirmed chain anchor.
+# LIVE:     submit a real transaction, wait for the receipt, persist confirmed
+#           metadata only after receipt.status == 1.
+# Backwards compatibility: an explicit mode always wins; without one, the legacy
+# boolean VOICETRUST_BLOCKCHAIN_ANCHORING_ENABLED selects LIVE when the RPC and
+# contract are configured, otherwise DISABLED.
+BLOCKCHAIN_MODE = os.getenv("VOICETRUST_BLOCKCHAIN_MODE", "").strip().upper()
+if BLOCKCHAIN_MODE not in {"DISABLED", "DRY_RUN", "LIVE", ""}:
+    raise ValueError("VOICETRUST_BLOCKCHAIN_MODE must be one of DISABLED, DRY_RUN, LIVE.")
+if not BLOCKCHAIN_MODE:
+    BLOCKCHAIN_MODE = (
+        "LIVE"
+        if (
+            BLOCKCHAIN_ANCHORING_ENABLED
+            and BLOCKCHAIN_RPC_URL
+            and BLOCKCHAIN_CONTRACT_ADDRESS
+        )
+        else "DISABLED"
+    )
+
 # Public base URL of the verification portal. The forensic PDF embeds a QR code
 # pointing at "{PUBLIC_VERIFY_BASE_URL}?evidence=<id>". Keep this free of PII —
 # it only ever carries an opaque evidence id, never case contents.
