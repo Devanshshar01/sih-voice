@@ -3,7 +3,7 @@ import { Check, CheckCircle2, ClipboardCheck, Copy, Download, FileWarning, Finge
 import { CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { UseCallSession } from "../hooks/useCallSession";
 import { registerForensicsEvidence, verifyEvidenceIntegrity, verifyForensicsEvidence } from "../lib/api";
-import { buildTechnicalEvidenceReport, createTechnicalEvidencePdf } from "../lib/forensicPdf";
+import { buildEvidenceSnapshot, buildTechnicalEvidenceReport, createTechnicalEvidencePdf } from "../lib/forensicPdf";
 import type { BlockchainAnchorState, ForensicsIntegritySummary, ForensicsVerificationResponse } from "../types";
 
 interface ForensicsViewProps { session: UseCallSession }
@@ -104,7 +104,10 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
   const handleExport = async () => {
     if (!meta) return;
     const report = await buildTechnicalEvidenceReport({ callId: meta.callId, callerId: meta.callerId, recipientId: meta.recipientId, durationSeconds, maxRiskScore: maxScore, exportedAt: new Date().toISOString(), operatorIdentity: meta.callerId || "operator", telemetryHistory, modelVersionMetadata: { detector_mode: meta.audioMode, audio_pipeline: serverRiskSnapshot ? "WebSocket PCM + sliding windows + server-side risk snapshot" : "WebSocket PCM + sliding windows", server_risk_snapshot: serverRiskSnapshot } });
-    try { await registerForensicsEvidence(meta.callId, report); } catch { /* Export remains usable if registration is unavailable. */ }
+    // Register the FROZEN evidence snapshot, never the export operation: the same
+    // finalized call must always register the same evidence hash (repeated export
+    // clicks used to collide on the evidence id and return HTTP 500).
+    try { await registerForensicsEvidence(meta.callId, buildEvidenceSnapshot(report)); } catch { /* Export remains usable if registration is unavailable. */ }
     const blob = await createTechnicalEvidencePdf(report); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `satyavoice-forensic-incident-${meta.callId}.pdf`; link.click(); URL.revokeObjectURL(url);
   };
 

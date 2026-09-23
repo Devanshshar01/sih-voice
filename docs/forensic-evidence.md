@@ -319,6 +319,32 @@ The response is derived from **stored evidence** - it is never regenerated with
 new timestamps. The QR code printed on page 5 of the PDF points at this route
 (the URL contains only the evidence id, no PII).
 
+### One canonical read path (GET and POST)
+
+`GET` and `POST /api/v1/forensics/{evidence_id}/verify` are the **same
+implementation** (`app/services/evidence_verification.py`) and therefore return
+the same result. `GET` is the canonical path used by the PDF, the QR target and
+the dashboard integrity panel; `POST` is retained as a compatibility verb.
+
+Registration semantics (`POST /api/v1/forensics/register`):
+
+| Case | Result |
+|---|---|
+| new `evidence_id` | `200` - legacy package **and** canonical Merkle commitment created |
+| existing id, identical frozen snapshot | `200` with `"duplicate": true` (nothing inserted) |
+| existing id, different snapshot | `409` `EVIDENCE_ID_CONFLICT` - existing evidence left unchanged |
+| concurrent duplicate insert | resolves to one of the above (never a 500) |
+
+Evidence is immutable: a conflicting payload never overwrites a registered
+package. `exported_at` / `package_signature` describe the **export operation**,
+not the evidence, so they are removed before hashing - re-exporting the same
+finalized call therefore registers the same `evidence_hash` (removed paths are
+reported back as `ignored_export_fields`).
+
+Evidence registered before the canonical store existed stays readable: when no
+Merkle package exists the verifier falls back to the legacy flat ledger and
+labels the response `"storage": "legacy"` (never migrated, never deleted).
+
 ### EvidenceIntegritySummary
 
 Six distinct identities are kept separate and are **never collapsed into one
@@ -432,7 +458,8 @@ contract has not been independently audited.
 | Ledger (genesis, append, verify, tamper, missing, reorder, concurrency) | `tests/test_forensics_hardening.py`, `tests/test_forensic_e2e.py` |
 | Merkle (deterministic root, odd trees, proofs, negatives, vectors) | `tests/test_merkle.py`, `tests/test_merkle_evidence.py` |
 | PDF (generation, content, forbidden strings, page count, opens) | `tests/test_forensic_pdf.py` |
-| QR / verification API | `tests/test_forensic_e2e.py` |
+| QR / verification API | `tests/test_forensic_e2e.py`, `tests/test_forensic_registration.py` |
+| Registration idempotency / 409 conflict / race-safe insert / export-invariant hash | `tests/test_forensic_registration.py` |
 | Blockchain modes / idempotency / retry / duplicate root | `tests/test_forensic_e2e.py`, `tests/test_anchor_queue.py`, `tests/test_blockchain_anchor.py` |
 | Migrations | `tests/test_migrations.py` |
 | End-to-end | `tests/test_forensic_e2e.py::test_end_to_end_forensic_pipeline` |

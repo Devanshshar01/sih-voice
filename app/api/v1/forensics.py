@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.services.evidence_anchor import EvidenceAnchorService
+from app.services.evidence_anchor import EVIDENCE_ID_CONFLICT, EvidenceAnchorService
 from app.services.merkle_evidence import MerkleEvidenceError, MerkleEvidenceService
 
 logger = logging.getLogger("satyavoice.forensics")
@@ -76,14 +76,44 @@ def register_evidence(
 ):
     """Register an evidence package in the local integrity ledger.
 
-    Returns registration metadata including evidence hash and chain root.
-    Duplicate payloads (same hash) are idempotent — the existing record is returned.
+    Semantics (identity-first, evidence is immutable):
+
+      * new ``evidence_id``                        -> 200, package created
+      * existing id + identical frozen snapshot    -> 200, ``duplicate: true``
+      * existing id + different snapshot           -> 409 EVIDENCE_ID_CONFLICT
+        (never overwritten; existing hash + submitted hash are returned)
+      * concurrent duplicate insert                -> resolved to one of the above
+
+    ``exported_at``/``package_signature`` (export-operation fields) are removed
+    before hashing, so repeated exports of the same finalized call register the
+    same ``evidence_hash``. Removed paths are echoed back as
+    ``ignored_export_fields``.
+
+    Successful registration also creates the canonical Merkle commitment for the
+    same snapshot, so ``GET /{evidence_id}/verify``, the integrity summary, the
+    QR target and the forensic PDF all work from one canonical snapshot.
 
     The service layer never raises on DB failures; check status=='error' in the
     response body when integrating (HTTP 500 is reserved for truly unexpected errors).
     """
     service = EvidenceAnchorService(db)
     result = service.register_evidence_package(request.payload, request.evidence_id)
+
+    if result.get("status") == "conflict":
+        # EVIDENCE_ID_CONFLICT (Fix 1C): the id is already registered with
+        # different frozen content. Registered evidence is immutable, so the
+        # existing package is left untouched and both hashes are reported.
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": result.get("error_code", EVIDENCE_ID_CONFLICT),
+                "message": result.get("error", "Evidence id already registered."),
+                "evidence_id": result.get("evidence_id"),
+                "existing_evidence_hash": result.get("existing_evidence_hash"),
+                "submitted_evidence_hash": result.get("submitted_evidence_hash"),
+                "conflict": True,
+            },
+        )
 
     if result.get("status") == "error":
         # Return the error message but sanitise it: only return the
@@ -101,32 +131,105 @@ def register_evidence(
             detail="Evidence registration failed. Please contact the system administrator.",
         )
 
+    # --- Canonical registration (Fix 4) --------------------------------------
+    # GET /{id}/verify, the integrity summary, the QR target and the forensic PDF
+    # all read the canonical Merkle store. Create it here so ONE /register call
+    # yields ONE canonical snapshot per evidence_id (idempotent per id).
+    _ensure_canonical_registration(db, result)
     return result
 
 
-@router.post("/{evidence_id}/verify")
-def verify_evidence(evidence_id: str, db: Session = Depends(get_db)):
-    """Independently verify an evidence package's integrity.
+def _ensure_canonical_registration(db: Session, result: dict[str, Any]) -> None:
+    """Register the canonical Merkle commitment for a just-registered snapshot.
 
-    Returns a full verification report. All fields are server-derived;
-    no client-supplied 'verified' claims are trusted.
+    Idempotent per ``evidence_id``, so repeated export clicks cannot create
+    duplicate Merkle packages. Best-effort by design (a canonical failure never
+    fails the legacy registration), but never silent: the outcome is reported in
+    ``result["canonical"]`` and logged.
     """
+    evidence_id = result.get("evidence_id")
+    # The service returns the exact stored canonical snapshot; it is consumed
+    # here (and dropped from the HTTP response) so both stores commit the SAME
+    # bytes and can never derive divergent hashes.
+    canonical_payload = result.pop("canonical_payload", None)
+    if not evidence_id or canonical_payload is None:
+        return
+
+    from app.services.evidence_verification import ensure_canonical_merkle_package
+
     try:
-        service = EvidenceAnchorService(db)
-        return service.verify_evidence_package(evidence_id)
-    except ValueError:
-        # Evidence not found: safe to surface the evidence_id in the message
-        # since the caller already provided it.
+        canonical = ensure_canonical_merkle_package(
+            db,
+            evidence_id=evidence_id,
+            canonical_payload=canonical_payload,
+        )
+    except Exception:
+        logger.exception(
+            "Canonical evidence registration failed (evidence_id=%s)", evidence_id
+        )
+        result["canonical"] = {"status": "error", "evidence_id": evidence_id}
+        return
+
+    result["canonical"] = {
+        "status": canonical.get("status"),
+        "duplicate": bool(canonical.get("duplicate")),
+        "package_hash": canonical.get("package_hash"),
+        "merkle_root": canonical.get("merkle_root"),
+        "leaf_count": canonical.get("leaf_count"),
+    }
+
+
+def _verification_response(
+    db: Session, evidence_id: str, verify_on_chain: bool
+) -> dict[str, Any]:
+    """The ONE verification implementation behind GET and POST ``/verify``.
+
+    Both verbs call this, so they cannot return contradictory results. The
+    result is the canonical verification envelope (canonical identities plus
+    legacy-compatible aliases and the QR/verification URL block).
+    """
+    from app.services.evidence_verification import (
+        EvidenceNotFound,
+        verify_canonical_evidence,
+    )
+    from app.services.forensic_report import build_verification_url, verification_api_path
+
+    try:
+        result = verify_canonical_evidence(db, evidence_id, verify_on_chain=verify_on_chain)
+    except (EvidenceNotFound, ValueError):
         raise HTTPException(
             status_code=404,
             detail=f"Evidence package '{evidence_id}' was not found.",
         )
     except Exception:
-        logger.exception("Unexpected error during evidence verification (evidence_id=%s)", evidence_id)
+        logger.exception(
+            "Unexpected error during evidence verification (evidence_id=%s)", evidence_id
+        )
         raise HTTPException(
             status_code=500,
             detail="Evidence verification failed unexpectedly.",
         )
+
+    result["verification"] = {
+        "url": build_verification_url(evidence_id),
+        "api_path": verification_api_path(evidence_id),
+    }
+    return result
+
+
+@router.post("/{evidence_id}/verify")
+def verify_evidence(
+    evidence_id: str,
+    verify_on_chain: bool = True,
+    db: Session = Depends(get_db),
+):
+    """Independently verify an evidence package's integrity.
+
+    Compatibility verb: this is the SAME canonical verification as
+    ``GET /{evidence_id}/verify`` (one implementation, one result). All fields
+    are server-derived; no client-supplied 'verified' claim is trusted.
+    """
+    return _verification_response(db, evidence_id, verify_on_chain)
 
 
 # ===========================================================================
@@ -230,35 +333,17 @@ def get_merkle_proof(evidence_id: str, item_name: str, db: Session = Depends(get
 @router.get("/{evidence_id}/verify")
 def verify_evidence_integrity(
     evidence_id: str,
+    verify_on_chain: bool = True,
     db: Session = Depends(get_db),
 ):
-    """The one verification summary (EvidenceIntegritySummary, Phase 5/9).
+    """The canonical read path for verification (PDF QR, integrity panel, public).
 
-    Derived entirely from stored evidence — nothing is regenerated, no fresh
-    timestamps are injected. Distinct identities are kept distinct:
-    package hash, Merkle root, ledger head, report hash, blockchain anchor.
+    Served by the SAME implementation as ``POST /{evidence_id}/verify`` — the
+    canonical verification envelope derived entirely from stored evidence
+    (nothing is regenerated, no fresh timestamps are injected).
     """
     _validate_evidence_id(evidence_id)
-    from app.services.evidence_package import build_integrity_summary
-    from app.services.merkle_evidence import MerkleEvidenceError
-
-    try:
-        summary = build_integrity_summary(db, evidence_id)
-    except MerkleEvidenceError:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Merkle evidence package '{evidence_id}' was not found.",
-        )
-    from app.services.forensic_report import (
-        build_verification_url,
-        verification_api_path,
-    )
-
-    summary["verification"] = {
-        "url": build_verification_url(evidence_id),
-        "api_path": verification_api_path(evidence_id),
-    }
-    return summary
+    return _verification_response(db, evidence_id, verify_on_chain)
 
 
 @router.get("/merkle/{evidence_id}/report.pdf")

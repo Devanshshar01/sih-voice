@@ -45,7 +45,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import config
@@ -59,6 +59,60 @@ GENESIS_HASH = "GENESIS"
 # Maximum allowed size (bytes) for the serialised evidence payload JSON.
 # Prevents oversized evidence submissions from exhausting DB storage.
 MAX_EVIDENCE_PAYLOAD_BYTES = 512 * 1024  # 512 KB
+
+# Stable machine-readable code returned when an evidence_id is re-submitted with
+# different content (HTTP 409). Registered evidence is immutable: it is never
+# overwritten, and the conflict is surfaced explicitly instead of being masked.
+EVIDENCE_ID_CONFLICT = "EVIDENCE_ID_CONFLICT"
+
+# Fields that describe the EXPORT OPERATION rather than the evidence snapshot.
+#
+# WHY THIS EXISTS (production incident):
+#   The client report embedded a fresh ``exported_at`` (and a local
+#   ``package_signature``/``evidence_hash`` derived from it) on every export.
+#   Because the export timestamp participated in the registered identity, two
+#   exports of the SAME finalized call produced two different hashes for one
+#   ``evidence_id`` — which is the primary key of ``evidence_packages`` — so the
+#   second registration collided on the PK and returned HTTP 500
+#   ("Evidence registration DB error: IntegrityError").
+#
+#   The registered identity must be a FROZEN EVIDENCE SNAPSHOT: re-exporting a
+#   finalized call has to reproduce the same ``evidence_hash``. Export/report
+#   timestamps belong to the report artifact, not to the evidence identity, so
+#   they are removed before canonicalization (and reported back to the caller in
+#   ``ignored_export_fields`` — this is never silent).
+#
+# NOTE: genuinely forensic timestamps (analysis-window timestamps, the
+# finalized-call boundary, model metadata, risk events) are NOT in this set.
+EXPORT_SCOPED_FIELDS = frozenset({"exported_at", "exportedAt", "package_signature"})
+
+
+def strip_export_scoped_fields(value: Any, _path: str = "") -> tuple[Any, list[str]]:
+    """Return ``(payload_without_export_scoped_fields, removed_dotted_paths)``.
+
+    Removes :data:`EXPORT_SCOPED_FIELDS` at any depth so the hashed identity is
+    export-invariant. See the constant's docstring for the rationale.
+    """
+    removed: list[str] = []
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            path = f"{_path}.{key}" if _path else str(key)
+            if key in EXPORT_SCOPED_FIELDS:
+                removed.append(path)
+                continue
+            child, child_removed = strip_export_scoped_fields(item, path)
+            cleaned[key] = child
+            removed.extend(child_removed)
+        return cleaned, removed
+    if isinstance(value, (list, tuple)):
+        items: list[Any] = []
+        for index, item in enumerate(value):
+            child, child_removed = strip_export_scoped_fields(item, f"{_path}[{index}]")
+            items.append(child)
+            removed.extend(child_removed)
+        return items, removed
+    return value, removed
 
 
 def _canonical_json(data: Any) -> str:
@@ -98,10 +152,13 @@ def build_evidence_payload(
     This is the canonical way to construct evidence payloads in SatyaVoice.
     The returned dict is ready for ``EvidenceAnchorService.register_evidence_package()``.
 
-    The ``created_at`` timestamp is fixed at call time so that multiple
-    registration attempts for the same logical event produce the same hash
-    (idempotent behaviour when the package already exists in the ledger).
-    Callers that need a fresh timestamp should pass a new ``extra`` dict.
+    IDEMPOTENCY NOTE: this helper stamps ``created_at`` at *build* time and
+    generates a fresh ``evidence_id`` when none is supplied, so each call
+    produces a new snapshot. To re-register the SAME logical event, reuse the
+    returned payload (and its ``evidence_id``): registration is idempotent by
+    ``evidence_id``, and a changed payload for an already-registered id is
+    reported as an ``EVIDENCE_ID_CONFLICT`` instead of colliding on the primary
+    key or being silently overwritten.
     """
     now_iso = _utc_now().isoformat()
     eid = evidence_id or str(uuid.uuid4())
@@ -146,6 +203,73 @@ class EvidenceAnchorService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    # -- identity helpers -----------------------------------------------------
+
+    def _package_by_evidence_id(self, evidence_id: str) -> db_models.EvidencePackage | None:
+        """The one lookup used by the identity check AND the race handler."""
+        return (
+            self.db.query(db_models.EvidencePackage)
+            .filter(db_models.EvidencePackage.evidence_id == evidence_id)
+            .first()
+        )
+
+    def _package_by_evidence_hash(self, evidence_hash: str) -> db_models.EvidencePackage | None:
+        """Content lookup used after the identity check (same snapshot, other id)."""
+        return (
+            self.db.query(db_models.EvidencePackage)
+            .filter(db_models.EvidencePackage.evidence_hash == evidence_hash)
+            .first()
+        )
+
+    def _safe_rollback(self) -> None:
+        """Roll back without masking the original failure."""
+        try:
+            self.db.rollback()
+        except Exception:  # pragma: no cover - session may already be dead
+            logger.debug("rollback failed during evidence handling", exc_info=True)
+
+    def _duplicate_result(
+        self,
+        package: db_models.EvidencePackage,
+        ignored_export_fields: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Idempotent success: the same frozen snapshot is already registered."""
+        return {
+            "evidence_id": package.evidence_id,
+            "evidence_hash": package.evidence_hash,
+            "local_chain_root": package.local_chain_root,
+            "anchor_status": package.anchor_status,
+            "local_chain_status": package.local_chain_status,
+            "status": package.status,
+            "duplicate": True,
+            "canonical_payload": package.package_payload,
+            "ignored_export_fields": list(ignored_export_fields or []),
+        }
+
+    def _conflict_result(
+        self,
+        evidence_id: str,
+        existing_hash: str,
+        submitted_hash: str,
+    ) -> dict[str, Any]:
+        """Same evidence_id, different frozen content: never overwrite.
+
+        Returned with ``status="conflict"`` (mapped to HTTP 409 by the API). No
+        database mutation is performed — registered evidence is immutable. Both
+        hashes are hex digests, so nothing sensitive is disclosed.
+        """
+        return {
+            "status": "conflict",
+            "error_code": EVIDENCE_ID_CONFLICT,
+            "evidence_id": evidence_id,
+            "existing_evidence_hash": existing_hash,
+            "submitted_evidence_hash": submitted_hash,
+            "error": (
+                f"Evidence id '{evidence_id}' is already registered with a different "
+                "evidence hash; the existing package was left unchanged."
+            ),
+        }
+
     def register_evidence_package(
         self,
         payload: dict[str, Any],
@@ -163,8 +287,16 @@ class EvidenceAnchorService:
         if not isinstance(payload, dict) or not payload:
             return {"status": "error", "error": "A non-empty evidence payload is required."}
 
+        # --- Export-scoped fields are removed BEFORE hashing (Fix 3) ----------
+        # The registered identity is a FROZEN evidence snapshot: re-exporting a
+        # finalized call must reproduce the same evidence_hash instead of
+        # colliding on the evidence_id primary key.
+        snapshot, ignored_export_fields = strip_export_scoped_fields(payload)
+        if not isinstance(snapshot, dict) or not snapshot:
+            return {"status": "error", "error": "A non-empty evidence payload is required."}
+
         # Payload size guard (B3 / resource exhaustion prevention)
-        serialised = _canonical_json(payload)
+        serialised = _canonical_json(snapshot)
         if len(serialised.encode("utf-8")) > MAX_EVIDENCE_PAYLOAD_BYTES:
             return {
                 "status": "error",
@@ -174,30 +306,36 @@ class EvidenceAnchorService:
                 ),
             }
 
+        # Bound before the try so the race-safe IntegrityError handler can always
+        # re-query by identity, whatever statement failed.
+        normalized_id: str | None = None
+        evidence_hash: str | None = None
         try:
-            normalized_id = evidence_id or payload.get("evidence_id") or str(uuid.uuid4())
+            normalized_id = evidence_id or snapshot.get("evidence_id") or str(uuid.uuid4())
             # Re-parse through canonical JSON to normalise key order, then
             # hash the canonical string directly (not the parsed object again).
             canonical = _canonical_json(json.loads(serialised))
             evidence_hash = _sha256_hex(canonical)
             evidence_digest = evidence_hash
 
-            # --- Idempotency: same hash → return existing record ---
-            existing_package = (
-                self.db.query(db_models.EvidencePackage)
-                .filter(db_models.EvidencePackage.evidence_hash == evidence_hash)
-                .first()
-            )
+            # --- Identity idempotency (Fix 1): evidence_id is the logical key ---
+            # Checked BEFORE any content hash so a re-export of the same case can
+            # never collide on the primary key.
+            #   (B) same evidence_id + same frozen content -> idempotent success.
+            #   (C) same evidence_id + different content  -> explicit conflict,
+            #       never an overwrite (registered evidence is immutable).
+            existing_by_id = self._package_by_evidence_id(normalized_id)
+            if existing_by_id is not None:
+                if existing_by_id.evidence_hash == evidence_hash:
+                    return self._duplicate_result(existing_by_id, ignored_export_fields)
+                return self._conflict_result(
+                    normalized_id, existing_by_id.evidence_hash, evidence_hash
+                )
+
+            # --- Content idempotency: identical snapshot under a different id ---
+            existing_package = self._package_by_evidence_hash(evidence_hash)
             if existing_package is not None:
-                return {
-                    "evidence_id": existing_package.evidence_id,
-                    "evidence_hash": existing_package.evidence_hash,
-                    "local_chain_root": existing_package.local_chain_root,
-                    "anchor_status": existing_package.anchor_status,
-                    "local_chain_status": existing_package.local_chain_status,
-                    "status": existing_package.status,
-                    "duplicate": True,
-                }
+                return self._duplicate_result(existing_package, ignored_export_fields)
 
             # --- Build and persist the package row ---
             package = db_models.EvidencePackage(
@@ -333,6 +471,32 @@ class EvidenceAnchorService:
                 "anchor_status": package.anchor_status,
                 "local_chain_status": package.local_chain_status,
                 "status": package.status,
+                # The exact stored snapshot (post export-strip) is returned so the
+                # caller can commit the SAME bytes in the canonical Merkle store —
+                # the two stores can never derive divergent hashes.
+                "canonical_payload": package.package_payload,
+                "ignored_export_fields": ignored_export_fields,
+            }
+
+        except IntegrityError as exc:
+            # --- Race-safe defensive insert (Fix 2) ---------------------------
+            # Another request inserted this evidence_id between our identity check
+            # and our flush. Resolve the winner instead of 500-ing. An unrelated
+            # integrity error (FK/other table) finds no matching row here and
+            # falls through to the generic handler below — real failures are
+            # never hidden.
+            self._safe_rollback()
+            winner = self._package_by_evidence_id(normalized_id) if normalized_id else None
+            if winner is not None:
+                if winner.evidence_hash == evidence_hash:
+                    return self._duplicate_result(winner, ignored_export_fields)
+                return self._conflict_result(
+                    normalized_id, winner.evidence_hash, evidence_hash or ""
+                )
+            logger.error("Evidence registration DB error: %s", type(exc).__name__)
+            return {
+                "status": "error",
+                "error": "Evidence registration failed due to a database error.",
             }
 
         except SQLAlchemyError as exc:

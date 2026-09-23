@@ -271,6 +271,56 @@ const buildPdfText = (report: ForensicsExportReport) => {
   return pdf;
 };
 
+/**
+ * Export-scoped report fields: they describe the EXPORT OPERATION, not the
+ * evidence itself.
+ *
+ * PRODUCTION INCIDENT (why this exists): ``exported_at`` was part of the
+ * registered payload, so every export of the same finalized call produced a
+ * different evidence hash for the same evidence id. Since the evidence id is
+ * the primary key of the evidence store, the second export collided on that key
+ * and the backend answered HTTP 500 (IntegrityError).
+ *
+ * The registered identity must be a FROZEN EVIDENCE SNAPSHOT: two exports of the
+ * same finalized call must yield the same hash. These fields stay on the
+ * exported report/PDF (where they are useful to a human) but are excluded from
+ * the registered evidence identity.
+ */
+export const EXPORT_SCOPED_FIELDS = ["exported_at", "evidence_hash", "package_signature"] as const;
+
+/**
+ * Build the frozen, export-invariant evidence snapshot that is registered on the
+ * server. Repeated exports of the same finalized call produce identical bytes
+ * (and therefore the same registered evidence hash).
+ *
+ * Excluded: the export-scoped fields above and the export clock inside the model
+ * metadata. Included instead: ``evidence_finalized_at``, derived from the last
+ * recorded analysis window (the finalized call boundary) — never from the
+ * export clock.
+ */
+export function buildEvidenceSnapshot(report: ForensicsExportReport): Record<string, unknown> {
+  const excluded = new Set<string>(EXPORT_SCOPED_FIELDS);
+  const snapshot: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(report)) {
+    if (excluded.has(key)) continue;
+    snapshot[key] = value;
+  }
+
+  // `generated_at` in the model metadata is the export time, not the model's.
+  const metadata: Record<string, unknown> = { ...(report.model_version_metadata ?? {}) };
+  delete metadata.generated_at;
+  snapshot.model_version_metadata = metadata;
+
+  // Stable, evidence-derived finalization boundary.
+  const lastWindow = report.analysis_windows[report.analysis_windows.length - 1];
+  snapshot.evidence_finalized_at = lastWindow
+    ? new Date(lastWindow.timestamp * 1000).toISOString()
+    : null;
+
+  return snapshot;
+}
+
 export async function createTechnicalEvidencePdf(report: ForensicsExportReport): Promise<Blob> {
   const pdf = buildPdfText(report);
   return new Blob([pdf], { type: "application/pdf" });
