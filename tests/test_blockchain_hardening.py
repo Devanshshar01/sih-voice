@@ -495,3 +495,158 @@ def test_exception_diagnostics_are_sanitized(mock_web3_cls, monkeypatch, caplog)
     # The stored failure_reason is sanitized too.
     assert VALID_KEY not in result["failure_reason"]
     assert "supersecret" not in result["failure_reason"]
+
+
+# ---------------------------------------------------------------------------
+# 8. POA middleware (production ExtraDataLengthError regression)
+# ---------------------------------------------------------------------------
+# Production log (web3 7.16.0, Polygon Amoy, chain id 80002):
+#     ExtraDataLengthError: The field extraData is 105 bytes, but should be 32.
+#         It is quite likely that you are connected to a POA chain.
+
+
+def _poa_block() -> dict:
+    """A Polygon-style POA header whose extraData is 105 bytes, not 32."""
+    return {
+        "parentHash": "0x" + "11" * 32,
+        "sha3Uncles": "0x" + "22" * 32,
+        "miner": "0x" + "33" * 20,
+        "stateRoot": "0x" + "44" * 32,
+        "transactionsRoot": "0x" + "55" * 32,
+        "receiptsRoot": "0x" + "66" * 32,
+        "logsBloom": "0x" + "00" * 256,
+        "difficulty": "0x1",
+        "number": "0x1",
+        "gasLimit": "0x1c9c380",
+        "gasUsed": "0x5208",
+        "timestamp": "0x64",
+        "extraData": "0x" + "aa" * 105,  # the POA header that breaks parsing
+        "mixHash": "0x" + "77" * 32,
+        "nonce": "0x0000000000000000",
+        "hash": "0x" + "88" * 32,
+        "transactions": [],
+        "uncles": [],
+        "size": "0x220",
+        "baseFeePerGas": "0x1",
+    }
+
+
+def _make_real_web3(responses: dict) -> "object":
+    """A real (offline) Web3 instance over a canned JSON-RPC provider."""
+    import copy
+
+    from web3 import Web3
+    from web3.providers.base import BaseProvider
+
+    class _CannedProvider(BaseProvider):
+        def __init__(self, replies: dict) -> None:
+            super().__init__()
+            self._replies = replies
+
+        def make_request(self, method: str, params: dict) -> dict:
+            return {
+                "id": 0,
+                "jsonrpc": "2.0",
+                "result": copy.deepcopy(self._replies.get(method)),
+            }
+
+        def is_connected(self, show_warning: bool = False) -> bool:
+            return True
+
+    return Web3(_CannedProvider(responses))
+
+
+def test_default_web3_instance_lacks_the_poa_middleware():
+    """Proves injection is genuinely required (the production precondition)."""
+    from web3.middleware import ExtraDataToPOAMiddleware
+
+    w3 = _make_real_web3({})
+    assert ExtraDataToPOAMiddleware not in w3.middleware_onion
+
+
+def test_adapter_factory_injects_poa_middleware_exactly_once():
+    from web3.middleware import ExtraDataToPOAMiddleware
+
+    from app.services.anchor_adapter import _build_poa_web3, _ensure_poa_middleware
+
+    # Construction never opens a connection, so no network I/O here.
+    w3 = _build_poa_web3("http://127.0.0.1:9")
+    assert ExtraDataToPOAMiddleware in w3.middleware_onion
+
+    def _count(target) -> int:
+        return sum(1 for key in target.middleware_onion.keys() if key is ExtraDataToPOAMiddleware)
+
+    assert _count(w3) == 1
+    # Idempotent: a raw second inject would raise Web3ValueError
+    # ("You can't add the same name again, use replace instead").
+    _ensure_poa_middleware(w3)
+    _ensure_poa_middleware(w3)
+    assert _count(w3) == 1
+
+
+def test_poa_block_raises_extra_data_error_without_middleware():
+    """The exact production exception, reproduced offline (no RPC)."""
+    from web3.exceptions import ExtraDataLengthError
+
+    w3 = _make_real_web3({"eth_getBlockByNumber": _poa_block()})
+    with pytest.raises(ExtraDataLengthError) as excinfo:
+        w3.eth.get_block(1)
+    assert "extraData is 105 bytes" in str(excinfo.value)
+
+
+def test_poa_block_parses_with_the_adapter_middleware():
+    """Same POA header, adapter middleware -> parses; extraData is renamed."""
+    from app.services.anchor_adapter import _ensure_poa_middleware
+
+    w3 = _make_real_web3({"eth_getBlockByNumber": _poa_block()})
+    _ensure_poa_middleware(w3)
+    block = w3.eth.get_block(1)  # must NOT raise ExtraDataLengthError
+    assert block.get("number") == 1
+    # web3's POA middleware exposes the header as proofOfAuthorityData
+    # instead of rejecting the >32-byte extraData field.
+    assert "proofOfAuthorityData" in block
+
+
+def test_all_live_web3_call_sites_use_the_poa_factory():
+    """No straggler raw construction may bypass the POA middleware."""
+    import inspect
+
+    from app.services.anchor_adapter import PolygonAmoyAnchorAdapter
+
+    source = inspect.getsource(PolygonAmoyAnchorAdapter)
+    assert source.count("_build_poa_web3(self.rpc_url)") == 4
+    assert "Web3(Web3.HTTPProvider(self.rpc_url))" not in source
+
+
+@mock.patch("eth_account.Account.sign_transaction")
+@mock.patch("web3.Web3")
+def test_anchor_evidence_injects_layer0_poa_and_reads_chain_id(
+    mock_web3_cls, mock_sign, monkeypatch
+):
+    from web3.middleware import ExtraDataToPOAMiddleware
+
+    _live_config(monkeypatch)
+    w3, contract = _mock_web3(mock_web3_cls, owner=SIGNER)  # chain_id = 80002
+    adapter = PolygonAmoyAnchorAdapter()
+    result = adapter.anchor_evidence(VALID_ROOT, "EV-POA-LIVE")
+
+    # Injected exactly once, with the web3-7 class, at layer=0.
+    poa_calls = [
+        c
+        for c in w3.middleware_onion.inject.call_args_list
+        if c.args and c.args[0] is ExtraDataToPOAMiddleware
+    ]
+    assert len(poa_calls) == 1
+    assert poa_calls[0].kwargs == {"layer": 0}
+
+    # Chain id 80002 still read through the same instance and accepted.
+    assert w3.eth.chain_id == 80002
+    assert result["status"] == "anchored"  # no chain-mismatch failure
+    assert result["block_number"] == 555
+
+    # owner() gate still runs on the configured instance.
+    contract.functions.owner.return_value.call.assert_called_once()
+
+    # The get_block() step — which raised ExtraDataLengthError in production —
+    # is reached and completes.
+    w3.eth.get_block.assert_called()

@@ -111,6 +111,47 @@ def normalize_contract_address(raw: str | None) -> tuple[str | None, str | None]
         return None, f"is not a valid EVM address ({type(exc).__name__})."
 
 
+# ---------------------------------------------------------------------------
+# Proof-of-Authority (POA) Web3 construction
+# ---------------------------------------------------------------------------
+# Polygon Amoy (chain id 80002) is a Proof-of-Authority chain: its block
+# headers carry ``extraData`` far larger than the 32 bytes Ethereum's header
+# validator allows (production observed 105 bytes). Without the POA middleware
+# any block parse raises:
+#
+#     ExtraDataLengthError: The field extraData is 105 bytes, but should be 32.
+#         It is quite likely that you are connected to a POA chain.
+#
+# web3.py 7.x removed the legacy ``geth_poa_middleware`` alias, so the current
+# class is imported directly. Every LIVE Web3 client the adapter builds goes
+# through this factory, so the middleware is injected exactly once, at
+# layer=0, as the web3 documentation requires. This fixes the *configuration*
+# so the exception never occurs; no exception handling is weakened anywhere.
+
+
+def _ensure_poa_middleware(web3: Any) -> None:
+    """Inject ``ExtraDataToPOAMiddleware`` into *web3* exactly once (layer=0).
+
+    Idempotent: web3's ``NamedElementOnion.inject`` raises ``Web3ValueError``
+    ("You can't add the same name again, use replace instead") on a second
+    injection of the same middleware, so the containment check is
+    load-bearing — it keeps instance reuse and repeated construction safe.
+    """
+    from web3.middleware import ExtraDataToPOAMiddleware
+
+    if ExtraDataToPOAMiddleware not in web3.middleware_onion:
+        web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+
+
+def _build_poa_web3(rpc_url: str) -> Any:
+    """Construct the synchronous, POA-ready ``Web3`` client for Polygon Amoy."""
+    from web3 import Web3
+
+    web3 = Web3(Web3.HTTPProvider(rpc_url))
+    _ensure_poa_middleware(web3)
+    return web3
+
+
 class BaseAnchorAdapter:
     def anchor_root(self, root_hash: str, evidence_id: str) -> dict[str, Any]:
         raise NotImplementedError
@@ -499,7 +540,7 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
             return self._fail(f"Invalid root hash: {exc}")
 
         try:
-            web3 = Web3(Web3.HTTPProvider(self.rpc_url))
+            web3 = _build_poa_web3(self.rpc_url)
             if not web3.is_connected():
                 return self._unavailable("Polygon Amoy RPC endpoint is unreachable.")
 
@@ -601,7 +642,7 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
 
         try:
             from web3 import Web3
-            web3 = Web3(Web3.HTTPProvider(self.rpc_url))
+            web3 = _build_poa_web3(self.rpc_url)
             if not web3.is_connected():
                 return {
                     "anchored": False,
@@ -685,7 +726,7 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
             return self._fail(f"Invalid evidence anchor input: {exc}")
 
         try:
-            web3 = Web3(Web3.HTTPProvider(self.rpc_url))
+            web3 = _build_poa_web3(self.rpc_url)
             if not web3.is_connected():
                 return self._unavailable("Polygon Amoy RPC endpoint is unreachable.")
 
@@ -799,7 +840,7 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
 
         try:
             from web3 import Web3
-            web3 = Web3(Web3.HTTPProvider(self.rpc_url))
+            web3 = _build_poa_web3(self.rpc_url)
             if not web3.is_connected():
                 return {
                     "anchored": False,
