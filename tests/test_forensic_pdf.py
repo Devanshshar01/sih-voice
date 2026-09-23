@@ -584,3 +584,55 @@ def test_render_and_register_report_is_idempotent_per_evidence(report_db):
     )
     assert len(rows) == 1
 
+
+# ---------------------------------------------------------------------------
+# Phase 8 — right-margin geometry regression
+
+
+def test_no_glyph_run_overflows_the_right_margin(report_bytes):
+    """Table colWidths must fit inside the A4 content box (Phase 8 defect).
+
+    Both report tables once declared 500pt widths inside the 493.23pt frame
+    (210mm A4 minus two 18mm margins), pushing page-3 artifact SHA-256 lines
+    past the right margin (right=552.5 > 544.25). Every text run in the
+    rendered fixture must now end at or before the right margin edge.
+    """
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    from pypdf import PdfReader
+
+    a4_width = 595.276
+    right_limit = a4_width - 18 * 2.83465  # same margin the renderer uses
+    reader = PdfReader(io.BytesIO(report_bytes))
+    worst_by_page: list[tuple[int, float]] = []
+
+    for number, page in enumerate(reader.pages, start=1):
+        worst = 0.0
+
+        def visitor(body, cm, tm, font_dict, font_size):
+            nonlocal worst
+            if not body or not body.strip():
+                return
+            name = (font_dict or {}).get("/BaseFont", "")
+            if isinstance(name, bytes):
+                name = name.decode("latin-1", "replace")
+            family = "Courier" if "Courier" in name else "Helvetica"
+            a1, _b1, c1, _d1, e1, _f1 = cm
+            a2, _b2, c2, _d2, e2, f2 = tm
+            x = a1 * e2 + c1 * f2 + e1
+            worst = max(worst, x + stringWidth(body.rstrip("\n"), family, float(font_size or 0)))
+
+        page.extract_text(visitor_text=visitor)
+        worst_by_page.append((number, worst))
+        # 0.5pt tolerance absorbs rounding in the visitor transform math.
+        assert worst <= right_limit + 0.5, (
+            f"page {number} overflows the right margin: "
+            f"worst right={worst:.2f} > limit {right_limit:.2f}"
+        )
+
+    assert len(worst_by_page) == 5
+    # The overflow this guards against was specifically on page 3 (artifact
+    # table): a 500pt declaration put its hash column at right=552.5.
+    page3_worst = dict(worst_by_page)[3]
+    assert page3_worst <= right_limit + 0.5
+

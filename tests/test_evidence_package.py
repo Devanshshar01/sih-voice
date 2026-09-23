@@ -415,3 +415,67 @@ def test_integrity_summary_is_derived_from_stored_rows_only(db_session):
         db_session, evidence_id
     )
 
+
+
+# ---------------------------------------------------------------------------
+# MERKLE METADATA (Phase 4)
+# ---------------------------------------------------------------------------
+
+
+def test_integrity_summary_exposes_complete_merkle_metadata(db_session):
+    """Phase 4 requires tree_version / leaf_count / leaf_order_rule / root /
+    generated_at / evidence_id — all present and self-consistent."""
+    from app.services.evidence_package import build_integrity_summary
+    from app.services.merkle_evidence import (
+        LEAF_ORDER_RULE,
+        TREE_VERSION,
+        MerkleEvidenceService,
+    )
+
+    evidence_id = "SV-MERKLE-META-0001"
+    MerkleEvidenceService(db_session).register_merkle_package(
+        evidence_id=evidence_id,
+        items={"audio": b"meta-audio", "transcript": "meta transcript"},
+        anchor=False,
+    )
+    merkle = build_integrity_summary(db_session, evidence_id)["merkle"]
+
+    assert merkle["tree_version"] == TREE_VERSION
+    assert merkle["leaf_order_rule"] == LEAF_ORDER_RULE
+    assert merkle["leaf_count"] == 2
+    assert len(merkle["root"]) == 64
+    assert merkle["evidence_id"] == evidence_id
+    assert merkle["generated_at"]  # derived from the stored row, never "now()"
+
+
+def test_merkle_metadata_is_derived_not_stored(db_session):
+    """tree_version / leaf_order_rule come from module constants.
+
+    A stored copy could be tampered with; a constant cannot. Verified by
+    checking the values are exactly the code constants and that they match on
+    ``verify_merkle_package`` too.
+    """
+    from app.services.evidence_package import build_integrity_summary
+    from app.services.merkle_evidence import (
+        LEAF_ORDER_RULE,
+        TREE_VERSION,
+        MerkleEvidenceService,
+    )
+
+    evidence_id = "SV-MERKLE-META-0002"
+    service = MerkleEvidenceService(db_session)
+    service.register_merkle_package(
+        evidence_id=evidence_id, items={"audio": b"meta-audio-2"}, anchor=False
+    )
+
+    verification = service.verify_merkle_package(evidence_id, verify_on_chain=False)
+    integrity = build_integrity_summary(db_session, evidence_id)
+
+    assert verification["tree_version"] == TREE_VERSION
+    assert verification["leaf_order_rule"] == LEAF_ORDER_RULE
+    assert integrity["merkle"]["tree_version"] == verification["tree_version"]
+    assert integrity["merkle"]["leaf_order_rule"] == verification["leaf_order_rule"]
+    # The reported root is the stored one, and the metadata block never
+    # introduces a second, competing root field.
+    assert integrity["merkle"]["root"] == verification["merkle_root"]
+

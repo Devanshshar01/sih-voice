@@ -234,7 +234,11 @@ def build_integrity_summary(db: Session, evidence_id: str) -> dict[str, Any]:
     response contains no freshly generated timestamps.
     """
     from app.services.evidence_anchor import EvidenceAnchorService
-    from app.services.merkle_evidence import MerkleEvidenceError, MerkleEvidenceService
+    from app.services.merkle_evidence import (
+        LEAF_ORDER_RULE,
+        TREE_VERSION,
+        MerkleEvidenceError,
+    )
 
     merkle_row = (
         db.query(db_models.EvidenceMerklePackage)
@@ -280,6 +284,20 @@ def build_integrity_summary(db: Session, evidence_id: str) -> dict[str, Any]:
         "schema_version": merkle_row.schema_version,
         "package_sha256": merkle_row.package_hash,
         "merkle_root": merkle_row.merkle_root,
+        # Merkle metadata (Phase 4): tree_version / leaf_count / leaf_order_rule /
+        # root / generated_at / evidence_id. ``tree_version`` and
+        # ``leaf_order_rule`` are DERIVED constants of the construction, never a
+        # stored column — a stored copy could be tampered with, a constant cannot.
+        "merkle": {
+            "tree_version": TREE_VERSION,
+            "leaf_count": merkle_row.leaf_count,
+            "leaf_order_rule": LEAF_ORDER_RULE,
+            "root": merkle_row.merkle_root,
+            "generated_at": (
+                merkle_row.created_at.isoformat() if merkle_row.created_at else None
+            ),
+            "evidence_id": evidence_id,
+        },
         "ledger_head": ledger_head,
         "ledger": ledger_status,
         "report": {

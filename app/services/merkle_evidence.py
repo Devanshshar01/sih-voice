@@ -67,6 +67,18 @@ MERKLE_LAYOUT = {
     "odd_node_policy": "duplicate_last",
 }
 
+# Tree construction identity, exposed as DERIVED metadata on verification and
+# integrity responses (Phase 4: "tree_version", "leaf_order_rule").
+#
+# WHY DERIVED AND NOT HASHED: ``MERKLE_LAYOUT`` above is embedded in the
+# canonical manifest, whose hash is the stored ``package_hash``. Adding keys to
+# that manifest would change the hash of every already-registered evidence
+# package and invalidate existing stored evidence. These two values are
+# constants of the *construction*, not properties of the evidence, so they are
+# re-derived on read — a stored copy could be tampered with, a constant cannot.
+TREE_VERSION = "merkle-v1"
+LEAF_ORDER_RULE = "sorted-ascending-leaf-digest"
+
 
 class MerkleEvidenceError(ValueError):
     """Raised for malformed Merkle-evidence input (bad items, missing package)."""
@@ -432,6 +444,14 @@ class MerkleEvidenceService:
             "recomputed_merkle_root": recomputed_root,
             "package_hash": row.package_hash,
             "leaf_count": row.leaf_count,
+            # Phase 4 merkle metadata: construction identity + provenance.
+            # Derived from module constants (never from a stored, tamperable
+            # column) so the reported layout is exactly the layout this code
+            # reproduces the root with.
+            "tree_version": TREE_VERSION,
+            "leaf_order_rule": LEAF_ORDER_RULE,
+            "generated_at": row.created_at.isoformat() if row.created_at else None,
+            "schema_version": row.schema_version,
             "leaf_names": sorted(stored_digests.keys()),
             "item_digests": stored_digests,
             "evidence_id_bytes32": row.evidence_id_bytes32,

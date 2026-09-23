@@ -54,6 +54,10 @@ _BODY_FONT = "Helvetica"
 _BODY_SIZE = 9
 _MONO_FONT = "Courier"
 _MONO_SIZE = 7.5
+# A4 content box width in points (210mm page minus both 18mm margins). Every
+# table must sum to at most this width or its right edge clips past the margin
+# (a Phase 8 visual-regression defect: 500pt tables in a 493.23pt frame).
+_CONTENT_WIDTH_PT = (210 - 2 * _MARGIN_MM) * 2.83465
 
 # Rendered in place of a hash that is genuinely not available. Never a synthetic
 # digest, never "null"/"None".
@@ -186,7 +190,7 @@ def _kv_table(rows: list[tuple[str, Any]], styles: dict[str, Any]) -> Any:
                 Paragraph(str(value), mono_cell),
             ]
         )
-    table = Table(data, colWidths=[150, 350], hAlign="LEFT")
+    table = Table(data, colWidths=[150, _CONTENT_WIDTH_PT - 150], hAlign="LEFT")
     table.setStyle(
         TableStyle(
             [
@@ -334,7 +338,9 @@ def _page3(story: list, *, data: dict[str, Any], styles: dict[str, Any]) -> None
                 Paragraph("—", mono_cell),
             ]
         )
-    table = Table(rows, colWidths=[110, 80, 45, 265], hAlign="LEFT", repeatRows=1)
+    table = Table(
+        rows, colWidths=[110, 80, 45, _CONTENT_WIDTH_PT - 235], hAlign="LEFT", repeatRows=1
+    )
     table.setStyle(
         TableStyle(
             [
