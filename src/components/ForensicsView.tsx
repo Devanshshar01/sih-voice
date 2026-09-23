@@ -2,8 +2,8 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Check, CheckCircle2, ClipboardCheck, Copy, Download, FileWarning, Fingerprint, LockKeyhole, RotateCcw, ShieldAlert, UserRound, Waves } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { UseCallSession } from "../hooks/useCallSession";
-import { registerForensicsEvidence, verifyEvidenceIntegrity, verifyForensicsEvidence } from "../lib/api";
-import { buildEvidenceSnapshot, buildTechnicalEvidenceReport, createTechnicalEvidencePdf } from "../lib/forensicPdf";
+import { downloadForensicReportPdf, HttpStatusError, registerForensicsEvidence, verifyEvidenceIntegrity, verifyForensicsEvidence } from "../lib/api";
+import { buildEvidenceSnapshot, buildTechnicalEvidenceReport } from "../lib/forensicPdf";
 import type { BlockchainAnchorState, ForensicsIntegritySummary, ForensicsVerificationResponse } from "../types";
 
 interface ForensicsViewProps { session: UseCallSession }
@@ -93,6 +93,8 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [integrity, setIntegrity] = useState<ForensicsIntegritySummary | null>(null);
   const [integrityError, setIntegrityError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const chartData = useMemo(() => { const t0 = telemetryHistory[0]?.timestamp ?? 0; return telemetryHistory.map((p) => ({ t: Number((p.timestamp - t0).toFixed(1)), score: p.risk_score, acoustic: p.acoustic_score * 100, intent: p.intent_score * 100 })); }, [telemetryHistory]);
   const maxScore = telemetryHistory.reduce((max, p) => Math.max(max, p.risk_score), 0);
   const flaggedEvents = telemetryHistory.filter((p) => p.status !== "ALLOW");
@@ -101,14 +103,48 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
   const transitions = telemetryHistory.slice(1).filter((point, index) => telemetryHistory[index].status !== point.status);
   const acousticPeak = telemetryHistory.reduce((max, p) => Math.max(max, p.acoustic_score), 0);
 
+  /**
+   * Export the AUTHORITATIVE forensic report from the backend
+   * (GET /forensics/merkle/{id}/report.pdf — five pages, QR, integrity and
+   * blockchain sections; report_sha256 persisted server-side). Evidence
+   * registration is awaited first so the canonical snapshot exists; a 409
+   * means the identical snapshot is already registered and does not block the
+   * download. Any failure is shown to the operator instead of silently
+   * no-op'ing, and the temporary object URL is always revoked.
+   */
   const handleExport = async () => {
-    if (!meta) return;
-    const report = await buildTechnicalEvidenceReport({ callId: meta.callId, callerId: meta.callerId, recipientId: meta.recipientId, durationSeconds, maxRiskScore: maxScore, exportedAt: new Date().toISOString(), operatorIdentity: meta.callerId || "operator", telemetryHistory, modelVersionMetadata: { detector_mode: meta.audioMode, audio_pipeline: serverRiskSnapshot ? "WebSocket PCM + sliding windows + server-side risk snapshot" : "WebSocket PCM + sliding windows", server_risk_snapshot: serverRiskSnapshot } });
-    // Register the FROZEN evidence snapshot, never the export operation: the same
-    // finalized call must always register the same evidence hash (repeated export
-    // clicks used to collide on the evidence id and return HTTP 500).
-    try { await registerForensicsEvidence(meta.callId, buildEvidenceSnapshot(report)); } catch { /* Export remains usable if registration is unavailable. */ }
-    const blob = await createTechnicalEvidencePdf(report); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `satyavoice-forensic-incident-${meta.callId}.pdf`; link.click(); URL.revokeObjectURL(url);
+    if (!meta || exporting) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      const report = await buildTechnicalEvidenceReport({ callId: meta.callId, callerId: meta.callerId, recipientId: meta.recipientId, durationSeconds, maxRiskScore: maxScore, exportedAt: new Date().toISOString(), operatorIdentity: meta.callerId || "operator", telemetryHistory, modelVersionMetadata: { detector_mode: meta.audioMode, audio_pipeline: serverRiskSnapshot ? "WebSocket PCM + sliding windows + server-side risk snapshot" : "WebSocket PCM + sliding windows", server_risk_snapshot: serverRiskSnapshot } });
+      try {
+        await registerForensicsEvidence(meta.callId, buildEvidenceSnapshot(report));
+      } catch (error) {
+        // 409 = evidence id already holds a registered (frozen) snapshot.
+        if (!(error instanceof HttpStatusError && error.status === 409)) throw error;
+      }
+      const { blob } = await downloadForensicReportPdf(meta.callId);
+      const url = URL.createObjectURL(blob);
+      try {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `satyavoice-forensic-report-${meta.callId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      setExportError(
+        error instanceof Error
+          ? error.message
+          : "The forensic report could not be downloaded."
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleVerify = async () => { if (!meta) return; try { setVerificationResult(await verifyForensicsEvidence(meta.callId)); setVerificationError(null); } catch (error) { setVerificationError(error instanceof Error ? error.message : "Verification could not be completed."); setVerificationResult(null); } };
@@ -121,7 +157,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
   const handleIntegrityCheck = async () => { if (!meta) return; try { setIntegrity(await verifyEvidenceIntegrity(meta.callId)); setIntegrityError(null); } catch (error) { setIntegrityError(error instanceof Error ? error.message : "Integrity verification could not be completed."); setIntegrity(null); } };
 
   return <div className="console-grid mx-auto max-w-[1480px] px-4 py-5 sm:px-6 lg:px-8">
-    <header className="border-b border-ink-600/80 pb-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div><div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-signal"><span className="h-1.5 w-1.5 bg-danger" /> Forensic incident viewer <span className="text-mute">/ case closeout</span></div><h1 className="mt-2 text-2xl font-semibold tracking-tight text-paper sm:text-3xl">{incidentDetected ? "Potential voice impersonation incident" : "Voice session forensic record"}</h1><p className="mt-2 text-sm text-paper-dim">{meta?.callerId ?? "Unknown caller"} <span className="px-2 text-mute">→</span> {meta?.recipientId ?? "Protected desk"}</p></div><div className="flex flex-wrap gap-2"><button onClick={handleVerify} className="flex items-center gap-2 border border-signal/40 bg-signal/10 px-3 py-2 text-xs text-signal hover:bg-signal/15"><ClipboardCheck size={14} /> Verify chain</button><button onClick={handleIntegrityCheck} className="flex items-center gap-2 border border-ink-600 px-3 py-2 text-xs text-paper-dim hover:border-signal/50 hover:text-signal"><Fingerprint size={14} /> Verify integrity</button><button onClick={handleExport} className="flex items-center gap-2 border border-ink-600 px-3 py-2 text-xs text-paper-dim hover:border-signal/50 hover:text-signal"><Download size={14} /> Export evidence PDF</button><button onClick={startOver} aria-label="Start new call" className="border border-ink-600 px-3 py-2 text-paper-dim hover:text-signal"><RotateCcw size={14} /></button></div></div><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><div><p className="eyebrow">Case ID</p><p className="mt-1 break-all font-mono text-xs text-paper-dim">{meta?.callId ?? "—"}</p></div><div><p className="eyebrow">Disposition</p><p className={`mt-1 font-mono text-xs ${incidentDetected ? "text-danger" : "text-safe"}`}>{incidentDetected ? "CONTAINED / REVIEW" : "ALLOW / CLOSED"}</p></div><div><p className="eyebrow">Duration</p><p className="mt-1 font-mono text-xs text-paper-dim">{Math.floor(durationSeconds / 60)}:{(durationSeconds % 60).toString().padStart(2, "0")}</p></div><div><p className="eyebrow">Analysis windows</p><p className="mt-1 font-mono text-xs text-paper-dim">{telemetryHistory.length}</p></div><div><p className="eyebrow">Policy state</p><p className="mt-1 font-mono text-xs text-paper-dim">{statusLabel(finalPoint?.status ?? "PENDING")}</p></div></div></header>
+    <header className="border-b border-ink-600/80 pb-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div><div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-signal"><span className="h-1.5 w-1.5 bg-danger" /> Forensic incident viewer <span className="text-mute">/ case closeout</span></div><h1 className="mt-2 text-2xl font-semibold tracking-tight text-paper sm:text-3xl">{incidentDetected ? "Potential voice impersonation incident" : "Voice session forensic record"}</h1><p className="mt-2 text-sm text-paper-dim">{meta?.callerId ?? "Unknown caller"} <span className="px-2 text-mute">→</span> {meta?.recipientId ?? "Protected desk"}</p></div><div className="flex flex-wrap gap-2"><button onClick={handleVerify} className="flex items-center gap-2 border border-signal/40 bg-signal/10 px-3 py-2 text-xs text-signal hover:bg-signal/15"><ClipboardCheck size={14} /> Verify chain</button><button onClick={handleIntegrityCheck} className="flex items-center gap-2 border border-ink-600 px-3 py-2 text-xs text-paper-dim hover:border-signal/50 hover:text-signal"><Fingerprint size={14} /> Verify integrity</button><button onClick={handleExport} disabled={exporting} className="flex items-center gap-2 border border-ink-600 px-3 py-2 text-xs text-paper-dim hover:border-signal/50 hover:text-signal disabled:cursor-wait disabled:opacity-60"><Download size={14} /> {exporting ? "Preparing report…" : "Export evidence PDF"}</button><button onClick={startOver} aria-label="Start new call" className="border border-ink-600 px-3 py-2 text-paper-dim hover:text-signal"><RotateCcw size={14} /></button>{exportError && <p role="alert" className="w-full border border-danger/40 bg-danger-bg px-3 py-2 text-xs text-danger">{exportError}</p>}</div></div><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><div><p className="eyebrow">Case ID</p><p className="mt-1 break-all font-mono text-xs text-paper-dim">{meta?.callId ?? "—"}</p></div><div><p className="eyebrow">Disposition</p><p className={`mt-1 font-mono text-xs ${incidentDetected ? "text-danger" : "text-safe"}`}>{incidentDetected ? "CONTAINED / REVIEW" : "ALLOW / CLOSED"}</p></div><div><p className="eyebrow">Duration</p><p className="mt-1 font-mono text-xs text-paper-dim">{Math.floor(durationSeconds / 60)}:{(durationSeconds % 60).toString().padStart(2, "0")}</p></div><div><p className="eyebrow">Analysis windows</p><p className="mt-1 font-mono text-xs text-paper-dim">{telemetryHistory.length}</p></div><div><p className="eyebrow">Policy state</p><p className="mt-1 font-mono text-xs text-paper-dim">{statusLabel(finalPoint?.status ?? "PENDING")}</p></div></div></header>
 
     <div className={`mt-5 flex items-start gap-3 border px-4 py-3 ${incidentDetected ? "border-danger/50 bg-danger-bg" : "border-safe/40 bg-safe-bg"}`}><span className={incidentDetected ? "text-danger" : "text-safe"}>{incidentDetected ? <ShieldAlert size={19} /> : <CheckCircle2 size={19} />}</span><div><p className={`text-sm font-medium ${incidentDetected ? "text-danger" : "text-safe"}`}>{incidentDetected ? "Protected action was gated after high-confidence risk escalation." : "No high-risk activity was detected in the monitored workflow."}</p><p className="mt-1 text-xs text-paper-dim">This view is an operational evidence summary for analyst review. It is not a legal certification.</p></div></div>
 

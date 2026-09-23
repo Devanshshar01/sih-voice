@@ -42,24 +42,59 @@ from app.services.evidence_anchor import (
     _sha256_hex,
     build_evidence_payload,
 )
-from app.db.database import Base, SessionLocal, engine
+from app.db.database import Base, get_db
 
 
 @pytest.fixture(scope="module")
-def db_session():
-    """Provide a SQLAlchemy session for an in-memory SQLite DB."""
-    from app.db import models  # noqa: F401 — registers all models
+def _engine(tmp_path_factory):
+    """Isolated, schema-complete DB.
+
+    Never the shared developer database: an isolated file gets the FULL current
+    model schema from create_all (including the migration-0004 anchor-queue
+    columns), so tests exercise the same shape production gets from alembic.
+    """
+    from sqlalchemy import create_engine
+
+    from app.db import models  # noqa: F401 - registers all models
+
+    db_path = tmp_path_factory.mktemp("forensics-hardening") / "hardening.db"
+    engine = create_engine(
+        f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
+    return engine
+
+
+@pytest.fixture(scope="module")
+def db_session(_engine):
+    """SQLAlchemy session on the isolated schema-complete database."""
+    from sqlalchemy.orm import sessionmaker
+
+    session = sessionmaker(bind=_engine)()
     yield session
     session.close()
 
 
 @pytest.fixture(scope="module")
-def client():
+def client(_engine):
+    """App client whose requests hit the same isolated database."""
+    from sqlalchemy.orm import sessionmaker
+
     from app.main import app
-    with TestClient(app) as c:
-        yield c
+
+    session_factory = sessionmaker(bind=_engine)
+
+    def _override_get_db():
+        session = session_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = _override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.pop(get_db, None)
 
 
 # ---------------------------------------------------------------------------
@@ -275,23 +310,48 @@ def test_blockchain_disabled_anchor_status_is_unavailable(db_session):
 # ---------------------------------------------------------------------------
 
 def test_blockchain_anchor_failure_does_not_crash_registration(db_session):
-    """If the blockchain adapter raises, registration still succeeds locally."""
+    """A failing CANONICAL adapter never breaks /forensics/register.
+
+    The legacy flat-root ``anchor()`` path is retired for new registrations;
+    the canonical step submits ``anchorEvidence()`` and records an honest
+    failure when the adapter raises — registration itself still succeeds
+    locally, and the legacy record never claims an anchor it does not have.
+    """
     from app import config
+    from app.services.evidence_verification import ensure_canonical_merkle_package
 
     svc = EvidenceAnchorService(db_session)
     payload = build_evidence_payload(session_id="call-bc-failure", max_risk_score=50)
 
     with mock.patch.object(config, "BLOCKCHAIN_ANCHORING_ENABLED", True):
-        with mock.patch("app.services.evidence_anchor.get_anchor_adapter") as mock_factory:
+        with mock.patch(
+            "app.services.merkle_evidence.get_anchor_adapter"
+        ) as canonical_factory, mock.patch(
+            "app.services.evidence_anchor.get_anchor_adapter"
+        ) as legacy_factory:
             mock_adapter = mock.MagicMock()
-            mock_adapter.anchor_root.side_effect = RuntimeError("Network error")
-            mock_factory.return_value = mock_adapter
+            mock_adapter.anchor_evidence.side_effect = RuntimeError("Network error")
+            canonical_factory.return_value = mock_adapter
 
             result = svc.register_evidence_package(payload)
+            assert result["status"] != "error"
+            # The new forensic path must never call the legacy flat-root anchor().
+            legacy_factory.return_value.anchor_root.assert_not_called()
 
-    # Local registration should succeed even though blockchain failed
+            canonical_payload = result.pop("canonical_payload")
+            canonical = ensure_canonical_merkle_package(
+                db_session,
+                evidence_id=result["evidence_id"],
+                canonical_payload=canonical_payload,
+            )
+
+    # Local registration succeeded; the canonical anchor failure is recorded
+    # honestly (adapter exceptions are contained by the Merkle anchor wrapper),
+    # while the retired legacy record reports no anchor of its own.
     assert result["status"] != "error"
-    assert result["anchor_status"] == "failed"
+    assert result["anchor_status"] == "unavailable"
+    assert canonical["status"] == "ok"
+    assert canonical.get("anchor_status") == "failed"
 
 
 # ---------------------------------------------------------------------------

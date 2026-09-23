@@ -40,7 +40,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping
 
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import config
@@ -48,6 +48,7 @@ from app.core.jcs import CanonicalizationError, canonicalize
 from app.core.merkle import MerkleError, MerkleTree, build_proof, compute_root, hash_leaf, verify_proof
 from app.db import models as db_models
 from app.services.anchor_adapter import evidence_id_to_bytes32, get_anchor_adapter
+from app.services.evidence_anchor import EVIDENCE_ID_CONFLICT
 
 logger = logging.getLogger("satyavoice.merkle")
 
@@ -196,8 +197,10 @@ class MerkleEvidenceService:
         """Build + persist a Merkle package, then optionally anchor its root.
 
         Anchoring is best-effort: a blockchain failure never aborts local
-        registration (mirrors the legacy evidence path). Returns a status dict;
-        never raises for DB/network errors.
+        registration (mirrors the legacy evidence path). Returns a status dict.
+        Concurrent duplicate inserts resolve to duplicate/conflict through the
+        IntegrityError handler below; an UNRELATED integrity error re-raises so
+        genuine database failures are never hidden.
         """
         try:
             package = build_merkle_package(
@@ -223,7 +226,7 @@ class MerkleEvidenceService:
                 .first()
             )
             if existing is not None:
-                return self._serialize(existing, duplicate=True)
+                return self._existing_or_conflict(existing, package)
 
             row = db_models.EvidenceMerklePackage(
                 evidence_id=eid,
@@ -296,6 +299,28 @@ class MerkleEvidenceService:
                 result["queue_status"] = queue_entry
             return result
 
+        except IntegrityError:
+            # --- Race-safe defensive insert (same pattern as the legacy flow) --
+            # Another request inserted this evidence_id between our SELECT and
+            # our flush. Roll back, re-query the winner and resolve to an
+            # idempotent duplicate or an explicit conflict — a benign race must
+            # never surface as an application error. An unrelated constraint
+            # failure finds no row here and re-raises (real errors preserved).
+            self._safe_rollback()
+            winner = (
+                self.db.query(db_models.EvidenceMerklePackage)
+                .filter(db_models.EvidenceMerklePackage.evidence_id == eid)
+                .first()
+            )
+            if winner is not None:
+                logger.debug(
+                    "Merkle registration race resolved for evidence_id=%s", eid
+                )
+                return self._existing_or_conflict(winner, package)
+            logger.error(
+                "Merkle evidence DB error: IntegrityError (unrelated constraint)"
+            )
+            raise
         except SQLAlchemyError as exc:
             logger.error("Merkle evidence DB error: %s", type(exc).__name__)
             self._safe_rollback()
@@ -493,6 +518,35 @@ class MerkleEvidenceService:
                 else anchor_result.get("anchor_timestamp")
             ),
             "failure_reason": anchor_result.get("failure_reason"),
+        }
+
+    def _existing_or_conflict(
+        self, existing: db_models.EvidenceMerklePackage, package: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Resolve an already-registered evidence_id: duplicate or conflict.
+
+        Content identity is the MERKLE ROOT (the commitment to the item set).
+        ``package_hash`` additionally embeds the build ``created_at`` (second
+        precision), so a rebuild one second later hashes differently despite
+        identical content — equal roots therefore mean the SAME evidence and
+        return ``duplicate=true``. Different roots mean different registered
+        content: explicit ``EVIDENCE_ID_CONFLICT``, never an overwrite.
+        """
+        if (
+            existing.package_hash == package["package_hash"]
+            or existing.merkle_root == package["merkle_root"]
+        ):
+            return self._serialize(existing, duplicate=True)
+        return {
+            "status": "conflict",
+            "error_code": EVIDENCE_ID_CONFLICT,
+            "duplicate": False,
+            "evidence_id": existing.evidence_id,
+            "existing_package_hash": existing.package_hash,
+            "submitted_package_hash": package["package_hash"],
+            "existing_merkle_root": existing.merkle_root,
+            "submitted_merkle_root": package["merkle_root"],
+            "error": "Evidence id already registered with different content.",
         }
 
     def _serialize(self, row: db_models.EvidenceMerklePackage, duplicate: bool) -> dict[str, Any]:

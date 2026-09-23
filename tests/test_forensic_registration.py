@@ -575,3 +575,62 @@ def test_14b_service_level_verification_envelope(db: Session):
     result = verify_canonical_evidence(db, "SV-REG-0017", verify_on_chain=False)
     assert result["storage"] == "legacy"
     assert result["valid"] is True
+
+# ---------------------------------------------------------------------------
+# §5 / §9 — backend PDF report hash roundtrip + GET verification contract
+# ---------------------------------------------------------------------------
+
+
+def test_backend_pdf_report_hash_roundtrip(client):
+    """register -> backend PDF -> report_sha256 persisted == X-Report-SHA256.
+
+    Also proves the PDF never contains its own final hash (Phase 7, no circular
+    hashing), the GET verify envelope carries the §9 contract keys, and tx/block
+    metadata is exposed only for a CONFIRMED anchor.
+    """
+    import io as _io
+
+    from pypdf import PdfReader
+
+    evidence_id = "SV-REPORT-RT-1"
+    response = _register(client, _payload(evidence_id))
+    assert response.status_code == 200, response.text
+
+    # --- authoritative backend PDF (the endpoint the frontend now downloads) --
+    pdf = client.get(f"/api/v1/forensics/merkle/{evidence_id}/report.pdf")
+    assert pdf.status_code == 200, pdf.text
+    assert pdf.content[:5] == b"%PDF-"
+    reader = PdfReader(_io.BytesIO(pdf.content))
+    assert len(reader.pages) == 5  # required forensic report structure
+    header = pdf.headers.get("X-Report-SHA256")
+    assert header is not None and len(header) == 64
+
+    # --- GET verification exposes the stored report hash ---------------------
+    verify = client.get(f"/api/v1/forensics/{evidence_id}/verify")
+    assert verify.status_code == 200
+    body = verify.json()
+    for key in (
+        "evidence_id",
+        "package_sha256",
+        "merkle_root",
+        "ledger_head",
+        "report",
+        "blockchain",
+    ):
+        assert key in body, key
+    assert body["evidence_id"] == evidence_id
+    assert body["report"]["sha256"] == header  # stored == returned header
+
+    # --- PDF must NOT contain its own final SHA-256 --------------------------
+    text = "".join((page.extract_text() or "") for page in reader.pages)
+    assert header not in "".join(text.split())
+
+    # --- no fabricated chain metadata ---------------------------------------
+    if not body["blockchain"]["confirmed"]:
+        assert body["blockchain"]["tx_hash"] is None
+        assert body["blockchain"]["block_number"] is None
+
+    # --- QR target: verification URL carries the opaque evidence id only -----
+    if "verification_url" in body:
+        assert evidence_id in body["verification_url"]
+

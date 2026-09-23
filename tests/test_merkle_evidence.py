@@ -345,3 +345,160 @@ def test_verify_on_chain_when_enabled(db_session):
     assert report["on_chain_verified"] is True
     assert report["evidence_id_matches"] is True
     assert report["valid"] is True
+
+# ---------------------------------------------------------------------------
+# Phase: production race hardening (same pattern as the legacy flow)
+# ---------------------------------------------------------------------------
+
+
+def test_same_id_different_content_conflicts_without_overwrite(db_session):
+    """Same evidence_id + different items -> explicit conflict, zero mutation."""
+    svc = MerkleEvidenceService(db_session)
+    first = svc.register_merkle_package(items=ITEMS, evidence_id="SV-CONFLICT-SEQ")
+    assert first["status"] == "ok" and first.get("duplicate") is False
+
+    second = svc.register_merkle_package(
+        items={"different": b"entirely different content"},
+        evidence_id="SV-CONFLICT-SEQ",
+    )
+    assert second["status"] == "conflict"
+    assert second["error_code"] == "EVIDENCE_ID_CONFLICT"
+    assert second["existing_package_hash"] == first["package_hash"]
+    # The stored evidence still verifies against the ORIGINAL items (no overwrite).
+    report = svc.verify_merkle_package("SV-CONFLICT-SEQ", provided_items=ITEMS)
+    assert report["valid"] is True
+    assert report["items_all_verified"] is True
+
+
+def _run_gated_race(db_dir, evidence_id, loser_items, winner_items):
+    """Two registrations with an event-controlled interleave at the INSERT.
+
+    The loser passes the SELECT-before-INSERT idempotency check, then blocks in
+    flush() while the winner commits; releasing it forces the real PK
+    IntegrityError so the race handler itself is exercised deterministically.
+    WAL mode ensures the loser's read snapshot cannot block the winner's commit.
+    """
+    import threading
+
+    from sqlalchemy import create_engine, event
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db import models as _models  # noqa: F401 - registers tables
+    from app.db.database import Base
+
+    engine = create_engine(
+        f"sqlite:///{db_dir}/race.db",
+        connect_args={"check_same_thread": False, "timeout": 30},
+    )
+
+    @event.listens_for(engine, "connect")
+    def _enable_wal(dbapi_conn, _record):
+        dbapi_conn.execute("PRAGMA journal_mode=WAL")
+
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine)
+
+    loser = session_factory()
+    winner = session_factory()
+    passed_select = threading.Event()
+    release_loser = threading.Event()
+    original_flush = loser.flush
+
+    def gated_flush(*args, **kwargs):
+        passed_select.set()
+        if not release_loser.wait(timeout=15):
+            raise RuntimeError("race test: release signal never arrived")
+        return original_flush(*args, **kwargs)
+
+    loser.flush = gated_flush
+
+    loser_result: dict = {}
+    loser_error: list = []
+
+    def run_loser():
+        try:
+            loser_result.update(
+                MerkleEvidenceService(loser).register_merkle_package(
+                    items=loser_items, evidence_id=evidence_id
+                )
+            )
+        except Exception as exc:  # the escaped error this test forbids
+            loser_error.append(exc)
+
+    thread = threading.Thread(target=run_loser, daemon=True)
+    thread.start()
+    assert passed_select.wait(timeout=10), "loser never reached its flush"
+    winner_result = MerkleEvidenceService(winner).register_merkle_package(
+        items=winner_items, evidence_id=evidence_id
+    )
+    release_loser.set()
+    thread.join(timeout=15)
+    assert not thread.is_alive(), "loser thread hung"
+
+    count_session = session_factory()
+    row_count = (
+        count_session.query(_models.EvidenceMerklePackage)
+        .filter(_models.EvidenceMerklePackage.evidence_id == evidence_id)
+        .count()
+    )
+    leaf_count = (
+        count_session.query(_models.EvidenceMerkleLeaf)
+        .filter(_models.EvidenceMerkleLeaf.evidence_id == evidence_id)
+        .count()
+    )
+    outcome = {
+        "winner": winner_result,
+        "loser": loser_result,
+        "loser_error": loser_error,
+        "row_count": row_count,
+        "leaf_count": leaf_count,
+    }
+    loser.close()
+    winner.close()
+    count_session.close()
+    engine.dispose()
+    return outcome
+
+
+def _assert_no_db_error_logs(caplog) -> None:
+    import logging
+
+    noisy = [
+        record
+        for record in caplog.records
+        if record.levelno >= logging.ERROR
+        and "Merkle evidence DB error" in record.getMessage()
+    ]
+    assert noisy == [], [r.getMessage() for r in noisy]
+
+
+def test_concurrent_same_content_registration_yields_one_row(tmp_path, caplog):
+    """Two simultaneous identical registrations -> one row, both callers valid."""
+    outcome = _run_gated_race(tmp_path, "SV-RACE-SAME", ITEMS, ITEMS)
+    assert outcome["loser_error"] == [], outcome["loser_error"]
+    assert outcome["winner"]["status"] == "ok"
+    assert outcome["winner"].get("duplicate") is False
+    assert outcome["loser"]["status"] == "ok"
+    assert outcome["loser"].get("duplicate") is True  # idempotent, not an error
+    assert outcome["loser"]["merkle_root"] == outcome["winner"]["merkle_root"]
+    assert outcome["row_count"] == 1
+    assert outcome["leaf_count"] == len(ITEMS)  # loser's pending rows rolled back
+    _assert_no_db_error_logs(caplog)  # a handled race is never an app error
+
+
+def test_concurrent_different_content_registration_conflicts_cleanly(tmp_path, caplog):
+    """A racing DIFFERENT snapshot resolves to conflict; the winner is intact."""
+    outcome = _run_gated_race(
+        tmp_path,
+        "SV-RACE-DIFF",
+        {"loser": b"loser content"},
+        {"winner": b"winner content"},
+    )
+    assert outcome["loser_error"] == [], outcome["loser_error"]
+    assert outcome["winner"]["status"] == "ok"
+    assert outcome["loser"]["status"] == "conflict"
+    assert outcome["loser"]["error_code"] == "EVIDENCE_ID_CONFLICT"
+    assert outcome["row_count"] == 1
+    assert outcome["leaf_count"] == 1  # winner's leaf only; loser fully rolled back
+    _assert_no_db_error_logs(caplog)
+

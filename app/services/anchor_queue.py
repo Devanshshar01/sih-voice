@@ -71,6 +71,10 @@ _PERMANENT_ERROR_MARKERS = (
     "zero root hash",
     "chain id mismatch",
     "already anchored",
+    # Phase: production hardening — env misconfiguration and owner/wallet
+    # mismatch wait for operator action; retrying cannot fix them.
+    "configuration error",
+    "owner_mismatch",
 )
 
 

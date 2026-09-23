@@ -47,6 +47,70 @@ def evidence_id_to_bytes32(evidence_id: str) -> str:
     return "0x" + digest
 
 
+# ---------------------------------------------------------------------------
+# Configuration normalization (Phase: production blockchain hardening)
+# ---------------------------------------------------------------------------
+# Each helper returns ``(normalized_value, error_reason)``. Error reasons are
+# FIELD-SPECIFIC and secret-free: they may state shape facts (character counts,
+# byte lengths) but never echo the configured value itself.
+
+
+def normalize_private_key(raw: str | None) -> tuple[str | None, str | None]:
+    """Validate and normalize a configured signing key.
+
+    Accepts an optional ``0x`` prefix and surrounding whitespace; the key must be
+    exactly 64 hexadecimal characters (32 bytes). Returns the normalized
+    ``0x``-prefixed lowercase hex form, or ``(None, reason)`` when invalid.
+    The key material itself never appears in the reason.
+    """
+    value = str(raw or "").strip()
+    if value.lower().startswith("0x"):
+        value = value[2:].strip()
+    if not value:
+        return None, "is empty after normalization."
+    if any(ch not in "0123456789abcdefABCDEF" for ch in value):
+        return None, "must contain only hexadecimal characters."
+    if len(value) != 64:
+        return None, (
+            "must decode to exactly 32 bytes (64 hexadecimal characters); "
+            f"got {len(value)} characters."
+        )
+    return "0x" + value.lower(), None
+
+
+def normalize_contract_address(raw: str | None) -> tuple[str | None, str | None]:
+    """Validate and normalize a configured contract address.
+
+    Trims whitespace, accepts an optional ``0x`` prefix, requires a 20-byte
+    (40-hex) EVM address and returns the EIP-55 checksummed form. Returns
+    ``(None, reason)`` when the value cannot be a valid EVM address.
+    """
+    value = str(raw or "").strip()
+    if value.lower().startswith("0x"):
+        value = value[2:].strip()
+    if not value:
+        return None, "is empty after normalization."
+    if len(value) != 40 or any(ch not in "0123456789abcdefABCDEF" for ch in value):
+        return None, "must be a 20-byte EVM address (40 hexadecimal characters)."
+    candidate = "0x" + value
+    try:
+        from web3 import Web3
+
+        return Web3.to_checksum_address(candidate), None
+    except ImportError:  # pragma: no cover - web3 is a hard dependency of LIVE mode
+        pass
+    except Exception as exc:  # pragma: no cover - defensive
+        return None, f"is not a valid EVM address ({type(exc).__name__})."
+    try:
+        from eth_utils import to_checksum_address
+
+        return to_checksum_address(candidate), None
+    except ImportError:  # pragma: no cover - fallback keeps validation working
+        return candidate.lower(), None
+    except Exception as exc:  # pragma: no cover - defensive
+        return None, f"is not a valid EVM address ({type(exc).__name__})."
+
+
 class BaseAnchorAdapter:
     def anchor_root(self, root_hash: str, evidence_id: str) -> dict[str, Any]:
         raise NotImplementedError
@@ -167,6 +231,15 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
     # ABI for the hardened AnchorRoot.sol contract.
     # Only the functions called by the backend are included here.
     _ABI = [
+        # --- AnchorRoot owner() (public state getter) -----------------------
+        # Used by the pre-submit owner gate (BLOCKCHAIN_OWNER_MISMATCH).
+        {
+            "inputs": [],
+            "name": "owner",
+            "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+            "stateMutability": "view",
+            "type": "function",
+        },
         {
             "inputs": [{"internalType": "bytes32", "name": "rootHash", "type": "bytes32"}],
             "name": "anchor",
@@ -249,6 +322,27 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
         self.chain_id = config.BLOCKCHAIN_CHAIN_ID
         self.gas_limit = config.BLOCKCHAIN_GAS_LIMIT
 
+        # --- Defensive configuration normalization (never raises) ------------
+        # Raw values are kept for the emptiness preflight and for log
+        # sanitisation; ONLY the normalized forms are used for signing and
+        # contract calls. Empty values are reported by the preflight as
+        # "missing"; non-empty-but-invalid values carry a field-specific error
+        # that is surfaced (secret-free) before any network activity.
+        if (self.private_key or "").strip():
+            self._private_key_valid, self._private_key_error = normalize_private_key(
+                self.private_key
+            )
+        else:
+            self._private_key_valid, self._private_key_error = None, None
+        if (self.contract_address or "").strip():
+            self._contract_address_valid, self._contract_address_error = (
+                normalize_contract_address(self.contract_address)
+            )
+        else:
+            self._contract_address_valid, self._contract_address_error = None, None
+        # Owner verification result for this adapter instance (see _verify_owner).
+        self._owner_verified = False
+
     def _fail(self, reason: str, tx_hash: str | None = None, block_number: int | None = None) -> dict[str, Any]:
         """Return a standardised failure payload without leaking credentials."""
         return {
@@ -272,6 +366,95 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
             "failure_reason": reason,
         }
 
+    def _sanitize(self, text: str) -> str:
+        """Redact secret material (private key, RPC credentials) from diagnostics.
+
+        Defense-in-depth for any exception text that reaches a log line or a
+        stored ``failure_reason``. The private key and the RPC URL (including
+        userinfo/path API keys) are never allowed to leave the process.
+        """
+        if not text:
+            return text
+        secrets: set[str] = set()
+        for candidate in (self.private_key, self._private_key_valid):
+            cleaned = (candidate or "").strip()
+            if len(cleaned) < 8:  # never redact trivially short fragments
+                continue
+            variants = {cleaned, cleaned.lower()}
+            for variant in list(variants):
+                if variant.lower().startswith("0x"):
+                    variants.add(variant[2:])
+            secrets.update(variants)
+        for secret in sorted(secrets, key=len, reverse=True):
+            if secret in text:
+                text = text.replace(secret, "[REDACTED]")
+        if self.rpc_url:
+            if self.rpc_url in text:
+                text = text.replace(self.rpc_url, "[REDACTED-RPC]")
+            try:
+                from urllib.parse import urlsplit
+
+                netloc = urlsplit(self.rpc_url).netloc
+                if netloc and "@" in netloc and netloc in text:
+                    text = text.replace(netloc, "[REDACTED-RPC]")
+            except Exception:  # pragma: no cover - defensive
+                pass
+        return text
+
+    def _configuration_failure(self, evidence_id: str) -> dict[str, Any] | None:
+        """Field-specific configuration validation (never raises, logs safely)."""
+        for field, error in (
+            ("VOICETRUST_BLOCKCHAIN_PRIVATE_KEY", self._private_key_error),
+            ("VOICETRUST_BLOCKCHAIN_CONTRACT_ADDRESS", self._contract_address_error),
+        ):
+            if error:
+                reason = f"Configuration error in {field}: {error}"
+                logger.warning(
+                    "Blockchain anchor failed (evidence_id=%s): %s",
+                    evidence_id,
+                    reason,
+                )
+                return self._fail(reason)
+        return None
+
+    def _verify_owner(
+        self, contract: Any, signing_address: str
+    ) -> dict[str, Any] | None:
+        """Pre-submit ``AnchorRoot.owner()`` gate (cached per adapter instance).
+
+        Returns ``None`` when the configured signing wallet IS the on-chain
+        owner. On mismatch: no transaction is built or sent and a structured
+        permanent failure (``BLOCKCHAIN_OWNER_MISMATCH``) is returned, carrying
+        only the two PUBLIC addresses as diagnostics. A failed owner *query*
+        (RPC/view error) also blocks submission but stays retryable. The private
+        key is never exposed.
+        """
+        if self._owner_verified:
+            return None
+        try:
+            onchain_owner = contract.functions.owner().call()
+        except Exception as exc:
+            return self._fail(
+                f"Owner verification query failed ({type(exc).__name__}): "
+                f"{self._sanitize(str(exc))}"
+            )
+        owner = str(onchain_owner or "")
+        signer = str(signing_address or "")
+        if owner.lower() != signer.lower():
+            reason = (
+                f"BLOCKCHAIN_OWNER_MISMATCH: signing address {signer} is not the "
+                f"AnchorRoot owner {owner}. Refusing to submit a transaction."
+            )
+            logger.warning("Blockchain anchor failed: %s", reason)
+            return {
+                **self._fail(reason),
+                "error_code": "BLOCKCHAIN_OWNER_MISMATCH",
+                "expected_owner": owner,
+                "actual_signing_address": signer,
+            }
+        self._owner_verified = True
+        return None
+
     def anchor_root(self, root_hash: str, evidence_id: str) -> dict[str, Any]:
         """Submit a root hash to the on-chain AnchorRoot contract.
 
@@ -287,6 +470,12 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
                 "BLOCKCHAIN_PRIVATE_KEY is missing. "
                 "Local forensic evidence remains available."
             )
+        # Field-specific configuration validation (Phase: production hardening):
+        # a key that is not 32-byte hex or a malformed address fails HERE with a
+        # named-field reason instead of surfacing later as a bare ValueError.
+        config_failure = self._configuration_failure(evidence_id)
+        if config_failure is not None:
+            return config_failure
 
         # --- Import web3 runtime dependencies ---
         try:
@@ -323,8 +512,10 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
                     f"Transaction aborted to prevent cross-chain replay."
                 )
 
-            account = Account.from_key(self.private_key)
-            contract = web3.eth.contract(address=self.contract_address, abi=self._ABI)
+            account = Account.from_key(self._private_key_valid)
+            contract = web3.eth.contract(
+                address=self._contract_address_valid, abi=self._ABI
+            )
 
             nonce = web3.eth.get_transaction_count(account.address)
             root_bytes = bytes.fromhex(normalized_root[2:])
@@ -346,7 +537,7 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
                     "chainId": self.chain_id,
                 }
             )
-            signed_tx = Account.sign_transaction(tx, private_key=self.private_key)
+            signed_tx = Account.sign_transaction(tx, private_key=self._private_key_valid)
             tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
             receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
 
@@ -384,8 +575,15 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
             if isinstance(exc, ContractLogicError):
                 logger.warning("AnchorRoot contract reverted (evidence_id=%s): %s", evidence_id, exc)
                 return self._fail(f"Contract reverted: {exc}")
-            logger.warning("Blockchain anchor failed (evidence_id=%s): %s", evidence_id, type(exc).__name__)
-            return self._fail(f"Submission error: {type(exc).__name__}")
+            logger.warning(
+                "Blockchain anchor failed (evidence_id=%s): %s: %s",
+                evidence_id,
+                type(exc).__name__,
+                self._sanitize(str(exc)),
+            )
+            return self._fail(
+                f"Submission error: {type(exc).__name__}: {self._sanitize(str(exc))}"
+            )
 
     def verify_anchor(self, root_hash: str) -> dict[str, Any]:
         """Query the contract to verify whether a root hash is anchored.
@@ -422,7 +620,10 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
                     ),
                 }
 
-            contract = web3.eth.contract(address=self.contract_address, abi=self._ABI)
+            contract = web3.eth.contract(
+                address=self._contract_address_valid or self.contract_address,
+                abi=self._ABI,
+            )
             normalized = root_hash if root_hash.startswith("0x") else f"0x{root_hash}"
             root_bytes = bytes.fromhex(normalized[2:])
 
@@ -460,6 +661,10 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
                 "BLOCKCHAIN_PRIVATE_KEY is missing. "
                 "Local forensic evidence remains available."
             )
+        # Field-specific configuration validation (same contract as anchor_root).
+        config_failure = self._configuration_failure(evidence_id)
+        if config_failure is not None:
+            return config_failure
 
         try:
             from eth_account import Account
@@ -492,8 +697,18 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
                     f"Transaction aborted to prevent cross-chain replay."
                 )
 
-            account = Account.from_key(self.private_key)
-            contract = web3.eth.contract(address=self.contract_address, abi=self._ABI)
+            account = Account.from_key(self._private_key_valid)
+            contract = web3.eth.contract(
+                address=self._contract_address_valid, abi=self._ABI
+            )
+
+            # --- Owner verification gate (BLOCKCHAIN_OWNER_MISMATCH) ---------
+            # Runs BEFORE any nonce/gas/signing work: a wallet that does not own
+            # AnchorRoot would be rejected by onlyOwner anyway, so no transaction
+            # is ever built or broadcast on mismatch.
+            owner_failure = self._verify_owner(contract, account.address)
+            if owner_failure is not None:
+                return owner_failure
 
             nonce = web3.eth.get_transaction_count(account.address)
             root_bytes = bytes.fromhex(normalized_root[2:])
@@ -515,7 +730,7 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
                     "chainId": self.chain_id,
                 }
             )
-            signed_tx = Account.sign_transaction(tx, private_key=self.private_key)
+            signed_tx = Account.sign_transaction(tx, private_key=self._private_key_valid)
             tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
             receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
             tx_hash_hex = web3.to_hex(tx_hash)
@@ -556,11 +771,14 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
                 )
                 return self._fail(f"Contract reverted: {exc}")
             logger.warning(
-                "Blockchain evidence anchor failed (evidence_id=%s): %s",
+                "Blockchain evidence anchor failed (evidence_id=%s): %s: %s",
                 evidence_id,
                 type(exc).__name__,
+                self._sanitize(str(exc)),
             )
-            return self._fail(f"Submission error: {type(exc).__name__}")
+            return self._fail(
+                f"Submission error: {type(exc).__name__}: {self._sanitize(str(exc))}"
+            )
 
     def verify_evidence(self, root_hash: str, evidence_id: str | None = None) -> dict[str, Any]:
         """Verify a Merkle root via ``isEvidenceAnchored`` and, when supplied,
@@ -603,7 +821,10 @@ class PolygonAmoyAnchorAdapter(BaseAnchorAdapter):
                     ),
                 }
 
-            contract = web3.eth.contract(address=self.contract_address, abi=self._ABI)
+            contract = web3.eth.contract(
+                address=self._contract_address_valid or self.contract_address,
+                abi=self._ABI,
+            )
             normalized = root_hash if root_hash.startswith("0x") else f"0x{root_hash}"
             root_bytes = bytes.fromhex(normalized[2:])
 

@@ -70,9 +70,12 @@ def ensure_canonical_merkle_package(
     package rather than inserting a second one), so repeated export clicks never
     create duplicate packages or duplicate roots.
 
-    Anchoring is NOT started here: ``anchor=False``. The explicit anchoring path
-    (``POST /forensics/merkle/register``) is unchanged, so register-time
-    behaviour on the blockchain adapter is untouched.
+    Anchoring is CANONICAL: ``anchor=True`` submits the Merkle root via
+    ``adapter.anchorEvidence(root, evidence_id)`` — never the legacy flat-root
+    ``anchor()`` — gated by config (DISABLED -> unavailable, DRY_RUN ->
+    simulated, LIVE -> receipt-gated submission behind the owner check). The
+    idempotent duplicate path returns BEFORE the anchor block, so repeated
+    exports can never re-submit a transaction for the same evidence id.
     """
     from app.services.merkle_evidence import MerkleEvidenceService
 
@@ -81,7 +84,7 @@ def ensure_canonical_merkle_package(
         evidence_id=evidence_id,
         session_id=session_id,
         model_metadata=model_metadata,
-        anchor=False,
+        anchor=True,
     )
 
 

@@ -13,6 +13,12 @@ from app.services.anchor_adapter import (
     get_anchor_adapter,
 )
 
+# Valid-shape credentials for adapter unit tests (never used against a chain;
+# every network interaction in this module is mocked). The production values
+# follow the same forms: 32-byte hex key, EIP-55 checksummed Amoy address.
+VALID_TEST_KEY = "0x" + "ab" * 32
+VALID_TEST_ADDRESS = "0xcB5E4E1A318cE5dcaa2B483d020E42f7343cb987"
+
 # ---------------------------------------------------------------------------
 # Test NoopAdapter / Disabled state
 # ---------------------------------------------------------------------------
@@ -45,8 +51,8 @@ def test_get_anchor_adapter_missing_config(monkeypatch: pytest.MonkeyPatch) -> N
 @pytest.fixture
 def amoy_adapter(monkeypatch: pytest.MonkeyPatch) -> PolygonAmoyAnchorAdapter:
     monkeypatch.setattr(config, "BLOCKCHAIN_RPC_URL", "https://dummy.rpc")
-    monkeypatch.setattr(config, "BLOCKCHAIN_CONTRACT_ADDRESS", "0xDummyContract")
-    monkeypatch.setattr(config, "BLOCKCHAIN_PRIVATE_KEY", "0xDummyKey")
+    monkeypatch.setattr(config, "BLOCKCHAIN_CONTRACT_ADDRESS", VALID_TEST_ADDRESS)
+    monkeypatch.setattr(config, "BLOCKCHAIN_PRIVATE_KEY", VALID_TEST_KEY)
     monkeypatch.setattr(config, "BLOCKCHAIN_CHAIN_ID", 80002)
     return PolygonAmoyAnchorAdapter()
 

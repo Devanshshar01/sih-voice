@@ -46,6 +46,10 @@ app.add_middleware(
     allow_credentials=_credentials_enabled,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Expose the forensic report digest to browser callers (X-Report-SHA256 on
+    # GET /forensics/merkle/{id}/report.pdf) — custom response headers are
+    # otherwise invisible to cross-origin JavaScript.
+    expose_headers=["X-Report-SHA256"],
 )
 
 

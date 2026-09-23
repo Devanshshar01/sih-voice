@@ -177,6 +177,19 @@ def _ensure_canonical_registration(db: Session, result: dict[str, Any]) -> None:
         "merkle_root": canonical.get("merkle_root"),
         "leaf_count": canonical.get("leaf_count"),
     }
+    if canonical.get("queue_status") is not None:
+        result["canonical"]["queue_status"] = canonical["queue_status"]
+    # Surface the CANONICAL anchor outcome (anchorEvidence on the Merkle root)
+    # at the response level so legacy consumers keep a truthful anchor_status
+    # instead of the retired flat-root placeholder. Unavailable/disabled stays
+    # as the legacy registration reported it.
+    anchor_info = canonical.get("anchor")
+    if isinstance(anchor_info, dict):
+        result["canonical"]["anchor"] = anchor_info
+        if anchor_info.get("status") in {"anchored", "failed", "dry_run"}:
+            result["anchor_status"] = anchor_info["status"]
+            if anchor_info.get("failure_reason"):
+                result["failure_reason"] = anchor_info["failure_reason"]
 
 
 def _verification_response(
@@ -283,6 +296,22 @@ def register_merkle_evidence(
         model_metadata=request.model_metadata,
         anchor=request.anchor,
     )
+    if result.get("status") == "conflict":
+        # Same evidence_id registered with DIFFERENT content: registered
+        # evidence is immutable — never overwritten, always a stable 409.
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": result.get("error_code", EVIDENCE_ID_CONFLICT),
+                "message": result.get(
+                    "error", "Evidence id already registered with different content."
+                ),
+                "evidence_id": result.get("evidence_id"),
+                "existing_package_hash": result.get("existing_package_hash"),
+                "submitted_package_hash": result.get("submitted_package_hash"),
+                "conflict": True,
+            },
+        )
     if result.get("status") == "error":
         # Validation errors are safe to surface; anything else uses a generic 500.
         detail = result.get("error", "Merkle evidence registration failed.")

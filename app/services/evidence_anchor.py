@@ -401,59 +401,22 @@ class EvidenceAnchorService:
             package.local_chain_status = "verified"
             package.status = "registered"
 
-            # --- Optional blockchain anchoring (best-effort; never crashes) ---
-            if config.BLOCKCHAIN_ANCHORING_ENABLED:
-                try:
-                    adapter = get_anchor_adapter()
-                    anchor_result = adapter.anchor_root(chain_root_hash, normalized_id)
-                except Exception as exc:
-                    logger.warning(
-                        "Blockchain adapter error for evidence_id=%s: %s",
-                        normalized_id,
-                        type(exc).__name__,
-                    )
-                    anchor_result = {
-                        "status": "failed",
-                        "network": config.BLOCKCHAIN_NETWORK,
-                        "contract_address": config.BLOCKCHAIN_CONTRACT_ADDRESS,
-                        "tx_hash": None,
-                        "block_number": None,
-                        "anchor_timestamp": None,
-                        "failure_reason": f"Adapter error: {type(exc).__name__}",
-                    }
-
-                package.blockchain_network = (
-                    anchor_result.get("network") or package.blockchain_network
-                )
-                package.contract_address = (
-                    anchor_result.get("contract_address") or package.contract_address
-                )
-                package.anchor_tx_hash = anchor_result.get("tx_hash")
-                package.anchor_block_number = anchor_result.get("block_number")
-                package.anchor_timestamp = anchor_result.get("anchor_timestamp")
-                package.anchor_status = anchor_result.get("status", "unavailable")
-                package.failure_reason = anchor_result.get("failure_reason")
-
-                self.db.add(
-                    db_models.EvidenceAnchor(
-                        evidence_id=normalized_id,
-                        root_hash=chain_root_hash,
-                        blockchain_network=(
-                            anchor_result.get("network") or config.BLOCKCHAIN_NETWORK
-                        ),
-                        contract_address=(
-                            anchor_result.get("contract_address")
-                            or config.BLOCKCHAIN_CONTRACT_ADDRESS
-                        ),
-                        tx_hash=anchor_result.get("tx_hash"),
-                        block_number=anchor_result.get("block_number"),
-                        anchor_timestamp=anchor_result.get("anchor_timestamp"),
-                        status=anchor_result.get("status", "unavailable"),
-                        failure_reason=anchor_result.get("failure_reason"),
-                    )
+            # --- Canonical anchoring scope (anchorEvidence) -------------------
+            # The legacy flat-root `anchor()` submission is RETIRED for this
+            # path: /forensics/register anchors the canonical Merkle root via
+            # `anchorEvidence(root, evidence_id)` during canonical registration
+            # (forensics._ensure_canonical_registration), gated by config and
+            # behind the on-chain owner check. This legacy record must never
+            # claim an anchor it does not have — its status mirrors the
+            # canonical outcome at the API layer, never a fabricated tx.
+            package.anchor_status = "unavailable"
+            if config.BLOCKCHAIN_ANCHORING_ENABLED or config.BLOCKCHAIN_MODE == "DRY_RUN":
+                package.failure_reason = (
+                    "Legacy flat-root anchoring is retired; this evidence is "
+                    "anchored via the canonical Merkle evidence path "
+                    "(anchorEvidence) when blockchain anchoring is enabled."
                 )
             else:
-                package.anchor_status = "unavailable"
                 package.blockchain_network = None
                 package.contract_address = None
                 package.failure_reason = (

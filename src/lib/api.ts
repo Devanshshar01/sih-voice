@@ -43,11 +43,32 @@ async function request(operation: string, url: string, init?: RequestInit): Prom
   return response;
 }
 
+/**
+ * Error carrying the HTTP status so callers can distinguish, e.g., a 409
+ * EVIDENCE_ID_CONFLICT (already registered) from a real failure.
+ */
+export class HttpStatusError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "HttpStatusError";
+  }
+}
+
+function errorDetailMessage(data: { detail?: unknown } | null, response: Response): string {
+  const detail = data?.detail;
+  if (typeof detail === "string") return detail;
+  // Structured errors (e.g. 409 conflict bodies) carry { message: ... }.
+  if (detail && typeof detail === "object" && "message" in detail) {
+    const message = (detail as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return `HTTP ${response.status} ${response.statusText}`.trim();
+}
+
 async function asJson<T>(_operation: string, response: Response): Promise<T> {
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    const detail = typeof data?.detail === "string" ? data.detail : response.statusText;
-    throw new Error(detail);
+    throw new HttpStatusError(errorDetailMessage(data, response), response.status);
   }
   return data as T;
 }
@@ -144,6 +165,30 @@ export async function verifyEvidenceIntegrity(
     method: "GET",
   });
   return asJson<ForensicsIntegritySummary>("verifying evidence integrity", response);
+}
+
+/**
+ * Download the AUTHORITATIVE backend forensic report — the five-page PDF with
+ * QR verification code, integrity table and blockchain anchor section, whose
+ * SHA-256 is persisted server-side (evidence_report_records.report_sha256) and
+ * returned in the X-Report-SHA256 header. Never generated client-side.
+ */
+export async function downloadForensicReportPdf(
+  evidenceId: string
+): Promise<{ blob: Blob; reportSha256: string | null }> {
+  const response = await request(
+    "downloading the forensic report",
+    `${API_BASE}/forensics/merkle/${encodeURIComponent(evidenceId)}/report.pdf`
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new HttpStatusError(errorDetailMessage(data, response), response.status);
+  }
+  const blob = await response.blob();
+  if (blob.size === 0) {
+    throw new Error("The forensic report came back empty. Please try again.");
+  }
+  return { blob, reportSha256: response.headers.get("X-Report-SHA256") };
 }
 
 export async function terminateCall(callId: string, token?: string): Promise<void> {
