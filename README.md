@@ -226,12 +226,12 @@ flowchart TD
 flowchart LR
     Mic["Microphone Input"] --> Normalizer["Codec Normalizer\n(PCM, G.711, Opus)"]
     Normalizer --> Resample["16 kHz Mono Standardizer"]
-    Resample --> Buffer["Ring Buffer (64k samples)\n(4.0s Window / 0.5s Hop)"]
+    Resample --> Buffer["Ring Buffer 64k samples\n4.0s Window / 0.5s Hop"]
     Buffer --> VAD["Silero VAD Speech Gate"]
-    VAD -->|Speech Present| CadenceGate{"Inference Cadence Gate\n(Interval: 15s | Max Stale: 30s)"}
-    CadenceGate -- "Refresh Needed" --> RemoteInference["Remote MMS-300M Inference\n(Hugging Face ZeroGPU)"]
-    CadenceGate -- "Valid Cache" --> CachedEvidence["Reuse Prior Evidence\n(Single-Flight Guard Active)"]
-    VAD -->|Silence / Noise| Bypass["Bypass Heavy Inference\n(Neutral Score 0.50)"]
+    VAD -->|Speech Present| CadenceGate{"Inference Cadence Gate\nInterval 15s / Max Stale 30s"}
+    CadenceGate -- Refresh Needed --> RemoteInference["Remote MMS-300M Inference\nHugging Face ZeroGPU"]
+    CadenceGate -- Valid Cache --> CachedEvidence["Reuse Prior Evidence\nSingle-Flight Guard Active"]
+    VAD -->|Silence or Noise| Bypass["Bypass Heavy Inference\nNeutral Score 0.50"]
 ```
 
 ### Ingestion Specifications & Adaptive Cadence
@@ -350,12 +350,11 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    Backend["SatyaVoice Backend\n(Owner Key Signer)"] -->|anchorEvidence(root, id)| Contract["AnchorRoot.sol (v1.1.0)\n(0xcB5E4E1A318cE5dcaa2B483d020E42f7343cb987)"]
-    Contract -->|Emit Event| Event["EvidenceAnchored\n(evidenceRoot, evidenceId)"]
-    Event --> Chain["Polygon Amoy Testnet\n(Chain ID 80002)"]
-    
+    Backend["SatyaVoice Backend"] -->|anchorEvidence| Contract["AnchorRoot.sol v1.1.0"]
+    Contract -->|EvidenceAnchored event| Event["Event Log"]
+    Event --> Chain["Polygon Amoy Testnet"]
     Auditor["Independent Verifier"] -->|Query Merkle Inclusion| Contract
-    Contract -->|Confirm On-Chain Existence| Auditor
+    Contract -->|Confirm On-Chain| Auditor
 ```
 
 ### Blockchain Technical Specifications
