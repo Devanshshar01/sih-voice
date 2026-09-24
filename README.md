@@ -210,7 +210,7 @@ flowchart TD
     Worklet -->|Audio Frames| ReactApp
     ReactApp -.->|Offline / Edge Mode| EdgeONNX
     FastAPIServer <-->|Audit & Session Logs| DB
-    FastAPIServer -->|Gradio Client (Async Calls)| HFSpace
+    FastAPIServer -->|Gradio Async Client| HFSpace
     HFSpace --> MMSModel
     FastAPIServer -->|Web3.py RPC Transactions| AmoyNet
     AmoyNet --> SmartContract

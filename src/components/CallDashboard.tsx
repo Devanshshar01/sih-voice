@@ -122,15 +122,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
   const statusTone =
     currentStatus === "LOCKED" ? "danger" : currentStatus === "SUSPICIOUS" ? "warn" : "safe";
 
-  const actionState = actionPending
-    ? "PROCESSING"
-    : actionFeedback
-      ? actionFeedback.ok
-        ? "EXECUTED"
-        : "BLOCKED"
-      : showVerification
-        ? "GATED / MFA REQUIRED"
-        : "CONTROLS READY";
+
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-ink-950">
