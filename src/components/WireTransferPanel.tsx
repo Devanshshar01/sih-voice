@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { CheckCircle2, Lock, Unlock } from "lucide-react";
+import { CheckCircle2, Lock, ShieldAlert, Unlock } from "lucide-react";
 import type { ActionFeedback } from "../hooks/useCallSession";
+import StatusBadge from "./StatusBadge";
 
 interface WireTransferPanelProps {
   locked: boolean;
@@ -9,53 +10,133 @@ interface WireTransferPanelProps {
   onAttempt: (amount: number) => void;
 }
 
-export default function WireTransferPanel({ locked, pending, feedback, onAttempt }: WireTransferPanelProps) {
+export default function WireTransferPanel({
+  locked,
+  pending,
+  feedback,
+  onAttempt,
+}: WireTransferPanelProps) {
   const [amount, setAmount] = useState(50000);
 
+  const presets = [10000, 50000, 250000];
+
   return (
-    <div className="panel p-4">
-      <div className="flex items-start justify-between gap-4">
+    <section className="rounded-2xl border border-ink-700/40 bg-ink-900/90 p-5 shadow-panel">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 border-b border-ink-700/40 pb-3.5">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.14em] text-mute">Protected action</p>
-          <h2 className="mt-1 text-sm font-medium text-paper">Approve wire transfer</h2>
+          <p className="eyebrow text-signal">Protected Enterprise Action</p>
+          <h2 className="mt-0.5 text-sm font-bold text-paper-bright">
+            Financial Wire Clearance Simulation
+          </h2>
         </div>
-        <span className={`flex items-center gap-1 text-[11px] ${locked ? "text-danger" : "text-safe"}`}>
-          {locked ? <Lock size={13} /> : <CheckCircle2 size={13} />}
-          {locked ? "Held for review" : "Controls open"}
-        </span>
+        <StatusBadge
+          label={locked ? "Gated By Policy" : "Clearance Nominal"}
+          variant={locked ? "danger" : "safe"}
+          pulse={locked}
+          size="sm"
+        />
       </div>
 
-      <label className="mt-4 block text-xs text-mute" htmlFor="wire-amount">
-        Transfer amount (INR)
-      </label>
-      <input
-        id="wire-amount"
-        type="number"
-        min={0}
-        step={1000}
-        value={amount}
-        onChange={(e) => setAmount(Number(e.target.value))}
-        className="field-input tabular"
-      />
+      <p className="mt-3 text-xs leading-relaxed text-paper-dim">
+        Simulated high-value transaction. When acoustic or conversational fraud indicators escalate,
+        clearance is automatically gated until secondary out-of-band challenge verifies caller identity.
+      </p>
 
+      {/* Amount Input */}
+      <div className="mt-4">
+        <div className="flex items-center justify-between">
+          <label className="field-label" htmlFor="wire-amount">
+            Wire Authorization Amount (INR)
+          </label>
+          <span className="font-mono text-[10px] text-paper-muted">Instant RTGS / NEFT</span>
+        </div>
+        <div className="relative mt-1.5">
+          <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 font-mono text-sm text-paper-muted">
+            ₹
+          </span>
+          <input
+            id="wire-amount"
+            type="number"
+            min={1}
+            step={1000}
+            value={amount}
+            onChange={(e) => setAmount(Math.max(0, Number(e.target.value)))}
+            className="field-input pl-8 font-mono text-base font-bold"
+            placeholder="50000"
+          />
+        </div>
+
+        {/* Quick Presets */}
+        <div className="mt-2.5 flex gap-2">
+          {presets.map((preset) => (
+            <button
+              type="button"
+              key={preset}
+              onClick={() => setAmount(preset)}
+              className={`rounded-lg border px-2.5 py-1 font-mono text-xs transition-colors ${
+                amount === preset
+                  ? "border-signal bg-signal-bg text-signal font-semibold"
+                  : "border-ink-700/50 bg-ink-850/60 text-paper-muted hover:border-ink-600 hover:text-paper"
+              }`}
+            >
+              ₹{preset.toLocaleString("en-IN")}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Action Button */}
       <button
         onClick={() => onAttempt(amount)}
         disabled={pending || !Number.isFinite(amount) || amount <= 0}
-        className={`mt-4 flex w-full items-center justify-center gap-2 border px-4 py-2.5 text-sm font-medium transition-colors ${
+        className={`mt-4 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
           locked
-            ? "border-danger/50 bg-danger-bg text-danger hover:bg-danger/15"
-            : "border-signal/50 bg-signal-bg text-signal hover:bg-signal/15"
-        }`}
+            ? "border-danger/50 bg-danger-bg text-danger hover:bg-danger/20"
+            : "border-signal/50 bg-signal-bg text-signal hover:bg-signal/20"
+        } disabled:cursor-not-allowed disabled:opacity-50`}
       >
-        {locked ? <Lock size={15} /> : <Unlock size={15} />}
-        {pending ? "Authorizing..." : locked ? "Request verification to approve" : "Approve wire transfer"}
+        {pending ? (
+          <>
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            <span>Verifying Transaction Clearance...</span>
+          </>
+        ) : locked ? (
+          <>
+            <Lock size={15} />
+            <span>Attempt Authorization (Gated)</span>
+          </>
+        ) : (
+          <>
+            <Unlock size={15} />
+            <span>Authorize Wire Transfer</span>
+          </>
+        )}
       </button>
 
+      {/* Feedback Alert */}
       {feedback && (
-        <p role="status" className={`mt-3 border px-3 py-2 text-xs leading-snug ${feedback.ok ? "border-safe/30 bg-safe-bg text-safe" : "border-danger/30 bg-danger-bg text-danger"}`}>
-          {feedback.message}
-        </p>
+        <div
+          role="status"
+          className={`mt-3.5 flex items-start gap-2.5 rounded-xl border p-3.5 text-xs leading-relaxed ${
+            feedback.ok
+              ? "border-safe/30 bg-safe-bg text-safe"
+              : "border-danger/40 bg-danger-bg text-danger"
+          }`}
+        >
+          {feedback.ok ? (
+            <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
+          ) : (
+            <ShieldAlert size={16} className="shrink-0 mt-0.5" />
+          )}
+          <div>
+            <span className="font-semibold uppercase tracking-wider block">
+              {feedback.ok ? "Clearance Approved" : "Clearance Intercepted"}
+            </span>
+            <span>{feedback.message}</span>
+          </div>
+        </div>
       )}
-    </div>
+    </section>
   );
 }

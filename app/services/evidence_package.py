@@ -240,6 +240,8 @@ def build_integrity_summary(db: Session, evidence_id: str) -> dict[str, Any]:
         MerkleEvidenceError,
     )
 
+    from app import config
+
     merkle_row = (
         db.query(db_models.EvidenceMerklePackage)
         .filter(db_models.EvidenceMerklePackage.evidence_id == evidence_id)
@@ -315,6 +317,13 @@ def build_integrity_summary(db: Session, evidence_id: str) -> dict[str, Any]:
             "simulated": simulated,
             "network": merkle_row.blockchain_network,
             "contract": merkle_row.contract_address,
+            # Chain id the adapter verified against BEFORE submitting (a receipt
+            # can only come from that chain). Reported ONLY for a confirmed
+            # anchor — never synthesized for pending/failed/simulated states.
+            "chain_id": config.BLOCKCHAIN_CHAIN_ID if confirmed else None,
+            # The exact Merkle root anchorEvidence() committed for this
+            # evidence — the stored anchored value, never re-derived here.
+            "merkle_root": merkle_row.merkle_root if confirmed else None,
             # Transaction metadata is surfaced ONLY for a confirmed anchor; a
             # DRY_RUN simulated tx hash must never masquerade as real.
             "tx_hash": merkle_row.anchor_tx_hash if confirmed else None,

@@ -1,4 +1,5 @@
-import { Activity, Shield } from "lucide-react";
+import { Activity, Clock, PhoneForwarded, Shield } from "lucide-react";
+import StatusBadge from "./StatusBadge";
 
 interface NavHeaderProps {
   connected: boolean;
@@ -9,39 +10,79 @@ interface NavHeaderProps {
 }
 
 function formatDuration(totalSeconds: number): string {
-  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
-  const seconds = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = Math.floor(totalSeconds % 60)
+    .toString()
+    .padStart(2, "0");
+  if (hours > 0) {
+    return `${hours}:${minutes}:${seconds}`;
+  }
   return `${minutes}:${seconds}`;
 }
 
-export default function NavHeader({ connected, ended = false, callerId, recipientId, durationSeconds }: NavHeaderProps) {
+export default function NavHeader({
+  connected,
+  ended = false,
+  callerId,
+  recipientId,
+  durationSeconds,
+}: NavHeaderProps) {
   return (
-    <header className="hairline-bottom flex flex-wrap items-center justify-between gap-3 bg-ink-950/95 px-4 py-3.5 backdrop-blur sm:px-6">
-      <div className="flex items-center gap-4">
-        <span className="flex items-center gap-2 text-sm font-semibold tracking-tight text-paper">
-          <span className="flex h-7 w-7 items-center justify-center border border-signal/40 bg-signal-bg text-signal shadow-signal"><Shield size={14} /></span>
-          SatyaVoice <span className="font-mono text-[10px] font-normal text-mute">/ SOC-01</span>
-        </span>
-        {callerId && (
-          <>
-            <span className="hidden h-4 w-px bg-ink-600 sm:block" />
-            <span className="hidden font-mono text-xs text-mute sm:inline">{callerId}</span>
-            {recipientId && <span className="hidden text-xs text-mute sm:inline">→ {recipientId}</span>}
-          </>
-        )}
+    <header className="relative z-30 flex flex-wrap items-center justify-between gap-4 border-b border-ink-700/40 bg-ink-950/90 px-5 py-3 backdrop-blur-md sm:px-8">
+      {/* Brand Identity */}
+      <div className="flex items-center gap-3.5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-signal/30 bg-signal-bg text-signal">
+          <Shield size={18} />
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-base font-bold tracking-tight text-paper-bright">SatyaVoice</span>
+            <span className="rounded-md bg-ink-800 px-2 py-0.5 font-mono text-[10px] font-semibold text-paper-muted uppercase tracking-wider">
+              Voice Intelligence
+            </span>
+          </div>
+          {callerId && (
+            <div className="flex items-center gap-2 text-xs text-paper-muted">
+              <span className="font-mono text-paper-dim">{callerId}</span>
+              {recipientId && (
+                <span className="flex items-center gap-1 font-mono text-[11px]">
+                  <PhoneForwarded size={10} className="text-signal" />
+                  <span>{recipientId}</span>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center gap-4 text-xs">
+      {/* Right Stream Telemetry */}
+      <div className="flex items-center gap-3 sm:gap-4">
         {typeof durationSeconds === "number" && (
-          <span className="tabular font-mono text-paper-dim">{formatDuration(durationSeconds)}</span>
+          <div className="flex items-center gap-2 rounded-full border border-ink-700/60 bg-ink-900 px-3 py-1 text-xs">
+            <Clock size={13} className="text-signal animate-pulse" />
+            <span className="tabular font-mono text-xs font-semibold text-paper-bright">
+              {formatDuration(durationSeconds)}
+            </span>
+          </div>
         )}
-        <span className={`flex items-center gap-1.5 ${connected ? "text-safe" : ended ? "text-mute" : "text-warn"}`}>
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-safe animate-pulseRing" : "bg-ink-500"}`}
-          />
-          <Activity size={13} />
-          {connected ? "Stream live" : ended ? "Session complete" : "Reconnecting"}
-        </span>
+
+        <div className="flex items-center gap-2.5">
+          {connected ? (
+            <StatusBadge label="Live Protection Active" variant="safe" pulse icon />
+          ) : ended ? (
+            <StatusBadge label="Session Concluded" variant="neutral" icon />
+          ) : (
+            <StatusBadge label="Connecting Telemetry" variant="warn" pulse icon />
+          )}
+
+          <div className="hidden lg:flex items-center gap-1.5 rounded-full border border-ink-700/40 bg-ink-900/60 px-2.5 py-1 text-[11px] text-paper-muted font-mono">
+            <Activity size={12} className="text-signal" />
+            <span>16 kHz Rolling PCM</span>
+          </div>
+        </div>
       </div>
     </header>
   );

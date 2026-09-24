@@ -1,4 +1,4 @@
-import { Mic, MicOff, Pause, Play, PhoneOff } from "lucide-react";
+import { Mic, MicOff, Pause, PhoneOff, Play } from "lucide-react";
 
 interface CallControlsProps {
   muted: boolean;
@@ -8,57 +8,54 @@ interface CallControlsProps {
   onEndCall: () => void;
 }
 
-function ControlButton({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active?: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
+export default function CallControls({
+  muted,
+  onHold,
+  onToggleMute,
+  onToggleHold,
+  onEndCall,
+}: CallControlsProps) {
   return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className={`flex items-center gap-2 border px-4 py-2.5 text-sm transition-colors ${
-        active
-          ? "border-signal/50 bg-signal-bg text-signal"
-          : "border-ink-600 bg-ink-800 text-paper-dim hover:border-ink-500 hover:text-paper"
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-export default function CallControls({ muted, onHold, onToggleMute, onToggleHold, onEndCall }: CallControlsProps) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 bg-ink-950/95 px-0 py-0">
-      <div className="flex gap-2">
-        <ControlButton
-          active={muted}
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Voice Stream Controls */}
+      <div className="flex items-center gap-2.5">
+        <button
           onClick={onToggleMute}
-          icon={muted ? <MicOff size={16} /> : <Mic size={16} />}
-          label={muted ? "Unmute" : "Mute"}
-        />
-        <ControlButton
-          active={onHold}
+          aria-pressed={muted}
+          title={muted ? "Unmute local microphone" : "Mute local microphone"}
+          className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all ${
+            muted
+              ? "border-warn/50 bg-warn-bg text-warn ring-1 ring-warn/30"
+              : "border-ink-700/60 bg-ink-850 text-paper-dim hover:border-ink-600 hover:text-paper-bright"
+          }`}
+        >
+          {muted ? <MicOff size={15} className="text-warn" /> : <Mic size={15} />}
+          <span>{muted ? "Microphone Muted" : "Mute Mic"}</span>
+        </button>
+
+        <button
           onClick={onToggleHold}
-          icon={onHold ? <Play size={16} /> : <Pause size={16} />}
-          label={onHold ? "Resume" : "Hold"}
-        />
+          aria-pressed={onHold}
+          title={onHold ? "Resume stream monitoring" : "Place stream on hold"}
+          className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all ${
+            onHold
+              ? "border-signal/50 bg-signal-bg text-signal ring-1 ring-signal/30"
+              : "border-ink-700/60 bg-ink-850 text-paper-dim hover:border-ink-600 hover:text-paper-bright"
+          }`}
+        >
+          {onHold ? <Play size={15} className="text-signal" /> : <Pause size={15} />}
+          <span>{onHold ? "Resume Monitoring" : "Hold Stream"}</span>
+        </button>
       </div>
+
+      {/* Emergency / Session Closeout Action */}
       <button
         onClick={onEndCall}
-        aria-label="End monitored call"
-        className="flex items-center gap-2 border border-danger/50 bg-danger-bg px-4 py-2.5 text-sm font-medium text-danger transition-colors hover:bg-danger/15"
+        aria-label="Terminate and closeout voice session"
+        className="flex items-center gap-2 rounded-xl border border-danger/40 bg-danger-bg px-4 py-2.5 text-xs font-bold text-danger transition-all hover:bg-danger hover:text-white active:scale-95"
       >
-        <PhoneOff size={16} />
-        End call
+        <PhoneOff size={15} />
+        <span>Terminate &amp; Proceed to Forensics</span>
       </button>
     </div>
   );

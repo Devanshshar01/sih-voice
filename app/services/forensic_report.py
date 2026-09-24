@@ -587,6 +587,8 @@ def build_forensic_report_pdf(
     verification: dict[str, Any] | None = None,
     integrity: dict[str, Any] | None = None,
     session_id: str | None = None,
+    payload: dict[str, Any] | None = None,
+    artifacts: list[dict[str, Any]] | None = None,
     title: str = "Forensic Voice Analysis Report",
 ) -> bytes:
     """Render the five-page forensic PDF and return its bytes.
@@ -606,6 +608,8 @@ def build_forensic_report_pdf(
         verification=verification,
         integrity=integrity,
         session_id=session_id,
+        payload=payload,
+        artifacts=artifacts,
     )
     styles = _build_styles()
 
@@ -664,11 +668,57 @@ def render_and_register_report(
     """
     from app.db import models as db_models
 
+    # --- Frozen payload + real artifacts (stored bytes only, never invented) --
+    payload: dict[str, Any] | None = None
+    artifacts: list[dict[str, Any]] = []
+    try:
+        legacy_row = (
+            db.query(db_models.EvidencePackage)
+            .filter(db_models.EvidencePackage.evidence_id == evidence_id)
+            .first()
+        )
+        if legacy_row is not None and legacy_row.package_payload:
+            import json as _json
+
+            payload_bytes = legacy_row.package_payload.encode("utf-8")
+            payload = _json.loads(legacy_row.package_payload)
+            artifacts.append(
+                {
+                    "artifact_id": "evidence_package_payload",
+                    "role": "canonical_evidence_snapshot",
+                    "media_type": "application/json",
+                    "byte_length": len(payload_bytes),
+                    "sha256": hashlib.sha256(payload_bytes).hexdigest(),
+                }
+            )
+        merkle_row = (
+            db.query(db_models.EvidenceMerklePackage)
+            .filter(db_models.EvidenceMerklePackage.evidence_id == evidence_id)
+            .first()
+        )
+        if merkle_row is not None and merkle_row.canonical_package:
+            manifest_bytes = merkle_row.canonical_package.encode("utf-8")
+            artifacts.append(
+                {
+                    "artifact_id": "canonical_manifest",
+                    "role": "evidence_manifest",
+                    "media_type": "application/json",
+                    "byte_length": len(manifest_bytes),
+                    "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+                }
+            )
+    except Exception:
+        # A decode failure must never break report generation: the report then
+        # falls back to the verification/integrity fields it does have.
+        logger.warning("Frozen payload unavailable for report (evidence_id=%s)", evidence_id)
+
     pdf = build_forensic_report_pdf(
         evidence_id=evidence_id,
         verification=verification,
         integrity=integrity,
         session_id=session_id,
+        payload=payload,
+        artifacts=artifacts or None,
     )
     from pypdf import PdfReader
 

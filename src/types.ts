@@ -133,6 +133,10 @@ export interface BlockchainAnchorState {
   contract: string | null;
   tx_hash: string | null;
   block_number: number | null;
+  /** Polygon chain id — present only for a confirmed anchor (never synthesized). */
+  chain_id?: number | null;
+  /** The exact Merkle root anchored on-chain — confirmed anchors only. */
+  merkle_root?: string | null;
   anchored_at: string | null;
   note: string | null;
 }
@@ -141,6 +145,10 @@ export interface BlockchainAnchorState {
  * EvidenceIntegritySummary (Phase 5/9) — the one verification summary, served by
  * `GET /forensics/{evidence_id}/verify`. Derived from stored evidence only; no
  * field is regenerated and no fresh timestamp is injected server-side.
+ *
+ * `GET` and `POST` return the same canonical verification envelope: the
+ * integrity summary fields plus the overall verdict (`valid`) and the
+ * recomputed-integrity block (`integrity`) used by the integrity panel.
  */
 export interface ForensicsIntegritySummary {
   evidence_id: string;
@@ -151,6 +159,15 @@ export interface ForensicsIntegritySummary {
   ledger: LedgerVerification | null;
   report: { sha256: string | null; generated_at: string | null; schema_version: string | null };
   blockchain: BlockchainAnchorState;
+  /** Overall canonical verdict (manifest hash + root + ledger + chain check). */
+  valid?: boolean;
+  /** Recomputed-integrity block from the canonical verification envelope. */
+  integrity?: {
+    package_hash_integrity?: boolean | null;
+    merkle_root_integrity?: boolean | null;
+    items_all_verified?: boolean | null;
+    evidence_id_matches?: boolean | null;
+  };
   verification?: { url: string; api_path: string };
 }
 

@@ -1,35 +1,93 @@
+import {
+  Activity,
+  Cpu,
+  Fingerprint,
+  Languages,
+  Radio,
+  ShieldAlert,
+  ShieldCheck,
+  Terminal,
+} from "lucide-react";
 import type { UseCallSession } from "../hooks/useCallSession";
 import { formatRiskScore, formatVectorPercent } from "../lib/riskFormat";
-import TrustGauge from "./TrustGauge";
+import CallControls from "./CallControls";
+import RiskTimeline, { statusLabel } from "./RiskTimeline";
 import Spectrograph from "./Spectrograph";
+import StatusBadge from "./StatusBadge";
 import StatusBanner from "./StatusBanner";
 import ThreatBreakdown from "./ThreatBreakdown";
-import WireTransferPanel from "./WireTransferPanel";
-import CallControls from "./CallControls";
+import TrustGauge from "./TrustGauge";
 import VerificationModal from "./VerificationModal";
-import RiskTimeline, { statusLabel } from "./RiskTimeline";
+import WireTransferPanel from "./WireTransferPanel";
 
 interface CallDashboardProps {
   session: UseCallSession;
 }
 
-function Metric({ label, value, detail, tone = "text-paper" }: { label: string; value: string; detail: string; tone?: string }) {
+interface MetricTileProps {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: "safe" | "warn" | "danger" | "signal" | "neutral";
+  icon?: React.ReactNode;
+}
+
+function MetricTile({ label, value, detail, tone = "neutral", icon }: MetricTileProps) {
+  const toneClasses = {
+    safe: "text-safe border-safe/25 bg-safe-bg/30",
+    warn: "text-warn border-warn/25 bg-warn-bg/30",
+    danger: "text-danger border-danger/30 bg-danger-bg/40",
+    signal: "text-signal border-signal/25 bg-signal-bg/30",
+    neutral: "text-paper-bright border-ink-700/40 bg-ink-850/60",
+  };
+
+  const textTone = {
+    safe: "text-safe",
+    warn: "text-warn",
+    danger: "text-danger",
+    signal: "text-signal",
+    neutral: "text-paper-bright",
+  };
+
   return (
-    <div className="surface p-4">
-      <p className="section-label">{label}</p>
-      <p className={`mt-2 text-2xl font-semibold tracking-tight ${tone}`}>{value}</p>
-      <p className="mt-1 text-xs leading-relaxed text-mute">{detail}</p>
+    <div className={`rounded-2xl border p-4 transition-all ${toneClasses[tone]}`}>
+      <div className="flex items-center justify-between text-xs text-paper-muted">
+        <span className="font-semibold uppercase tracking-wider text-[10px]">{label}</span>
+        {icon && <span className="opacity-80">{icon}</span>}
+      </div>
+      <p className={`mt-2 font-sans text-2xl sm:text-3xl font-extrabold tracking-tight ${textTone[tone]}`}>
+        {value}
+      </p>
+      <p className="mt-1 text-xs text-paper-dim leading-tight">{detail}</p>
     </div>
   );
 }
 
 export default function CallDashboard({ session }: CallDashboardProps) {
   const {
-    meta, telemetry, telemetryHistory, muted, onHold, analyser, verified, verification,
-    actionFeedback, actionPending, liveTranscript, browserOnnxStatus, browserOnnxResult,
-    localRisk, localModelError,
-    endCall, toggleMute, toggleHold, updateLiveTranscript, requestChallenge,
-    setVerificationInput, submitVerification, attemptWireTransfer,
+    meta,
+    telemetry,
+    telemetryHistory,
+    muted,
+    onHold,
+    analyser,
+    verified,
+    verification,
+    actionFeedback,
+    actionPending,
+    liveTranscript,
+    browserOnnxStatus,
+    browserOnnxResult,
+    localRisk,
+    localModelError,
+    endCall,
+    toggleMute,
+    toggleHold,
+    updateLiveTranscript,
+    requestChallenge,
+    setVerificationInput,
+    submitVerification,
+    attemptWireTransfer,
   } = session;
 
   const status = telemetry?.status ?? "ALLOW";
@@ -41,6 +99,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
   const speakerSimilarity = telemetry?.speaker_score ?? null;
   const intentRisks = telemetry?.intent_risks ?? [];
   const detectedLanguage = telemetry?.detected_language ?? null;
+
   const languageLabel =
     detectedLanguage == null
       ? null
@@ -57,117 +116,371 @@ export default function CallDashboard({ session }: CallDashboardProps) {
                 : detectedLanguage === "mr"
                   ? "Marathi"
                   : detectedLanguage;
+
   const showVerification = status === "LOCK_VERIFY" && !verified;
-  const browserOnnxPercent = browserOnnxResult ? Math.round(browserOnnxResult.score * 100) : null;
   const currentStatus = verified ? "SAFE" : statusLabel(status);
-  const statusTone = currentStatus === "LOCKED" ? "text-danger" : currentStatus === "SUSPICIOUS" ? "text-warn" : "text-safe";
-  const actionState = actionPending ? "PROCESSING" : actionFeedback ? (actionFeedback.ok ? "EXECUTED" : "BLOCKED") : showVerification ? "AWAITING VERIFICATION" : "READY";
+  const statusTone =
+    currentStatus === "LOCKED" ? "danger" : currentStatus === "SUSPICIOUS" ? "warn" : "safe";
+
+  const actionState = actionPending
+    ? "PROCESSING"
+    : actionFeedback
+      ? actionFeedback.ok
+        ? "EXECUTED"
+        : "BLOCKED"
+      : showVerification
+        ? "GATED / MFA REQUIRED"
+        : "CONTROLS READY";
 
   return (
-    <div className="console-grid flex min-h-0 flex-1 flex-col">
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
-        <div className="mx-auto max-w-[1440px]">
-          <div className="mb-5 flex flex-col gap-3 border-b border-ink-700 pb-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="flex min-h-0 flex-1 flex-col bg-ink-950">
+      {/* Scrollable Main Operations Workspace */}
+      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+        <div className="mx-auto max-w-[1440px] space-y-6">
+          {/* Top Session Breadcrumb Bar */}
+          <div className="flex flex-col gap-3 border-b border-ink-700/40 pb-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="eyebrow">Active call / real-time risk operations</p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-paper sm:text-3xl">Voice integrity monitor</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-paper-dim">Every decision is grounded in the acoustic signal, observed intent, and the evidence currently available in this session.</p>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-signal/25 bg-signal-bg px-2.5 py-0.5 text-[10px] font-semibold text-signal uppercase tracking-wider">
+                  <Radio size={10} className="animate-pulse" /> Live Telemetry
+                </span>
+                <span className="text-xs text-paper-muted">
+                  Mode: <span className="font-semibold text-paper-bright uppercase">{meta?.audioMode ?? "CLOUD"}</span>
+                </span>
+              </div>
+              <h1 className="mt-1 text-xl font-bold tracking-tight text-paper-bright sm:text-2xl">
+                Active Telemetry &amp; Voice Deepfake Protection
+              </h1>
             </div>
-            <div className="flex items-center gap-2 text-left text-xs text-mute sm:text-right">
-              <span className="h-1.5 w-1.5 rounded-full bg-safe shadow-[0_0_8px_theme(colors.safe.DEFAULT)]" />
-              <div><p className="font-mono text-paper">{meta?.callId ?? "CONNECTING"}</p><p className="mt-1">{meta ? "LIVE MICROPHONE" : "CONNECTING"}</p></div>
+
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl border border-ink-700/40 bg-ink-900/80 px-3.5 py-1.5 text-right font-mono">
+                <span className="block text-[10px] uppercase tracking-wider text-paper-muted">
+                  Session ID
+                </span>
+                <span className="text-xs font-bold text-signal">
+                  {meta?.callId ?? "INITIALIZING"}
+                </span>
+              </div>
+              <StatusBadge
+                label={currentStatus}
+                variant={statusTone}
+                pulse={currentStatus === "LOCKED"}
+              />
             </div>
           </div>
 
-          <StatusBanner status={verified ? "ALLOW" : status} rationale={rationale} verified={verified} />
+          {/* Real-time Status Alert Banner */}
+          <StatusBanner
+            status={verified ? "ALLOW" : status}
+            rationale={rationale}
+            verified={verified}
+          />
 
-          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Metric label="Overall risk" value={`${formatRiskScore(score)}%`} detail="Fused session risk score" tone={statusTone} />
-            <Metric label="Risk status" value={currentStatus} detail={verified ? "Verification override active" : "Current policy decision"} tone={statusTone} />
-            <Metric label="Acoustic anti-spoof" value={`${formatVectorPercent(acousticScore)}%`} detail="Synthetic voice likelihood" tone={acousticScore > 0.7 ? "text-danger" : "text-paper"} />
-            <Metric label="Intent pressure" value={`${formatVectorPercent(intentScore)}%`} detail="Urgency / sensitive-request signal" tone={intentScore > 0.7 ? "text-danger" : "text-paper"} />
+          {/* Four Core Telemetry Metric Cards */}
+          <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+            <MetricTile
+              label="Fused Risk Index"
+              value={`${formatRiskScore(score)}%`}
+              detail="Weighted acoustic & intent fusion"
+              tone={statusTone}
+              icon={<ShieldAlert size={16} />}
+            />
+            <MetricTile
+              label="Policy Verdict"
+              value={currentStatus}
+              detail={verified ? "Out-of-band verified" : "Automated policy clearance"}
+              tone={statusTone}
+              icon={<ShieldCheck size={16} />}
+            />
+            <MetricTile
+              label="Acoustic Anti-Spoof"
+              value={`${formatVectorPercent(acousticScore)}%`}
+              detail="MMS-300M vocoder probability"
+              tone={acousticScore >= 0.7 ? "danger" : acousticScore >= 0.4 ? "warn" : "safe"}
+              icon={<Cpu size={16} />}
+            />
+            <MetricTile
+              label="Conversational Urgency"
+              value={`${formatVectorPercent(intentScore)}%`}
+              detail="Social engineering pressure"
+              tone={intentScore >= 0.7 ? "danger" : intentScore >= 0.4 ? "warn" : "safe"}
+              icon={<Terminal size={16} />}
+            />
           </div>
 
-          <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
-            <div className="space-y-5">
-              <section className="panel p-5 sm:p-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <p className="eyebrow">Primary decision surface</p>
-                    <h2 className="mt-1 text-lg font-medium text-paper">Why this call is {currentStatus.toLowerCase()}</h2>
-                  </div>
-                  <div className="text-right"><span className={`font-mono text-3xl font-semibold ${statusTone}`}>{formatRiskScore(score)}</span><span className="ml-1 text-xs text-mute">/ 100</span></div>
+          {/* Hero Decision Surface & Spectral Stream */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            {/* Left: Focal Risk Gauge & Verdict Card */}
+            <section className="rounded-3xl border border-ink-700/40 bg-ink-900/90 p-6 sm:p-7 shadow-elevated lg:col-span-5 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between border-b border-ink-700/40 pb-3">
+                  <p className="eyebrow text-signal">Decision Engine</p>
+                  <span className="font-mono text-xs text-paper-muted">Sub-second evaluation</span>
                 </div>
-                <div className="mt-5 grid gap-5 md:grid-cols-[180px_minmax(0,1fr)] md:items-center">
-                  <div className="flex justify-center">{telemetry ? <TrustGauge score={score} status={status} /> : <p className="py-10 text-sm text-mute">Calibrating…</p>}</div>
-                  <div className="space-y-3">
-                    {rationale.length > 0 ? rationale.map((line) => <div key={line} className="border-l-2 border-danger bg-ink-900/60 px-3 py-2 text-sm leading-relaxed text-paper-dim">{line}</div>) : <p className="text-sm text-mute">No elevated rationale signals have been reported yet.</p>}
+
+                <div className="mt-4 flex flex-col items-center">
+                  {telemetry ? (
+                    <TrustGauge score={score} status={status} />
+                  ) : (
+                    <div className="flex h-48 flex-col items-center justify-center font-mono text-xs text-paper-muted">
+                      <Activity size={24} className="animate-spin text-signal mb-2" />
+                      <span>Calibrating Audio Engine...</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-ink-700/30 bg-ink-850/50 p-3 text-xs text-paper-dim leading-relaxed">
+                <span className="font-semibold text-paper-bright block mb-0.5">Policy Rationale:</span>
+                {rationale.length > 0 ? (
+                  <span>{rationale.join("; ")}</span>
+                ) : (
+                  <span>Acoustic features nominal. No synthetic voice clone indicators detected.</span>
+                )}
+              </div>
+            </section>
+
+            {/* Right: Live Voice Spectrogram & Spectral Ribbon */}
+            <section className="lg:col-span-7 flex flex-col justify-between">
+              <Spectrograph analyser={analyser} status={status} />
+
+              {/* On-Device / Edge-Local Inference Telemetry */}
+              {(meta?.audioMode === "hybrid" || meta?.audioMode === "edge-local") && (
+                <div className="mt-4 rounded-2xl border border-signal/30 bg-ink-900/90 p-4 shadow-panel">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="eyebrow text-signal">In-Browser Edge AI</p>
+                      <h2 className="mt-0.5 text-xs font-bold text-paper-bright">
+                        On-Device ONNX Runtime WebAssembly Accelerator
+                      </h2>
+                    </div>
+                    <StatusBadge
+                      label={browserOnnxStatus.toUpperCase()}
+                      variant={
+                        browserOnnxStatus === "ready"
+                          ? "safe"
+                          : browserOnnxStatus === "loading"
+                            ? "warn"
+                            : "danger"
+                      }
+                      size="sm"
+                    />
+                  </div>
+
+                  <div className="mt-2.5 rounded-xl border border-ink-700/50 bg-ink-950 p-3 font-mono text-xs text-signal">
+                    {browserOnnxStatus === "loading" && "INITIALIZING ONNX WEB WORKER & WEIGHTS..."}
+                    {browserOnnxStatus === "ready" && browserOnnxResult && (
+                      <div className="space-y-1">
+                        <div>
+                          SPOOF PROBABILITY:{" "}
+                          <span className="font-bold text-paper-bright">
+                            {Math.round(browserOnnxResult.score * 100)}%
+                          </span>{" "}
+                          ({browserOnnxResult.label})
+                        </div>
+                        {localRisk && (
+                          <div className="text-[11px] text-paper-muted flex flex-wrap gap-x-3 gap-y-0.5 pt-1 border-t border-ink-800">
+                            <span>MODEL: {localRisk.modelId}</span>
+                            <span>INFER: {Math.round(localRisk.inferenceMs)}ms</span>
+                            <span>
+                              P50: {localRisk.p50Ms ? `${Math.round(localRisk.p50Ms)}ms` : "—"} /
+                              P95: {localRisk.p95Ms ? `${Math.round(localRisk.p95Ms)}ms` : "—"}
+                            </span>
+                            <span>FRAMES: {localRisk.inferenceCount}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {browserOnnxStatus === "error" && (
+                      <span className="text-danger">
+                        MODEL ERROR: {localModelError ?? "Local inference failed"} — Falling back to cloud pipeline.
+                      </span>
+                    )}
+                    {browserOnnxStatus === "idle" && "WAITING FOR PCM AUDIO STREAM..."}
                   </div>
                 </div>
-              </section>
+              )}
+            </section>
+          </div>
 
-              <section className="surface p-5 sm:p-6">
-                <div className="mb-4 flex items-start justify-between gap-3"><div><p className="eyebrow">Audio telemetry</p><h2 className="mt-1 text-sm font-medium text-paper">Live spectrogram / waveform</h2></div><span className="font-mono text-[10px] text-mute">16 kHz · mono</span></div>
-                <Spectrograph analyser={analyser} status={status} />
-              </section>
-
+          {/* Main Telemetry & Analytics Grid */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            {/* Left Column: Risk Evolution & Conversational ASR */}
+            <div className="space-y-6 lg:col-span-7">
+              {/* Chronological Risk Timeline */}
               <RiskTimeline points={telemetryHistory} />
 
-              <section className="surface p-5 sm:p-6">
-                <div className="flex items-start justify-between gap-3"><div><p className="eyebrow">Conversation context</p><h2 className="mt-1 text-sm font-medium text-paper">ASR transcript</h2></div><span className="font-mono text-[10px] text-mute">MANUAL ASR INPUT</span></div>
-                <div>
-                  <textarea id="live-transcript" value={liveTranscript} onChange={(e) => updateLiveTranscript(e.target.value)} rows={3} placeholder="Type what the caller is asking for, as it happens…" className="field-input mt-4 w-full resize-none font-sans" />
-                  {languageLabel && <p className="mt-2 text-xs text-mute">Language: <span className="font-medium text-paper">{languageLabel}</span></p>}
+              {/* Conversational Context & ASR Intent Stream */}
+              <section className="rounded-2xl border border-ink-700/40 bg-ink-900/90 p-5 sm:p-6 shadow-panel">
+                <div className="flex items-start justify-between gap-3 border-b border-ink-700/40 pb-3.5">
+                  <div>
+                    <p className="eyebrow text-signal">Conversational Intelligence</p>
+                    <h2 className="mt-0.5 text-sm font-bold text-paper-bright">
+                      ASR Transcript &amp; Fraud Intent Markers
+                    </h2>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {languageLabel && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-signal/30 bg-signal-bg px-2.5 py-0.5 text-[11px] font-medium text-signal">
+                        <Languages size={11} /> {languageLabel}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label htmlFor="live-transcript" className="field-label">
+                    Live Dialogue Input (Multilingual Test Console)
+                  </label>
+                  <textarea
+                    id="live-transcript"
+                    value={liveTranscript}
+                    onChange={(e) => updateLiveTranscript(e.target.value)}
+                    rows={3}
+                    placeholder="Type dialogue as it occurs (e.g. 'I need you to wire the ₹50,000 urgently without OTP verification')..."
+                    className="field-input mt-1.5 w-full resize-none font-sans text-sm"
+                  />
+                  <p className="mt-1.5 text-xs text-paper-muted">
+                    Real-time intent analyzer extracts extortion cues, sensitive transaction
+                    redirects (UPI/OTP), and psychological urgency.
+                  </p>
+
+                  {/* Intent Risk Chips */}
                   {intentRisks.length > 0 && (
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-3.5 space-y-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-paper-muted">
+                        Structured Extortion Signals:
+                      </p>
                       {intentRisks.map((risk, i) => (
-                        <div key={`${risk.category}-${risk.matched_phrase}-${i}`} className="border border-ink-700 bg-ink-900/60 px-3 py-2">
+                        <div
+                          key={`${risk.category}-${risk.matched_phrase}-${i}`}
+                          className="rounded-xl border border-ink-700/40 bg-ink-850/70 p-3"
+                        >
                           <div className="flex items-center justify-between gap-2">
-                            <span className={`text-xs font-semibold uppercase tracking-wide ${risk.severity === "critical" ? "text-danger" : risk.severity === "elevated" ? "text-warn" : "text-mute"}`}>
-                              {risk.category} · {risk.speech_act}
+                            <span
+                              className={`font-mono text-xs font-bold uppercase tracking-wider ${
+                                risk.severity === "critical"
+                                  ? "text-danger"
+                                  : risk.severity === "elevated"
+                                    ? "text-warn"
+                                    : "text-signal"
+                              }`}
+                            >
+                              Category: {risk.category} · Speech Act: {risk.speech_act}
                             </span>
-                            <span className="font-mono text-[11px] text-mute">{risk.language}</span>
+                            <span className="font-mono text-[10px] text-paper-muted uppercase">
+                              {risk.language} · {Math.round(risk.confidence * 100)}% conf
+                            </span>
                           </div>
-                          <p className="mt-1 text-sm text-paper-dim">“{risk.matched_phrase}” — {risk.evidence}</p>
+                          <p className="mt-1 text-xs text-paper-bright">
+                            “<span className="font-bold text-danger">{risk.matched_phrase}</span>”
+                            — <span className="text-paper-dim">{risk.evidence}</span>
+                          </p>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
               </section>
-
-              {(meta?.audioMode === "hybrid" || meta?.audioMode === "edge-local") && (
-                <section className="surface p-5 sm:p-6">
-                  <p className="eyebrow">Local anti-spoof (in-browser)</p>
-                  <h2 className="mt-1 text-sm font-medium text-paper">On-device inference</h2>
-                  <p className="mt-3 max-w-2xl text-sm leading-relaxed text-paper-dim">
-                    {meta?.audioMode === "edge-local"
-                      ? "Raw audio never leaves this device. Only derived scores are produced locally — ASR, speaker matching, and policy fusion are unavailable and shown as degraded."
-                      : "Anti-spoof runs in this browser; the backend still performs ASR, speaker matching, and policy fusion."}
-                  </p>
-                  <p className="mt-3 font-mono text-xs text-signal">
-                    {browserOnnxStatus === "loading" ? "MODEL LOADING…" : browserOnnxStatus === "ready" && browserOnnxResult ? `LIKELIHOOD ${browserOnnxPercent}% · ${browserOnnxResult.label}${localRisk ? ` · MODEL ${localRisk.modelId} · LOAD ${localRisk.modelLoadMs ? Math.round(localRisk.modelLoadMs) : "—"}MS · INFER ${Math.round(localRisk.inferenceMs)}MS (P50 ${localRisk.p50Ms ? Math.round(localRisk.p50Ms) : "—"} / P95 ${localRisk.p95Ms ? Math.round(localRisk.p95Ms) : "—"}) · N=${localRisk.inferenceCount}${localRisk.heapUsedMb != null ? ` · HEAP ${localRisk.heapUsedMb}MB` : ""}` : ""}` : browserOnnxStatus === "error" ? `MODEL ERROR: ${localModelError ?? "unknown"} — hybrid continues on the backend stream; edge mode is degraded.` : "WAITING FOR AUDIO"}
-                  </p>
-                  {meta?.audioMode === "edge-local" && (
-                    <p className="mt-3 border border-warn/40 bg-warn-bg px-3 py-2 text-xs text-warn">
-                      Degraded (offline): conversation transcript, speaker identity, and policy fusion require the cloud pipeline and are intentionally unavailable — raw audio is never uploaded in this mode.
-                    </p>
-                  )}
-                </section>
-              )}
             </div>
 
-            <div className="space-y-5">
-              <section className="panel p-4 sm:p-5"><p className="eyebrow">Identity controls</p><h2 className="mt-1 text-sm font-medium text-paper">Verification posture</h2><div className="mt-4 space-y-3"><div className="flex items-center justify-between border-b border-ink-700 pb-3 text-sm"><span className="text-mute">Speaker similarity</span><span className="font-mono text-mute">{speakerSimilarity != null ? `${Math.round(speakerSimilarity * 100)}%` : "UNKNOWN (NO REFERENCE)"}</span></div><div className="flex items-center justify-between border-b border-ink-700 pb-3 text-sm"><span className="text-mute">Identity mismatch</span><span className="font-mono text-mute">{identityMismatch != null ? `${Math.round(identityMismatch * 100)}%` : "NEUTRAL"}</span></div><div className="flex items-center justify-between text-sm"><span className="text-mute">Challenge state</span><span className={`font-mono ${verified ? "text-safe" : showVerification ? "text-danger" : "text-paper"}`}>{verified ? "VERIFIED" : showVerification ? "REQUIRED" : "NOT REQUIRED"}</span></div></div></section>
-              <ThreatBreakdown acousticScore={acousticScore} intentScore={intentScore} identityMismatch={identityMismatch} speakerSimilarity={speakerSimilarity} rationale={rationale} status={status} />
-              <section className="panel p-4 sm:p-5"><div className="flex items-start justify-between gap-3"><div><p className="eyebrow">Protected action</p><h2 className="mt-1 text-sm font-medium text-paper">Current action state</h2></div><span className={`font-mono text-[10px] ${actionState === "BLOCKED" || actionState === "AWAITING VERIFICATION" ? "text-danger" : actionState === "EXECUTED" ? "text-safe" : "text-signal"}`}>{actionState}</span></div><p className="mt-4 text-sm leading-relaxed text-paper-dim">Wire transfer requests remain gated until the current identity and intent signals satisfy policy.</p></section>
-              <WireTransferPanel locked={showVerification} feedback={actionFeedback} pending={actionPending} onAttempt={attemptWireTransfer} />
+            {/* Right Column: Threat Breakdown & Action Clearance */}
+            <div className="space-y-6 lg:col-span-5">
+              {/* Identity Verification Posture */}
+              <section className="rounded-2xl border border-ink-700/40 bg-ink-900/90 p-5 shadow-panel">
+                <div className="flex items-start justify-between gap-3 border-b border-ink-700/40 pb-3">
+                  <div>
+                    <p className="eyebrow text-signal">Identity Assurance</p>
+                    <h2 className="mt-0.5 text-sm font-bold text-paper-bright">
+                      Voice Biometric Posture
+                    </h2>
+                  </div>
+                  <Fingerprint size={18} className="text-signal" />
+                </div>
+
+                <div className="mt-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-ink-700/30 pb-2 text-xs">
+                    <span className="text-paper-muted">Speaker Similarity</span>
+                    <span className="font-mono font-semibold text-paper-bright">
+                      {speakerSimilarity != null
+                        ? `${Math.round(speakerSimilarity * 100)}%`
+                        : "Unknown (Unregistered)"}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between border-b border-ink-700/30 pb-2 text-xs">
+                    <span className="text-paper-muted">Derived Identity Mismatch</span>
+                    <span
+                      className={`font-mono font-bold ${
+                        identityMismatch && identityMismatch >= 0.7
+                          ? "text-danger"
+                          : "text-paper-bright"
+                      }`}
+                    >
+                      {identityMismatch != null
+                        ? `${Math.round(identityMismatch * 100)}%`
+                        : "Neutral"}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-0.5">
+                    <span className="text-paper-muted">Step-Up Challenge State</span>
+                    <StatusBadge
+                      label={verified ? "VERIFIED" : showVerification ? "LOCKED" : "NOT REQUIRED"}
+                      variant={verified ? "safe" : showVerification ? "danger" : "neutral"}
+                      pulse={showVerification}
+                      size="sm"
+                    />
+                  </div>
+                </div>
+              </section>
+
+              {/* Threat Signal Breakdown */}
+              <ThreatBreakdown
+                acousticScore={acousticScore}
+                intentScore={intentScore}
+                identityMismatch={identityMismatch}
+                speakerSimilarity={speakerSimilarity}
+                rationale={rationale}
+                status={status}
+              />
+
+              {/* Wire Transfer Simulation Panel */}
+              <WireTransferPanel
+                locked={showVerification}
+                feedback={actionFeedback}
+                pending={actionPending}
+                onAttempt={attemptWireTransfer}
+              />
             </div>
           </div>
         </div>
       </main>
-      <div className="shrink-0 border-t border-ink-700 bg-ink-900/95 px-4 py-3 backdrop-blur-sm sm:px-6"><div className="mx-auto max-w-[1440px]"><CallControls muted={muted} onHold={onHold} onToggleMute={toggleMute} onToggleHold={toggleHold} onEndCall={endCall} /></div></div>
-      {showVerification && <VerificationModal verification={verification} onRequestCode={requestChallenge} onInputChange={setVerificationInput} onSubmit={submitVerification} onTerminate={endCall} />}
+
+      {/* Docked Audio & Intervention Controls Footer */}
+      <footer className="shrink-0 border-t border-ink-700/40 bg-ink-950/90 px-6 py-3.5 backdrop-blur-md sm:px-8">
+        <div className="mx-auto max-w-[1440px]">
+          <CallControls
+            muted={muted}
+            onHold={onHold}
+            onToggleMute={toggleMute}
+            onToggleHold={toggleHold}
+            onEndCall={endCall}
+          />
+        </div>
+      </footer>
+
+      {/* Out-of-Band Step-Up Challenge Modal */}
+      {showVerification && (
+        <VerificationModal
+          verification={verification}
+          onRequestCode={requestChallenge}
+          onInputChange={setVerificationInput}
+          onSubmit={submitVerification}
+          onTerminate={endCall}
+        />
+      )}
     </div>
   );
 }

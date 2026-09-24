@@ -4,26 +4,32 @@
 
 @layer base {
   * {
-    @apply border-ink-700;
+    border-color: rgba(36, 50, 74, 0.5); /* ink-700/50 */
   }
 
   html {
-    background: #000000;
-    font-size: 18px;
+    background: #090d14;
+    font-size: 16px;
     color-scheme: dark;
   }
 
   body {
-    @apply bg-black text-paper antialiased;
-    font-feature-settings: "kern" 1;
+    background-color: #090d14; /* ink-950 */
+    color: #f1f5f9; /* paper */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    overflow-x: hidden;
   }
 
   ::selection {
-    @apply bg-neutral-200 text-black;
+    background: rgba(0, 229, 255, 0.2);
+    color: #ffffff;
   }
 
   :focus-visible {
-    outline: 2px solid theme("colors.neutral.400");
+    outline: 2px solid #00e5ff; /* signal */
     outline-offset: 2px;
   }
 
@@ -34,15 +40,18 @@
   }
 
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 6px;
+    height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #000000;
+    background: #090d14;
   }
   ::-webkit-scrollbar-thumb {
-    background: theme("colors.ink.600");
-    border-radius: 0;
+    background: #1d283c;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #2e3f5c;
   }
 }
 
@@ -51,45 +60,114 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .panel {
-    @apply border border-ink-700 bg-ink-800;
+  /* ── Editorial Card & Section Surfaces ─────────────────────── */
+  .surface-card {
+    border-radius: 1rem; /* rounded-2xl */
+    border: 1px solid rgba(36, 50, 74, 0.4); /* ink-700/40 */
+    background: rgba(14, 19, 29, 0.9); /* ink-900/90 */
+    box-shadow: 0 10px 30px -5px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.03); /* shadow-panel */
+    backdrop-filter: blur(4px);
+    transition: all 0.15s ease;
   }
 
-  .surface {
-    @apply border border-ink-700 bg-ink-900;
+  .surface-card-subtle {
+    border-radius: 0.75rem; /* rounded-xl */
+    border: 1px solid rgba(36, 50, 74, 0.3); /* ink-700/30 */
+    background: rgba(19, 25, 38, 0.6); /* ink-850/60 */
+    transition: all 0.15s ease;
   }
 
+  .surface-hero {
+    border-radius: 1.5rem; /* rounded-3xl */
+    border: 1px solid rgba(36, 50, 74, 0.5); /* ink-700/50 */
+    background: linear-gradient(to bottom, rgba(19, 25, 38, 0.8), rgba(14, 19, 29, 0.9)); /* ink-850/80 → ink-900/90 */
+    box-shadow: 0 16px 40px -8px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05); /* shadow-elevated */
+    backdrop-filter: blur(12px);
+  }
+
+  /* ── Typography Utilities ───────────────────────────────────── */
   .eyebrow {
-    @apply text-[11px] font-medium uppercase tracking-[0.18em] text-mute;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: #64748b; /* paper-muted */
   }
 
-  .section-rule {
-    @apply flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.16em] text-mute;
+  /* ── HUD Badges ─────────────────────────────────────────────── */
+  .hud-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 0.375rem; /* rounded-md */
+    padding: 0.125rem 0.5rem;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 
-  .section-rule::after {
-    content: "";
-    @apply h-px flex-1 bg-ink-700;
+  .hud-badge-danger {
+    background: rgba(244, 63, 94, 0.12);
+    border: 1px solid rgba(244, 63, 94, 0.35);
+    color: #f43f5e;
   }
 
+  .hud-badge-warn {
+    background: rgba(245, 158, 11, 0.10);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #f59e0b;
+  }
+
+  .hud-badge-safe {
+    background: rgba(16, 185, 129, 0.10);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    color: #10b981;
+  }
+
+  /* ── Form Fields ────────────────────────────────────────────── */
   .field-label {
-    @apply block text-xs font-medium uppercase tracking-[0.12em] text-mute;
+    display: block;
+    font-size: 0.75rem; /* text-xs */
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #94a3b8; /* paper-dim */
   }
 
   .field-input {
-    @apply mt-2 w-full border border-ink-600 bg-black px-3 py-2.5 text-base text-paper outline-none transition-colors placeholder:text-mute-dim focus:border-mute;
+    margin-top: 0.375rem; /* mt-1.5 */
+    width: 100%;
+    border-radius: 0.75rem; /* rounded-xl */
+    border: 1px solid rgba(36, 50, 74, 0.7); /* ink-700/70 */
+    background: rgba(19, 25, 38, 0.8); /* ink-850/80 */
+    padding: 0.625rem 1rem; /* py-2.5 px-4 */
+    font-size: 0.875rem; /* text-sm */
+    color: #f1f5f9; /* text-paper */
+    outline: none;
+    transition: all 0.15s ease;
   }
 
-  .section-label {
-    @apply text-xs font-medium uppercase tracking-[0.1em] text-mute;
+  .field-input::placeholder {
+    color: #4e5e70; /* mute-dim */
   }
 
-  .hairline-top {
-    @apply border-t border-ink-700;
+  .field-input:focus {
+    border-color: #00e5ff; /* signal */
+    background: #131926; /* ink-850 */
+    box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.2); /* ring-signal/20 */
   }
 
-  .hairline-bottom {
-    @apply border-b border-ink-700;
+  /* ── Badge Pill ─────────────────────────────────────────────── */
+  .badge-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 9999px;
+    padding: 0.25rem 0.625rem;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.025em;
   }
 }
 

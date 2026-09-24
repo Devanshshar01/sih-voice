@@ -1,4 +1,6 @@
+import { AlertCircle, Cpu, MessageSquareWarning, UserCheck, UserX } from "lucide-react";
 import type { RiskStatus } from "../types";
+import StatusBadge from "./StatusBadge";
 
 interface ThreatBreakdownProps {
   acousticScore: number;
@@ -9,18 +11,56 @@ interface ThreatBreakdownProps {
   status: RiskStatus;
 }
 
-function VectorBar({ label, value, color }: { label: string; value: number; color: string }) {
-  const pct = Math.round(value * 100);
+interface SignalVectorProps {
+  label: string;
+  sublabel: string;
+  value: number; // 0 to 1
+  icon: React.ReactNode;
+  weightLabel?: string;
+  formatPercent?: boolean;
+}
+
+function SignalVector({
+  label,
+  sublabel,
+  value,
+  icon,
+  weightLabel,
+  formatPercent = true,
+}: SignalVectorProps) {
+  const pct = Math.min(100, Math.max(0, Math.round(value * 100)));
+  const tone =
+    pct >= 70
+      ? { text: "text-danger", bg: "bg-danger", border: "border-danger/30" }
+      : pct >= 40
+        ? { text: "text-warn", bg: "bg-warn", border: "border-warn/30" }
+        : { text: "text-safe", bg: "bg-safe", border: "border-safe/30" };
+
   return (
-    <div>
-      <div className="mb-1 flex items-baseline justify-between text-xs">
-        <span className="text-mute">{label}</span>
-        <span className="tabular font-mono text-paper">{pct}%</span>
+    <div className="rounded-xl border border-ink-700/40 bg-ink-850/60 p-3.5 transition-colors hover:border-ink-600">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <div className="rounded-lg bg-ink-800 p-1.5 text-paper-dim">{icon}</div>
+          <div>
+            <p className="text-xs font-semibold text-paper-bright">{label}</p>
+            <p className="text-[11px] text-paper-muted">{sublabel}</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <span className={`tabular font-mono text-sm font-bold ${tone.text}`}>
+            {formatPercent ? `${pct}%` : pct}
+          </span>
+          {weightLabel && (
+            <span className="block font-mono text-[10px] text-paper-muted">{weightLabel}</span>
+          )}
+        </div>
       </div>
-      <div className="h-1.5 w-full bg-ink-700">
+
+      {/* Progress Bar */}
+      <div className="mt-3 h-2 w-full rounded-full bg-ink-800 overflow-hidden">
         <div
-          className="h-full transition-all duration-500 ease-out"
-          style={{ width: `${pct}%`, backgroundColor: color }}
+          className={`h-full rounded-full transition-all duration-500 ease-out ${tone.bg}`}
+          style={{ width: `${pct}%` }}
         />
       </div>
     </div>
@@ -35,49 +75,97 @@ export default function ThreatBreakdown({
   rationale,
   status,
 }: ThreatBreakdownProps) {
-  const barColor = status === "LOCK_VERIFY" ? "#f0554a" : status === "WARN" ? "#f5a524" : "#4fc3f7";
+  const badgeVariant =
+    status === "LOCK_VERIFY" ? "danger" : status === "WARN" ? "warn" : "safe";
 
   return (
-    <div className="panel flex h-full flex-col p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="eyebrow">Signal fusion</p>
-          <h2 className="mt-1 text-sm font-medium text-paper">Threat breakdown</h2>
-        </div>
-        <span className={`font-mono text-[10px] ${status === "LOCK_VERIFY" ? "text-danger" : status === "WARN" ? "text-warn" : "text-safe"}`}>{status.replace("_", " ")}</span>
-      </div>
-      <div className="mt-4 space-y-4 border-t border-ink-700 pt-4">
-        <VectorBar label="Acoustic synthesis vector" value={acousticScore} color={barColor} />
-        <VectorBar label="Urgency / intent vector" value={intentScore} color={barColor} />
-        {identityMismatch != null ? (
-          <VectorBar
-            label={
-              speakerSimilarity == null
-                ? "Identity mismatch (no reference — neutral)"
-                : `Identity mismatch (similarity ${Math.round(speakerSimilarity * 100)}%)`
-            }
-            value={identityMismatch}
-            color={barColor}
+    <section className="rounded-2xl border border-ink-700/40 bg-ink-900/90 p-5 shadow-panel flex h-full flex-col justify-between">
+      <div>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 border-b border-ink-700/40 pb-3.5">
+          <div>
+            <p className="eyebrow text-signal">Vector Decomposition</p>
+            <h2 className="mt-0.5 text-sm font-bold text-paper-bright">
+              Signal Intelligence &amp; Multi-Vector Fusion
+            </h2>
+          </div>
+          <StatusBadge
+            label={status.replace("_", " ")}
+            variant={badgeVariant}
+            pulse={status === "LOCK_VERIFY"}
+            size="sm"
           />
-        ) : (
-          <VectorBar label="Identity mismatch (no reference — neutral)" value={0} color={barColor} />
-        )}
+        </div>
+
+        {/* Signal Vectors */}
+        <div className="mt-4 space-y-2.5">
+          <SignalVector
+            label="Acoustic Anti-Spoof (MMS-300M)"
+            sublabel="Vocoder artifacts & synthetic phase analysis"
+            value={acousticScore}
+            icon={<Cpu size={16} />}
+            weightLabel="Weight: 50%"
+          />
+
+          <SignalVector
+            label="Conversational Intent &amp; Urgency"
+            sublabel="Coercion tokens & unauthorized transfer pressure"
+            value={intentScore}
+            icon={<MessageSquareWarning size={16} />}
+            weightLabel="Weight: 30%"
+          />
+
+          {identityMismatch != null ? (
+            <SignalVector
+              label="Speaker Identity Divergence"
+              sublabel={
+                speakerSimilarity != null
+                  ? `Voiceprint similarity: ${Math.round(speakerSimilarity * 100)}%`
+                  : "Enrolled profile baseline"
+              }
+              value={identityMismatch}
+              icon={identityMismatch >= 0.7 ? <UserX size={16} /> : <UserCheck size={16} />}
+              weightLabel="Weight: 20%"
+            />
+          ) : (
+            <SignalVector
+              label="Speaker Biometric Match"
+              sublabel="Neutral (unregistered baseline profile)"
+              value={0}
+              icon={<UserCheck size={16} />}
+              weightLabel="Neutral"
+            />
+          )}
+        </div>
       </div>
 
-      <div className="mt-5 flex-1 hairline-top pt-3">
-        <p className="text-xs text-mute">Rationale</p>
+      {/* Decision Rationale */}
+      <div className="mt-5 border-t border-ink-700/40 pt-3.5">
+        <div className="flex items-center justify-between text-xs text-paper-dim">
+          <span className="font-semibold uppercase tracking-wider text-[10px]">
+            Audit Findings &amp; Rationale
+          </span>
+          <span className="font-mono text-[10px] text-paper-muted">{rationale.length} detected</span>
+        </div>
+
         {rationale.length === 0 ? (
-          <p className="mt-2 text-sm text-mute">No signals to report yet.</p>
+          <p className="mt-2 text-xs text-paper-muted leading-relaxed">
+            Nominal acoustics. Zero threat keywords or spoof characteristics detected in the active rolling window.
+          </p>
         ) : (
-          <ul className="mt-2 space-y-1.5">
-            {rationale.map((line) => (
-              <li key={line} className="text-sm leading-snug text-paper-dim">
-                {line}
-              </li>
+          <div className="mt-2.5 space-y-1.5">
+            {rationale.map((r, i) => (
+              <div
+                key={`${r}-${i}`}
+                className="flex items-start gap-2.5 rounded-lg border border-danger/25 bg-danger-bg px-3 py-2 text-xs leading-relaxed text-paper-bright"
+              >
+                <AlertCircle size={14} className="shrink-0 text-danger mt-0.5" />
+                <span>{r}</span>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }
