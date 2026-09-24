@@ -572,30 +572,31 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                 {chartData.length ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData} margin={{ top: 8, right: 12, left: -20, bottom: 0 }}>
-                      <CartesianGrid stroke="#24324a" vertical={false} />
-                      <ReferenceArea y1={0} y2={40} fill="#10b981" fillOpacity={0.06} />
-                      <ReferenceArea y1={40} y2={70} fill="#f59e0b" fillOpacity={0.08} />
-                      <ReferenceArea y1={70} y2={100} fill="#f43f5e" fillOpacity={0.12} />
+                      <CartesianGrid stroke="#383838" vertical={false} />
+                      <ReferenceArea y1={0} y2={40} fill="#E6E6E6" fillOpacity={0.03} />
+                      <ReferenceArea y1={40} y2={70} fill="#8E8E8E" fillOpacity={0.06} />
+                      <ReferenceArea y1={70} y2={100} fill="#FFFFFF" fillOpacity={0.10} />
                       <XAxis
                         dataKey="t"
                         tickFormatter={(v) => `T+${v}s`}
-                        stroke="#64748b"
+                        stroke="#8E8E8E"
                         fontSize={11}
                         fontFamily="'JetBrains Mono', monospace"
                       />
                       <YAxis
                         domain={[0, 100]}
-                        stroke="#64748b"
+                        stroke="#8E8E8E"
                         fontSize={11}
                         fontFamily="'JetBrains Mono', monospace"
                       />
                       <Tooltip
                         contentStyle={{
-                          background: "#0e131d",
+                          background: "#141414",
                           borderRadius: "12px",
-                          border: "1px solid #2e3f5c",
+                          border: "1px solid #383838",
                           fontFamily: "'JetBrains Mono', monospace",
                           fontSize: 12,
+                          color: "#E6E6E6",
                         }}
                         labelFormatter={(v) => `Time: T+${v}s`}
                         formatter={(val: number, name: string) => [
@@ -610,7 +611,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                       <Line
                         type="monotone"
                         dataKey="score"
-                        stroke="#f43f5e"
+                        stroke="#FFFFFF"
                         strokeWidth={2.5}
                         dot={false}
                         name="score"
@@ -618,7 +619,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                       <Line
                         type="monotone"
                         dataKey="acoustic"
-                        stroke="#00e5ff"
+                        stroke="#E6E6E6"
                         strokeWidth={1.5}
                         strokeDasharray="3 3"
                         dot={false}
@@ -627,7 +628,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                       <Line
                         type="monotone"
                         dataKey="intent"
-                        stroke="#f59e0b"
+                        stroke="#8E8E8E"
                         strokeWidth={1.5}
                         strokeDasharray="4 2"
                         dot={false}

@@ -5,56 +5,56 @@ export default {
     extend: {
       colors: {
         ink: {
-          950: "#090d14",
-          900: "#0e131d",
-          850: "#131926",
-          800: "#172030",
-          750: "#1d283c",
-          700: "#24324a",
-          600: "#2e3f5c",
-          500: "#445a80",
-          400: "#657d9f",
-          300: "#93a6c2",
+          950: "#0D0D0D", // Deep rich black
+          900: "#141414", // Surface elevation 1
+          850: "#1C1C1C", // Surface elevation 2
+          800: "#222222", // Surface elevation hover
+          750: "#2B2B2B", // Charcoal container swatch
+          700: "#383838", // Subdued border
+          600: "#4A4A4A", // Divider line
+          500: "#666666", // Medium muted icon/border
+          400: "#8E8E8E", // Silver grey swatch
+          300: "#B0B0B0", // Light silver grey
         },
         paper: {
-          DEFAULT: "#f1f5f9",
-          dim: "#94a3b8",
-          muted: "#64748b",
-          bright: "#ffffff",
+          DEFAULT: "#E6E6E6", // Primary light silver text swatch
+          dim: "#8E8E8E",     // Secondary text swatch
+          muted: "#666666",   // Muted caption text
+          bright: "#FFFFFF",  // Pure white highlight
         },
         mute: {
-          DEFAULT: "#7e8f9f",
-          dim: "#4e5e70",
+          DEFAULT: "#8E8E8E",
+          dim: "#444444",
         },
         signal: {
-          DEFAULT: "#00e5ff",
-          dim: "#00b4d8",
-          bg: "rgba(0, 229, 255, 0.08)",
-          border: "rgba(0, 229, 255, 0.25)",
+          DEFAULT: "#E6E6E6",
+          dim: "#B0B0B0",
+          bg: "rgba(230, 230, 230, 0.08)",
+          border: "rgba(230, 230, 230, 0.25)",
         },
         safe: {
-          DEFAULT: "#10b981",
-          dim: "#059669",
-          bg: "rgba(16, 185, 129, 0.08)",
-          border: "rgba(16, 185, 129, 0.25)",
+          DEFAULT: "#D4D4D4",
+          dim: "#999999",
+          bg: "rgba(212, 212, 212, 0.08)",
+          border: "rgba(212, 212, 212, 0.25)",
         },
         warn: {
-          DEFAULT: "#f59e0b",
-          dim: "#d97706",
-          bg: "rgba(245, 158, 11, 0.08)",
-          border: "rgba(245, 158, 11, 0.25)",
+          DEFAULT: "#8E8E8E",
+          dim: "#666666",
+          bg: "rgba(142, 142, 142, 0.08)",
+          border: "rgba(142, 142, 142, 0.25)",
         },
         danger: {
-          DEFAULT: "#f43f5e",
-          dim: "#e11d48",
-          bg: "rgba(244, 63, 94, 0.08)",
-          border: "rgba(244, 63, 94, 0.28)",
+          DEFAULT: "#FFFFFF",
+          dim: "#CCCCCC",
+          bg: "rgba(255, 255, 255, 0.12)",
+          border: "rgba(255, 255, 255, 0.40)",
         },
         intel: {
-          DEFAULT: "#818cf8",
-          dim: "#6366f1",
-          bg: "rgba(129, 140, 248, 0.08)",
-          border: "rgba(129, 140, 248, 0.25)",
+          DEFAULT: "#B0B0B0",
+          dim: "#8E8E8E",
+          bg: "rgba(176, 176, 176, 0.08)",
+          border: "rgba(176, 176, 176, 0.25)",
         },
       },
       fontFamily: {
@@ -63,12 +63,12 @@ export default {
       },
       boxShadow: {
         none: "none",
-        panel: "0 10px 30px -5px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.03)",
-        elevated: "0 16px 40px -8px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05)",
-        signal: "0 0 15px -3px rgba(0,240,255,0.25)",
-        "glow-danger": "0 0 20px -3px rgba(239,68,68,0.30)",
-        "glow-safe": "0 0 20px -3px rgba(16,185,129,0.30)",
-        "glow-warn": "0 0 20px -3px rgba(245,158,11,0.30)",
+        panel: "0 10px 30px -5px rgba(0,0,0,0.85), 0 0 0 1px rgba(230,230,230,0.08)",
+        elevated: "0 16px 40px -8px rgba(0,0,0,0.95), 0 0 0 1px rgba(230,230,230,0.14)",
+        signal: "0 0 20px -3px rgba(230,230,230,0.30)",
+        "glow-danger": "0 0 22px -2px rgba(255,255,255,0.40)",
+        "glow-safe": "0 0 20px -3px rgba(212,212,212,0.25)",
+        "glow-warn": "0 0 20px -3px rgba(142,142,142,0.25)",
       },
       keyframes: {
         sweep: {

@@ -11,22 +11,22 @@ const BAR_COUNT = 56;
 
 const STATUS_PALETTES: Record<RiskStatus, { top: string; bottom: string; peak: string; glow: string }> = {
   ALLOW: {
-    top: "#00f0ff",
-    bottom: "#0284c7",
-    peak: "#38bdf8",
-    glow: "rgba(0, 240, 255, 0.2)",
+    top: "#E6E6E6",
+    bottom: "#4A4A4A",
+    peak: "#FFFFFF",
+    glow: "rgba(230, 230, 230, 0.2)",
   },
   WARN: {
-    top: "#f59e0b",
-    bottom: "#b45309",
-    peak: "#fde047",
-    glow: "rgba(245, 158, 11, 0.25)",
+    top: "#8E8E8E",
+    bottom: "#2B2B2B",
+    peak: "#B0B0B0",
+    glow: "rgba(142, 142, 142, 0.25)",
   },
   LOCK_VERIFY: {
-    top: "#ef4444",
-    bottom: "#991b1b",
-    peak: "#fca5a5",
-    glow: "rgba(239, 68, 68, 0.3)",
+    top: "#FFFFFF",
+    bottom: "#666666",
+    peak: "#FFFFFF",
+    glow: "rgba(255, 255, 255, 0.35)",
   },
 };
 

@@ -19,7 +19,7 @@ const STATUS_CONFIG: Record<
   ALLOW: {
     label: "AUTHENTIC VOICE",
     description: "Acoustic, speaker, and intent features within nominal policy tolerance.",
-    color: "#10b981",
+    color: "#D4D4D4",
     textColor: "text-safe",
     badgeBg: "bg-safe-bg",
     badgeBorder: "border-safe/30",
@@ -27,7 +27,7 @@ const STATUS_CONFIG: Record<
   WARN: {
     label: "SUSPICIOUS DYNAMICS",
     description: "Acoustic irregularities or conversational urgency detected.",
-    color: "#f59e0b",
+    color: "#8E8E8E",
     textColor: "text-warn",
     badgeBg: "bg-warn-bg",
     badgeBorder: "border-warn/30",
@@ -35,7 +35,7 @@ const STATUS_CONFIG: Record<
   LOCK_VERIFY: {
     label: "CRITICAL THREAT: CLONE DETECTED",
     description: "High-confidence synthetic audio signature or coercive transfer pressure.",
-    color: "#f43f5e",
+    color: "#FFFFFF",
     textColor: "text-danger",
     badgeBg: "bg-danger-bg",
     badgeBorder: "border-danger/40",
@@ -82,11 +82,11 @@ export default function TrustGauge({ score, status }: TrustGaugeProps) {
         {/* Spectrum Bar Segments */}
         <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-ink-800 flex">
           {/* Safe Zone (0-40) */}
-          <div className="h-full w-[40%] bg-gradient-to-r from-emerald-600/40 to-emerald-500/60" />
+          <div className="h-full w-[40%] bg-gradient-to-r from-paper-dim/20 to-paper-dim/40" />
           {/* Warn Zone (40-70) */}
-          <div className="h-full w-[30%] bg-gradient-to-r from-amber-500/50 to-amber-500/70" />
+          <div className="h-full w-[30%] bg-gradient-to-r from-paper-dim/50 to-paper-dim/75" />
           {/* Lock Zone (70-100) */}
-          <div className="h-full w-[30%] bg-gradient-to-r from-rose-500/60 to-rose-600/80" />
+          <div className="h-full w-[30%] bg-gradient-to-r from-paper/80 to-paper-bright" />
 
           {/* Current Score Marker Line */}
           <div
