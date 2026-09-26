@@ -23,6 +23,7 @@ import StatusBadge from "./StatusBadge";
 import StartCallForm from "./StartCallForm";
 import VerificationModal from "./VerificationModal";
 import ShapeWaves from "./ShapeWaves";
+import { getHeroWaveColors } from "../lib/heroTheme";
 import {
   verifyForensicsEvidence,
   verifyEvidenceIntegrity,
@@ -115,9 +116,13 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
     "Conversational intent parameters indicate low financial risk.",
   ];
 
+  // Canvas cannot consume CSS var() — resolve the wave colors from the theme.
+  const heroWaveColors = getHeroWaveColors();
+
   return (
-    <div className="relative min-h-screen bg-[#080B11] text-[#0F172A] selection:bg-[#C084FC]/30 selection:text-[#0F172A]">
-      {/* ── SECTION 1: CLOUDPILOT VIBRANT PURPLE/VIOLET HERO ─────────── */}
+    <div className="relative min-h-screen bg-hero-base text-[#0F172A] selection:bg-hero-selection selection:text-hero-on-light">
+      {/* ── SECTION 1: HERO ───────────────────────────────────────────
+          All colors come from the --hero-* block in src/index.css.    */}
       <section id="overview" className="hero-cloudpilot-bg relative overflow-hidden text-white">
         {/* ShapeWaves Ambient Interactive Wavefield (covers full hero from top:0) */}
         <div className="absolute inset-0 z-0 pointer-events-auto opacity-40">
@@ -126,8 +131,8 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
             shapes="mixed"
             cellSize={14}
             dotSize={0.72}
-            color="#7C3AED"
-            hoverColor="#E879F9"
+            color={heroWaveColors.color}
+            hoverColor={heroWaveColors.hoverColor}
             backgroundColor="transparent"
             speed={0.8}
             scale={1.3}
@@ -147,14 +152,14 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
         </div>
 
         {/* Ambient luminous glow overlay */}
-        <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-[500px] w-[800px] rounded-full bg-gradient-to-b from-[#A855F7]/25 via-[#EC4899]/15 to-transparent blur-[120px] -z-0" />
+        <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-[500px] w-[800px] rounded-full bg-gradient-to-b from-hero-haloA via-hero-haloB to-transparent blur-[120px] -z-0" />
 
         {/* ── TOP NAVBAR (FLOATING GLASSMORPHIC DIRECTLY OVER SHAPEWAVES) ───── */}
         <nav className="sticky top-0 z-50 px-4 py-3 sm:px-6 sm:py-4 transition-all">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 rounded-full border border-white/15 bg-[#080B11]/70 px-6 py-3 shadow-[0_8px_32px_0_rgba(0,0,0,0.45)] backdrop-blur-2xl">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 rounded-full border border-white/15 bg-hero-glass px-6 py-3 shadow-[0_8px_32px_0_rgba(0,0,0,0.45)] backdrop-blur-2xl">
             <div className="flex items-center gap-3">
               {/* Brand Logo: Gradient Circle Icon */}
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-[#7C3AED] via-[#A855F7] to-[#EC4899] text-white shadow-[0_0_15px_rgba(168,85,247,0.5)]">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-hero-logoA via-hero-logoB to-hero-logoC text-white shadow-[0_0_15px_var(--hero-logo-glow)]">
                 <Shield size={18} />
               </div>
               <span className="text-lg font-extrabold tracking-tight text-white">SatyaVoice</span>
@@ -189,7 +194,7 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
                       const el = document.getElementById("live-intelligence");
                       el?.scrollIntoView({ behavior: "smooth" });
                     }}
-                    className="rounded-full bg-white px-5 py-2 text-xs font-bold text-[#080B11] shadow-lg transition-all hover:bg-slate-100"
+                    className="rounded-full bg-white px-5 py-2 text-xs font-bold text-hero-onLight shadow-lg transition-all hover:bg-slate-100"
                   >
                     Active Session ↓
                   </button>
@@ -198,7 +203,7 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setShowSetupModal(true)}
-                    className="rounded-full bg-white px-5 py-2 text-xs font-bold text-[#080B11] shadow-lg transition-all hover:bg-slate-100 hover:scale-[1.03] active:scale-[0.98]"
+                    className="rounded-full bg-white px-5 py-2 text-xs font-bold text-hero-onLight shadow-lg transition-all hover:bg-slate-100 hover:scale-[1.03] active:scale-[0.98]"
                   >
                     Get Started
                   </button>
@@ -217,7 +222,7 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
             {/* Left Headline */}
             <div className="lg:col-span-7 space-y-6">
               {/* Eyebrow Pill */}
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#E879F9]/40 bg-[#3B1278]/60 px-3.5 py-1.5 text-xs font-bold text-[#F0ABFC] backdrop-blur-md shadow-[0_0_12px_rgba(232,121,249,0.2)]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-hero-eyebrowBorder bg-hero-eyebrowBg px-3.5 py-1.5 text-xs font-bold text-hero-eyebrowText backdrop-blur-md shadow-[0_0_12px_var(--hero-eyebrow-glow)]">
                 <span>⚡</span>
                 <span className="uppercase tracking-wider">All-In-One Voice Defense Platform</span>
                 <span>⚡</span>
@@ -227,7 +232,7 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
               <h1 className="text-4xl sm:text-6xl lg:text-[68px] font-black tracking-tight text-white leading-[1.05] drop-shadow-[0_2px_24px_rgba(0,0,0,0.8)]">
                 Simplify. <br />
                 Protect. <br />
-                <span className="bg-gradient-to-r from-[#F0ABFC] via-[#F472B6] to-[#C4B5FD] bg-clip-text text-transparent drop-shadow-none">
+                <span className="bg-gradient-to-r from-hero-headlineA via-hero-headlineB to-hero-headlineC bg-clip-text text-transparent drop-shadow-none">
                   Secure Your Voice.
                 </span> <br />
                 All in One Platform.
@@ -244,14 +249,14 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
               <div className="flex flex-wrap items-center gap-4">
                 <button
                   onClick={() => setShowSetupModal(true)}
-                  className="rounded-full bg-white px-7 py-3.5 text-sm font-extrabold text-[#080B11] shadow-2xl transition-all hover:bg-slate-100 hover:scale-[1.03] active:scale-[0.98]"
+                  className="rounded-full bg-white px-7 py-3.5 text-sm font-extrabold text-hero-onLight shadow-2xl transition-all hover:bg-slate-100 hover:scale-[1.03] active:scale-[0.98]"
                 >
                   Start Free Trial
                 </button>
 
                 <a
                   href="#live-intelligence"
-                  className="flex items-center gap-2 rounded-full px-6 py-3.5 text-sm font-bold text-white transition-all hover:text-[#C084FC]"
+                  className="flex items-center gap-2 rounded-full px-6 py-3.5 text-sm font-bold text-white transition-all hover:text-hero-accent"
                 >
                   <span>Watch Demo</span>
                   <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-white">
@@ -661,7 +666,7 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
         <div className="mx-auto max-w-4xl space-y-8">
           <h2 className="text-4xl sm:text-6xl font-black text-white leading-tight">
             Simplify. Protect. <br />
-            <span className="bg-gradient-to-r from-[#C084FC] via-[#E879F9] to-[#818CF8] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[#0a144a] via-[#0a144a] to-[#0a144a] bg-clip-text text-transparent">
               Secure Your Voice.
             </span>
           </h2>
@@ -669,7 +674,7 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
           <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
             <button
               onClick={() => setShowSetupModal(true)}
-              className="rounded-full bg-white px-8 py-4 text-sm font-extrabold text-[#080B11] shadow-2xl transition-all hover:bg-slate-100 hover:scale-[1.03] active:scale-[0.98]"
+              className="rounded-full bg-white px-8 py-4 text-sm font-extrabold text-hero-onLight shadow-2xl transition-all hover:bg-slate-100 hover:scale-[1.03] active:scale-[0.98]"
             >
               Start Live Protection
             </button>

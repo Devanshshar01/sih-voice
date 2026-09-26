@@ -2,6 +2,77 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ══════════════════════════════════════════════════════════════════
+   HERO THEME — single source of truth for the landing hero.
+
+   To re-skin the hero, change values HERE ONLY. Everything else
+   (the .hero-cloudpilot-bg gradient, the `hero-*` Tailwind classes
+   defined in tailwind.config.js, and the ShapeWaves canvas colors
+   resolved by src/lib/heroTheme.ts) reads from these properties.
+
+   Alpha is pre-baked into the values because Tailwind cannot apply
+   opacity modifiers (`bg-hero-glass/70`) to a `var()` color.
+   ══════════════════════════════════════════════════════════════════ */
+:root {
+  /* Page/hero base — also the dark text color on white pill buttons */
+  --hero-base: #080b11;
+  --hero-on-light: #080b11;
+
+  /* Glassmorphic navbar fill (70% alpha) */
+  --hero-glass: rgb(3, 3, 3)
+
+  /* Interactive accent — "Watch Demo" hover, text selection */
+  --hero-accent: #0a0039;
+  --hero-selection: rgb(29, 0, 248);
+
+  /* Ambient halo bloom behind the headline */
+  --hero-halo-a: rgba(168, 85, 247, 0.25);
+  --hero-halo-b: rgba(236, 72, 153, 0.15);
+
+  /* Logo mark gradient + drop glow */
+  --hero-logo-a: #0b255a;
+  --hero-logo-b: #02168a;
+  --hero-logo-c: #03001a;
+  --hero-logo-glow: rgba(5, 6, 6, 0.973);
+
+  /* Eyebrow pill */
+  --hero-eyebrow-border: rgba(38, 0, 176, 0.4);
+  --hero-eyebrow-bg: rgba(255, 255, 255, 0.6);
+  --hero-eyebrow-text: #1c133f;
+  --hero-eyebrow-glow: rgba(232, 121, 249, 0.2);
+
+  /* Gradient headline "Secure Your Voice."
+     All three stops are intentionally the same value, which collapses
+     the gradient into a solid fill of #0a144a. The three-stop gradient
+     is retained so a future gradient can be restored by editing here.
+
+     WARNING: this color is nearly invisible against the hero backdrop.
+     #0a144a on the surrounding gradient measures 1.01-1.27:1, far below
+     the 3:1 WCAG AA minimum for large text. It only becomes legible in
+     the bottom ~8% of the hero where the gradient reaches white. */
+  --hero-headline-a: #3653f7;
+  --hero-headline-b: #374cc4;
+  --hero-headline-c: hsl(231, 91%, 47%);
+
+  /* ── The 7-stop hero background gradient ──────────────────────
+     Fades midnight -> violet -> white where it meets the light
+     canvas below. Change these in order top to bottom.            */
+  --hero-stop-1: #000000;
+  --hero-stop-2: #041131;
+  --hero-stop-3: #0000ae;
+  --hero-stop-4: #0c0230;
+  --hero-stop-5: #15233a;
+  --hero-stop-6: #1a1aeaa9;
+  --hero-stop-7: #ffffff;
+
+  /* Radial bloom at the top of the hero */
+  --hero-radial: rgb(8, 3, 84);
+
+  /* ── ShapeWaves canvas (resolved at runtime, see heroTheme.ts) ── */
+  --hero-wave: #2042ec;
+  --hero-wave-hover: #0144b0;
+}
+
 @layer base {
   * {
     border-color: #E2E8F0;
@@ -30,7 +101,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid #7C3AED;
+    outline: 2px solid #1b339f;
     outline-offset: 2px;
   }
 
@@ -61,23 +132,25 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* ── CloudPilot Hero Vibrant Deep Purple/Midnight Gradient Surface ──── */
+  /* ── CloudPilot Hero Deep Gradient Surface ──────────────────────
+     Every value comes from the --hero-* block in :root above, so the
+     hero can be re-skinned by editing that block only.             */
   .hero-cloudpilot-bg {
-    background: radial-gradient(circle at 50% 15%, rgba(124, 58, 237, 0.22) 0%, transparent 60%),
+    background: radial-gradient(circle at 50% 15%, var(--hero-radial) 0%, transparent 60%),
       linear-gradient(
         180deg,
-        #05070B 0%,
-        #080B12 20%,
-        #0E0C22 40%,
-        #150D32 60%,
-        #220E48 80%,
-        #3B1278 92%,
-        #FFFFFF 100%
+        var(--hero-stop-1) 0%,
+        var(--hero-stop-2) 20%,
+        var(--hero-stop-3) 40%,
+        var(--hero-stop-4) 60%,
+        var(--hero-stop-5) 80%,
+        var(--hero-stop-6) 92%,
+        var(--hero-stop-7) 100%
       );
-  }
+  } 
 
   .dot-pattern {
-    background-image: radial-gradient(#CBD5E1 1px, transparent 1px);
+    background-image: radial-gradient(#1267cf 1px, transparent 1px);
     background-size: 16px 16px;
   }
 
@@ -111,7 +184,7 @@
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.14em;
-    color: #7C3AED; /* Violet accent */
+    color: #5165db; /* Violet accent */
   }
 
   /* ── HUD / Security Badges ───────────────────────────────────── */
@@ -152,7 +225,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #475569;
+    color: #1063d6;
   }
 
   .field-input {
@@ -173,7 +246,7 @@
   }
 
   .field-input:focus {
-    border-color: #7C3AED;
+    border-color: #2e3bca;
     background: #FFFFFF;
     box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18);
   }

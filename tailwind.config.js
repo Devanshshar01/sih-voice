@@ -14,6 +14,32 @@ export default {
           softBg: "#F8FAFC",
           cardBorder: "#E2E8F0",
         },
+        // HERO THEME — mirrors the --hero-* custom properties in src/index.css.
+        // Every hero class below resolves to `var(--hero-*)`, so re-skinning the
+        // hero only requires editing the :root block in index.css.
+        // NOTE: these are plain var() values, so Tailwind opacity modifiers
+        // (`bg-hero-base/70`) cannot be used on them — the alpha is baked into
+        // the custom property instead (e.g. --hero-glass is already 70%).
+        hero: {
+          base: "var(--hero-base)",
+          glass: "var(--hero-glass)",
+          accent: "var(--hero-accent)",
+          selection: "var(--hero-selection)",
+          haloA: "var(--hero-halo-a)",
+          haloB: "var(--hero-halo-b)",
+          logoA: "var(--hero-logo-a)",
+          logoB: "var(--hero-logo-b)",
+          logoC: "var(--hero-logo-c)",
+          logoGlow: "var(--hero-logo-glow)",
+          eyebrowBorder: "var(--hero-eyebrow-border)",
+          eyebrowBg: "var(--hero-eyebrow-bg)",
+          eyebrowText: "var(--hero-eyebrow-text)",
+          eyebrowGlow: "var(--hero-eyebrow-glow)",
+          headlineA: "var(--hero-headline-a)",
+          headlineB: "var(--hero-headline-b)",
+          headlineC: "var(--hero-headline-c)",
+          onLight: "var(--hero-on-light)", // dark text/icons sitting on white pills
+        },
         // Exact Brand Foundation: Blue Forensic Intelligence + CloudPilot Hybrids
         blueWhale: {
           DEFAULT: "#080B11",
