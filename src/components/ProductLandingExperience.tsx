@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   Activity,
   CheckCircle2,
@@ -22,6 +22,7 @@ import ForensicsView from "./ForensicsView";
 import StatusBadge from "./StatusBadge";
 import StartCallForm from "./StartCallForm";
 import VerificationModal from "./VerificationModal";
+import ShapeWaves from "./ShapeWaves";
 import {
   verifyForensicsEvidence,
   verifyEvidenceIntegrity,
@@ -55,58 +56,6 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
   const [showIntegrityResultModal, setShowIntegrityResultModal] = useState(false);
   const [downloadingReport, setDownloadingReport] = useState(false);
 
-  // Hero interactive Canvas visualizer
-  const heroCanvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = heroCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let animationFrame: number;
-    let phaseOffset = 0;
-
-    const renderWave = () => {
-      const { width, height } = canvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-      ctx.scale(dpr, dpr);
-
-      ctx.clearRect(0, 0, width, height);
-
-      // Multi-layer wave simulation in CloudPilot purple/pink/indigo colors
-      const lines = [
-        { color: "rgba(192, 132, 252, 0.85)", speed: 0.02, freq: 0.015, amp: 28 },
-        { color: "rgba(244, 114, 182, 0.70)", speed: 0.03, freq: 0.022, amp: 18 },
-        { color: "rgba(129, 140, 248, 0.50)", speed: 0.015, freq: 0.008, amp: 38 },
-      ];
-
-      phaseOffset += 0.02;
-
-      lines.forEach((line) => {
-        ctx.beginPath();
-        ctx.lineWidth = 2.5;
-        ctx.strokeStyle = line.color;
-
-        for (let x = 0; x < width; x += 3) {
-          const y =
-            height / 2 +
-            Math.sin(x * line.freq + phaseOffset * line.speed * 50) * line.amp +
-            Math.cos(x * 0.005 + phaseOffset * 0.5) * 8;
-          if (x === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-      });
-
-      animationFrame = requestAnimationFrame(renderWave);
-    };
-
-    renderWave();
-    return () => cancelAnimationFrame(animationFrame);
-  }, []);
 
   const handleVerifyIntegrityClick = async () => {
     setVerifyingApi(true);
@@ -232,7 +181,37 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
 
       {/* ── SECTION 1: CLOUDPILOT VIBRANT PURPLE/VIOLET HERO ─────────── */}
       <section id="overview" className="hero-cloudpilot-bg relative overflow-hidden px-6 pt-16 pb-28 text-white sm:px-8 lg:pt-24 lg:pb-36">
-        <div className="mx-auto max-w-7xl space-y-16">
+        {/* ShapeWaves Ambient Interactive Wavefield */}
+        <div className="absolute inset-0 z-0 pointer-events-auto opacity-80">
+          <ShapeWaves
+            text=""
+            shapes="mixed"
+            cellSize={14}
+            dotSize={0.78}
+            color="#C084FC"
+            hoverColor="#FFFFFF"
+            backgroundColor="transparent"
+            speed={1.0}
+            scale={1.2}
+            contrast={1.2}
+            brightness={0.45}
+            flow={0.2}
+            direction={35}
+            fade={0.2}
+            interactive={true}
+            splashRadius={50}
+            splashStrength={0.6}
+            glow={0.4}
+            intro={true}
+            introDuration={1.5}
+            paused={false}
+          />
+        </div>
+
+        {/* Ambient luminous glow overlay */}
+        <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-[500px] w-[800px] rounded-full bg-gradient-to-b from-[#A855F7]/25 via-[#EC4899]/15 to-transparent blur-[120px] -z-0" />
+
+        <div className="relative z-10 mx-auto max-w-7xl space-y-16">
           {/* Hero Content Grid */}
           <div className="grid gap-12 lg:grid-cols-12 lg:items-center">
             {/* Left Headline */}

@@ -11,10 +11,10 @@ const BAR_COUNT = 56;
 
 const STATUS_PALETTES: Record<RiskStatus, { top: string; bottom: string; peak: string; glow: string }> = {
   ALLOW: {
-    top: "#2A4D88",   // Deep Blue
-    bottom: "#B1BBC8",// Glacial Salt
-    peak: "#19315A",   // Navy Peak
-    glow: "rgba(42, 77, 136, 0.20)",
+    top: "#A855F7",   // CloudPilot Purple
+    bottom: "#6366F1",// CloudPilot Indigo
+    peak: "#7C3AED",   // CloudPilot Violet Peak
+    glow: "rgba(168, 85, 247, 0.25)",
   },
   WARN: {
     top: "#D97706",   // Amber 600
