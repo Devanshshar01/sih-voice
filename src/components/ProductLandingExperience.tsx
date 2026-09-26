@@ -116,72 +116,10 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
   ];
 
   return (
-    <div className="relative min-h-screen bg-white text-[#0F172A] selection:bg-[#C084FC]/30 selection:text-[#0F172A]">
-      {/* ── CLOUDPILOT TOP NAVBAR (ULTRA-GLASSMORPHIC FLOATING BAR) ───── */}
-      <nav className="sticky top-0 z-50 px-4 py-3 sm:px-6 sm:py-4 transition-all">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 rounded-full border border-white/15 bg-[#080B11]/70 px-6 py-3 shadow-[0_8px_32px_0_rgba(0,0,0,0.45)] backdrop-blur-2xl">
-          <div className="flex items-center gap-3">
-            {/* Brand Logo: Gradient Circle Icon */}
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-[#7C3AED] via-[#A855F7] to-[#EC4899] text-white shadow-[0_0_15px_rgba(168,85,247,0.5)]">
-              <Shield size={18} />
-            </div>
-            <span className="text-lg font-extrabold tracking-tight text-white">SatyaVoice</span>
-          </div>
-
-          {/* Nav Dropdown Links */}
-          <div className="hidden lg:flex items-center gap-8 text-xs font-semibold text-slate-300">
-            <a href="#overview" className="transition-colors hover:text-white flex items-center gap-1">
-              <span>Product</span>
-              <ChevronDown size={13} className="text-slate-400" />
-            </a>
-            <a href="#threat" className="transition-colors hover:text-white flex items-center gap-1">
-              <span>Solutions</span>
-              <ChevronDown size={13} className="text-slate-400" />
-            </a>
-            <a href="#signals" className="transition-colors hover:text-white">Signals</a>
-            <a href="#live-intelligence" className="transition-colors hover:text-white flex items-center gap-1">
-              <span>Live Monitor</span>
-              <ChevronDown size={13} className="text-slate-400" />
-            </a>
-            <a href="#forensic-evidence" className="transition-colors hover:text-white">Forensics</a>
-            <a href="#verification" className="transition-colors hover:text-white">Verification</a>
-          </div>
-
-          {/* Action CTAs: Solid White Pill Button + Profile */}
-          <div className="flex items-center gap-3">
-            {phase === "active" ? (
-              <div className="flex items-center gap-3">
-                <StatusBadge label="Call Monitored" variant="safe" pulse icon />
-                <button
-                  onClick={() => {
-                    const el = document.getElementById("live-intelligence");
-                    el?.scrollIntoView({ behavior: "smooth" });
-                  }}
-                  className="rounded-full bg-white px-5 py-2 text-xs font-bold text-[#080B11] shadow-lg transition-all hover:bg-slate-100"
-                >
-                  Active Session ↓
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setShowSetupModal(true)}
-                  className="rounded-full bg-white px-5 py-2 text-xs font-bold text-[#080B11] shadow-lg transition-all hover:bg-slate-100 hover:scale-[1.03] active:scale-[0.98]"
-                >
-                  Get Started
-                </button>
-                <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white">
-                  <User size={15} />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </nav>
-
+    <div className="relative min-h-screen bg-[#080B11] text-[#0F172A] selection:bg-[#C084FC]/30 selection:text-[#0F172A]">
       {/* ── SECTION 1: CLOUDPILOT VIBRANT PURPLE/VIOLET HERO ─────────── */}
-      <section id="overview" className="hero-cloudpilot-bg relative overflow-hidden px-6 pt-16 pb-28 text-white sm:px-8 lg:pt-24 lg:pb-36">
-        {/* ShapeWaves Ambient Interactive Wavefield */}
+      <section id="overview" className="hero-cloudpilot-bg relative overflow-hidden text-white">
+        {/* ShapeWaves Ambient Interactive Wavefield (covers full hero from top:0) */}
         <div className="absolute inset-0 z-0 pointer-events-auto opacity-80">
           <ShapeWaves
             text=""
@@ -211,7 +149,69 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
         {/* Ambient luminous glow overlay */}
         <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-[500px] w-[800px] rounded-full bg-gradient-to-b from-[#A855F7]/25 via-[#EC4899]/15 to-transparent blur-[120px] -z-0" />
 
-        <div className="relative z-10 mx-auto max-w-7xl space-y-16">
+        {/* ── TOP NAVBAR (FLOATING GLASSMORPHIC DIRECTLY OVER SHAPEWAVES) ───── */}
+        <nav className="sticky top-0 z-50 px-4 py-3 sm:px-6 sm:py-4 transition-all">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 rounded-full border border-white/15 bg-[#080B11]/70 px-6 py-3 shadow-[0_8px_32px_0_rgba(0,0,0,0.45)] backdrop-blur-2xl">
+            <div className="flex items-center gap-3">
+              {/* Brand Logo: Gradient Circle Icon */}
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-[#7C3AED] via-[#A855F7] to-[#EC4899] text-white shadow-[0_0_15px_rgba(168,85,247,0.5)]">
+                <Shield size={18} />
+              </div>
+              <span className="text-lg font-extrabold tracking-tight text-white">SatyaVoice</span>
+            </div>
+
+            {/* Nav Dropdown Links */}
+            <div className="hidden lg:flex items-center gap-8 text-xs font-semibold text-slate-300">
+              <a href="#overview" className="transition-colors hover:text-white flex items-center gap-1">
+                <span>Product</span>
+                <ChevronDown size={13} className="text-slate-400" />
+              </a>
+              <a href="#threat" className="transition-colors hover:text-white flex items-center gap-1">
+                <span>Solutions</span>
+                <ChevronDown size={13} className="text-slate-400" />
+              </a>
+              <a href="#signals" className="transition-colors hover:text-white">Signals</a>
+              <a href="#live-intelligence" className="transition-colors hover:text-white flex items-center gap-1">
+                <span>Live Monitor</span>
+                <ChevronDown size={13} className="text-slate-400" />
+              </a>
+              <a href="#forensic-evidence" className="transition-colors hover:text-white">Forensics</a>
+              <a href="#verification" className="transition-colors hover:text-white">Verification</a>
+            </div>
+
+            {/* Action CTAs: Solid White Pill Button + Profile */}
+            <div className="flex items-center gap-3">
+              {phase === "active" ? (
+                <div className="flex items-center gap-3">
+                  <StatusBadge label="Call Monitored" variant="safe" pulse icon />
+                  <button
+                    onClick={() => {
+                      const el = document.getElementById("live-intelligence");
+                      el?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                    className="rounded-full bg-white px-5 py-2 text-xs font-bold text-[#080B11] shadow-lg transition-all hover:bg-slate-100"
+                  >
+                    Active Session ↓
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setShowSetupModal(true)}
+                    className="rounded-full bg-white px-5 py-2 text-xs font-bold text-[#080B11] shadow-lg transition-all hover:bg-slate-100 hover:scale-[1.03] active:scale-[0.98]"
+                  >
+                    Get Started
+                  </button>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white">
+                    <User size={15} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </nav>
+
+        <div className="relative z-10 mx-auto max-w-7xl space-y-16 px-6 pt-10 pb-28 sm:px-8 lg:pt-16 lg:pb-36">
           {/* Hero Content Grid */}
           <div className="grid gap-12 lg:grid-cols-12 lg:items-center">
             {/* Left Headline */}
