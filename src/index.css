@@ -4,18 +4,18 @@
 
 @layer base {
   * {
-    border-color: rgba(163, 184, 202, 0.22); /* Shallow Sea border */
+    border-color: #E2E8F0;
   }
 
   html {
-    background: #1E3347; /* Blue Whale */
+    background: #F8FAFC;
     font-size: 16px;
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   body {
-    background-color: #1E3347; /* Blue Whale */
-    color: #CCD3E0; /* Ephemeral Blue */
+    background-color: #F8FAFC;
+    color: #0F172A;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -24,12 +24,12 @@
   }
 
   ::selection {
-    background: rgba(137, 159, 188, 0.35); /* Sailing */
-    color: #ffffff;
+    background: rgba(37, 99, 235, 0.15);
+    color: #0F172A;
   }
 
   :focus-visible {
-    outline: 2px solid #899FBC; /* Sailing */
+    outline: 2px solid #2563EB;
     outline-offset: 2px;
   }
 
@@ -44,14 +44,14 @@
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #1E3347; /* Blue Whale */
+    background: #F8FAFC;
   }
   ::-webkit-scrollbar-thumb {
-    background: #3F5874; /* Inkjet */
+    background: #CBD5E1;
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #4A6788;
+    background: #94A3B8;
   }
 }
 
@@ -63,26 +63,25 @@
   /* ── Editorial Card & Section Surfaces ─────────────────────── */
   .surface-card {
     border-radius: 1.25rem; /* rounded-2xl */
-    border: 1px solid rgba(163, 184, 202, 0.22); /* Shallow Sea border */
-    background: rgba(63, 88, 116, 0.45); /* Inkjet panel with glassmorphism */
-    box-shadow: 0 10px 30px -5px rgba(15, 23, 36, 0.85), 0 0 0 1px rgba(163, 184, 202, 0.15);
-    backdrop-filter: blur(12px);
+    border: 1px solid #E2E8F0;
+    background: #FFFFFF;
+    box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .surface-card-subtle {
     border-radius: 0.875rem; /* rounded-xl */
-    border: 1px solid rgba(163, 184, 202, 0.18);
-    background: rgba(36, 58, 79, 0.50); /* Elevated Blue Whale surface */
+    border: 1px solid #E2E8F0;
+    background: #F8FAFC;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .surface-hero {
     border-radius: 1.75rem; /* rounded-3xl */
-    border: 1px solid rgba(163, 184, 202, 0.28);
-    background: linear-gradient(135deg, rgba(63, 88, 116, 0.70) 0%, rgba(30, 51, 71, 0.95) 100%);
-    box-shadow: 0 20px 45px -10px rgba(15, 23, 36, 0.95), 0 0 0 1px rgba(163, 184, 202, 0.25);
-    backdrop-filter: blur(16px);
+    border: 1px solid #CBD5E1;
+    background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+    color: #F8FAFC;
+    box-shadow: 0 20px 40px -15px rgba(15, 23, 42, 0.20), 0 0 0 1px rgba(15, 23, 42, 0.05);
   }
 
   /* ── Typography Utilities ───────────────────────────────────── */
@@ -91,7 +90,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.14em;
-    color: #899FBC; /* Sailing accent */
+    color: #2563EB; /* Royal Blue accent */
   }
 
   /* ── HUD / Security Badges ───────────────────────────────────── */
@@ -108,21 +107,21 @@
   }
 
   .hud-badge-danger {
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.4);
-    color: #EF4444;
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    color: #DC2626;
   }
 
   .hud-badge-warn {
-    background: rgba(245, 158, 11, 0.15);
-    border: 1px solid rgba(245, 158, 11, 0.4);
-    color: #F59E0B;
+    background: #FFFBEB;
+    border: 1px solid #FDE68A;
+    color: #D97706;
   }
 
   .hud-badge-safe {
-    background: rgba(16, 185, 129, 0.15);
-    border: 1px solid rgba(16, 185, 129, 0.35);
-    color: #10B981;
+    background: #ECFDF5;
+    border: 1px solid #A7F3D0;
+    color: #059669;
   }
 
   /* ── Form Fields ────────────────────────────────────────────── */
@@ -132,30 +131,30 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #A3B8CA; /* Shallow Sea */
+    color: #475569;
   }
 
   .field-input {
     margin-top: 0.375rem;
     width: 100%;
     border-radius: 0.75rem;
-    border: 1px solid rgba(163, 184, 202, 0.28);
-    background: rgba(30, 51, 71, 0.85); /* Blue Whale deep input */
+    border: 1px solid #CBD5E1;
+    background: #FFFFFF;
     padding: 0.625rem 1rem;
     font-size: 0.875rem;
-    color: #CCD3E0; /* Ephemeral Blue */
+    color: #0F172A;
     outline: none;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .field-input::placeholder {
-    color: #64748B;
+    color: #94A3B8;
   }
 
   .field-input:focus {
-    border-color: #899FBC; /* Sailing */
-    background: rgba(36, 58, 79, 0.95);
-    box-shadow: 0 0 0 3px rgba(137, 159, 188, 0.25);
+    border-color: #2563EB;
+    background: #FFFFFF;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
   }
 
   /* ── Badge Pill ─────────────────────────────────────────────── */

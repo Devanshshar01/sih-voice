@@ -64,14 +64,14 @@ export default function NavHeader({
         </div>
 
         {/* Navigation IA */}
-        <nav aria-label="Main Navigation" className="hidden md:flex items-center gap-1 rounded-xl border border-forensic-border bg-forensic-surface/60 p-1 text-xs">
+        <nav aria-label="Main Navigation" className="hidden md:flex items-center gap-1 rounded-xl border border-forensic-border bg-forensic-surface p-1 text-xs shadow-sm">
           <button
             type="button"
             onClick={() => onTabChange?.("overview")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-all ${
               currentTab === "overview"
-                ? "bg-forensic-panel text-forensic-text shadow-sm"
-                : "text-forensic-muted hover:text-forensic-text"
+                ? "bg-forensic-accent text-white font-semibold shadow-sm"
+                : "text-forensic-muted hover:text-forensic-text hover:bg-forensic-panel"
             }`}
           >
             <Layers size={13} />
@@ -81,23 +81,23 @@ export default function NavHeader({
           <button
             type="button"
             onClick={() => onTabChange?.("live")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-all ${
               currentTab === "live"
-                ? "bg-forensic-panel text-forensic-text shadow-sm"
-                : "text-forensic-muted hover:text-forensic-text"
+                ? "bg-forensic-accent text-white font-semibold shadow-sm"
+                : "text-forensic-muted hover:text-forensic-text hover:bg-forensic-panel"
             }`}
           >
-            <Activity size={13} className={connected ? "text-safe animate-pulse" : ""} />
+            <Activity size={13} className={connected ? (currentTab === "live" ? "text-white animate-pulse" : "text-safe animate-pulse") : ""} />
             <span>Live Protection</span>
           </button>
 
           <button
             type="button"
             onClick={() => onTabChange?.("forensics")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-all ${
               currentTab === "forensics"
-                ? "bg-forensic-panel text-forensic-text shadow-sm"
-                : "text-forensic-muted hover:text-forensic-text"
+                ? "bg-forensic-accent text-white font-semibold shadow-sm"
+                : "text-forensic-muted hover:text-forensic-text hover:bg-forensic-panel"
             }`}
           >
             <Cpu size={13} />
@@ -107,10 +107,10 @@ export default function NavHeader({
           <button
             type="button"
             onClick={() => onTabChange?.("verification")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-all ${
               currentTab === "verification"
-                ? "bg-forensic-panel text-forensic-text shadow-sm"
-                : "text-forensic-muted hover:text-forensic-text"
+                ? "bg-forensic-accent text-white font-semibold shadow-sm"
+                : "text-forensic-muted hover:text-forensic-text hover:bg-forensic-panel"
             }`}
           >
             <LockKeyhole size={13} />

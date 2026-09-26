@@ -4,82 +4,82 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Base Palette: Blue Forensic Intelligence
+        // Base Palette: Clean Financial Light / Pearl & Navy
         forensic: {
-          bg: "#1E3347",        // Blue Whale -> deepest background / navigation / forensic technical areas
-          surface: "#243A4F",   // Elevated Blue Whale surface
-          panel: "#3F5874",     // Inkjet -> elevated surfaces / panels / major interactive surfaces
-          panelHover: "#4A6788",// Inkjet hover state
-          accent: "#899FBC",    // Sailing -> primary accent / active states / waveform / charts / selected nav
-          accentMuted: "rgba(137, 159, 188, 0.2)",
-          muted: "#A3B8CA",     // Shallow Sea -> secondary text / metadata / borders / muted content
-          border: "rgba(163, 184, 202, 0.22)",
-          borderBright: "rgba(163, 184, 202, 0.40)",
-          text: "#CCD3E0",      // Ephemeral Blue -> primary text / headings / high-priority content
+          bg: "#F8FAFC",        // Pearl canvas / Slate 50
+          surface: "#FFFFFF",   // Pure white cards / panels
+          panel: "#F1F5F9",     // Soft Slate 100 panel surfaces
+          panelHover: "#E2E8F0",// Slate 200 hover
+          accent: "#2563EB",    // Royal Cobalt Blue accent
+          accentMuted: "rgba(37, 99, 235, 0.10)",
+          muted: "#64748B",     // Secondary text / metadata / borders
+          border: "#E2E8F0",    // Crisp light border
+          borderBright: "#CBD5E1", // Slate 300 border
+          text: "#0F172A",      // Deep Navy / Slate 900 primary text
         },
-        // Backward-compatible color aliases mapping directly to the new 5-color palette
+        // Backward-compatible color aliases for Pearl & Navy Light theme
         ink: {
-          950: "#1E3347",       // Blue Whale
-          900: "#243A4F",       // Elevated Blue Whale
-          850: "#3F5874",       // Inkjet
-          800: "#476382",       // Inkjet hover
-          750: "#2B435C",
-          700: "rgba(163, 184, 202, 0.25)", // Shallow Sea border
-          600: "rgba(163, 184, 202, 0.35)",
-          500: "#899FBC",
-          400: "#A3B8CA",
-          300: "#CCD3E0",
+          950: "#F8FAFC",       // Pearl Canvas
+          900: "#FFFFFF",       // White card surface
+          850: "#F1F5F9",       // Elevated Slate panel
+          800: "#E2E8F0",       // Hover surface
+          750: "#CBD5E1",
+          700: "#E2E8F0",       // Border
+          600: "#CBD5E1",
+          500: "#2563EB",       // Royal Blue Accent
+          400: "#64748B",       // Slate Muted Text
+          300: "#0F172A",       // Deep Navy Primary Text
         },
         paper: {
-          DEFAULT: "#CCD3E0",   // Ephemeral Blue
-          dim: "#A3B8CA",       // Shallow Sea
-          muted: "#899FBC",     // Sailing
-          bright: "#FFFFFF",    // Pure white highlight
+          DEFAULT: "#0F172A",   // Primary Navy Text
+          dim: "#475569",       // Slate 600
+          muted: "#64748B",     // Slate 500
+          bright: "#0F172A",    // Deep Navy
         },
         mute: {
-          DEFAULT: "#A3B8CA",
-          dim: "#899FBC",
+          DEFAULT: "#64748B",
+          dim: "#475569",
         },
         signal: {
-          DEFAULT: "#899FBC",   // Sailing
-          dim: "#A3B8CA",
-          bg: "rgba(137, 159, 188, 0.12)",
-          border: "rgba(137, 159, 188, 0.30)",
+          DEFAULT: "#2563EB",   // Royal Blue Accent
+          dim: "#64748B",
+          bg: "rgba(37, 99, 235, 0.08)",
+          border: "rgba(37, 99, 235, 0.25)",
         },
-        // Security States (Restrained semantic colors)
+        // Security States (Restrained semantic colors for light background)
         safe: {
-          DEFAULT: "#10B981",   // Restrained green
-          dim: "#059669",
-          bg: "rgba(16, 185, 129, 0.12)",
-          border: "rgba(16, 185, 129, 0.30)",
+          DEFAULT: "#059669",   // Emerald 600
+          dim: "#047857",
+          bg: "#ECFDF5",        // Soft Emerald 50
+          border: "#A7F3D0",    // Emerald 200
         },
         warn: {
-          DEFAULT: "#F59E0B",   // Restrained amber
-          dim: "#D97706",
-          bg: "rgba(245, 158, 11, 0.12)",
-          border: "rgba(245, 158, 11, 0.30)",
+          DEFAULT: "#D97706",   // Amber 600
+          dim: "#B45309",
+          bg: "#FFFBEB",        // Soft Amber 50
+          border: "#FDE68A",    // Amber 200
         },
         danger: {
-          DEFAULT: "#EF4444",   // Restrained red
-          dim: "#DC2626",
-          bg: "rgba(239, 68, 68, 0.12)",
-          border: "rgba(239, 68, 68, 0.35)",
+          DEFAULT: "#DC2626",   // Red 600
+          dim: "#B91C1C",
+          bg: "#FEF2F2",        // Soft Red 50
+          border: "#FECACA",    // Red 200
         },
         degraded: {
           DEFAULT: "#D97706",
-          bg: "rgba(217, 119, 6, 0.12)",
-          border: "rgba(217, 119, 6, 0.25)",
+          bg: "#FFFBEB",
+          border: "#FDE68A",
         },
         offline: {
           DEFAULT: "#64748B",
-          bg: "rgba(100, 116, 139, 0.12)",
-          border: "rgba(100, 116, 139, 0.25)",
+          bg: "#F8FAFC",
+          border: "#E2E8F0",
         },
         intel: {
-          DEFAULT: "#899FBC",
-          dim: "#A3B8CA",
-          bg: "rgba(137, 159, 188, 0.12)",
-          border: "rgba(137, 159, 188, 0.25)",
+          DEFAULT: "#2563EB",
+          dim: "#64748B",
+          bg: "rgba(37, 99, 235, 0.08)",
+          border: "rgba(37, 99, 235, 0.20)",
         },
       },
       fontFamily: {
@@ -88,12 +88,12 @@ export default {
       },
       boxShadow: {
         none: "none",
-        panel: "0 10px 30px -5px rgba(15, 23, 36, 0.85), 0 0 0 1px rgba(163, 184, 202, 0.15)",
-        elevated: "0 16px 40px -8px rgba(15, 23, 36, 0.95), 0 0 0 1px rgba(163, 184, 202, 0.25)",
-        signal: "0 0 20px -3px rgba(137, 159, 188, 0.35)",
-        "glow-danger": "0 0 22px -2px rgba(239, 68, 68, 0.35)",
-        "glow-safe": "0 0 20px -3px rgba(16, 185, 129, 0.30)",
-        "glow-warn": "0 0 20px -3px rgba(245, 158, 11, 0.30)",
+        panel: "0 1px 3px 0 rgba(15, 23, 42, 0.06), 0 1px 2px -1px rgba(15, 23, 42, 0.04), 0 0 0 1px #E2E8F0",
+        elevated: "0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04), 0 0 0 1px #CBD5E1",
+        signal: "0 0 15px -3px rgba(37, 99, 235, 0.25)",
+        "glow-danger": "0 0 15px -2px rgba(220, 38, 38, 0.25)",
+        "glow-safe": "0 0 15px -3px rgba(5, 150, 105, 0.25)",
+        "glow-warn": "0 0 15px -3px rgba(217, 119, 6, 0.25)",
       },
       keyframes: {
         sweep: {

@@ -11,22 +11,22 @@ const BAR_COUNT = 56;
 
 const STATUS_PALETTES: Record<RiskStatus, { top: string; bottom: string; peak: string; glow: string }> = {
   ALLOW: {
-    top: "#CCD3E0",   // Ephemeral Blue highlight
-    bottom: "#899FBC",// Sailing base
-    peak: "#FFFFFF",
-    glow: "rgba(137, 159, 188, 0.25)",
+    top: "#2563EB",   // Royal Cobalt Blue
+    bottom: "#93C5FD",// Soft Blue
+    peak: "#1E40AF",   // Deep Navy Peak
+    glow: "rgba(37, 99, 235, 0.15)",
   },
   WARN: {
-    top: "#F59E0B",   // Restrained Warning Amber
-    bottom: "#899FBC",// Sailing base
-    peak: "#FBBF24",
-    glow: "rgba(245, 158, 11, 0.35)",
+    top: "#D97706",   // Amber 600
+    bottom: "#FDE68A",// Amber 200
+    peak: "#B45309",   // Dark Amber Peak
+    glow: "rgba(217, 119, 6, 0.20)",
   },
   LOCK_VERIFY: {
-    top: "#EF4444",   // Restrained Danger Red
-    bottom: "#3F5874",// Inkjet panel base
-    peak: "#FFFFFF",
-    glow: "rgba(239, 68, 68, 0.45)",
+    top: "#DC2626",   // Red 600
+    bottom: "#FECACA",// Red 200
+    peak: "#991B1B",   // Dark Red Peak
+    glow: "rgba(220, 38, 38, 0.25)",
   },
 };
 
