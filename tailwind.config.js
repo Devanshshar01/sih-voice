@@ -4,99 +4,107 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Exact Image Palette Tokens
-        deepBlue: {
-          DEFAULT: "#2A4D88",
-          hover: "#213D6C",
-          bg: "rgba(42, 77, 136, 0.08)",
-          border: "rgba(42, 77, 136, 0.25)",
+        // Exact Brand Foundation: Blue Forensic Intelligence
+        blueWhale: {
+          DEFAULT: "#1E3347",
+          deep: "#152535",
+          surface: "#243A4F",
         },
-        concerto: {
-          DEFAULT: "#D9D9D8",
-          light: "#F0F0EF",
-          dark: "#C6C6C4",
+        inkjet: {
+          DEFAULT: "#3F5874",
+          light: "#4A6788",
+          dark: "#2F445B",
         },
-        glacialSalt: {
-          DEFAULT: "#B1BBC8",
-          light: "#CBD3DD",
-          dark: "#95A1B2",
+        sailing: {
+          DEFAULT: "#899FBC",
+          hover: "#A0B4CF",
+          glow: "rgba(137, 159, 188, 0.35)",
+        },
+        shallowSea: {
+          DEFAULT: "#A3B8CA",
+          muted: "rgba(163, 184, 202, 0.65)",
+          border: "rgba(163, 184, 202, 0.22)",
+        },
+        ephemeralBlue: {
+          DEFAULT: "#CCD3E0",
+          bright: "#E8ECF4",
         },
         // Base Palette Mapping
         forensic: {
-          bg: "#E8EAEF",        // Soft Concerto / Glacial tint canvas
-          surface: "#FFFFFF",   // Pure white card surface
-          panel: "#D9D9D8",     // Concerto panel background
-          panelHover: "#B1BBC8",// Glacial Salt hover
-          accent: "#2A4D88",    // Deep Blue primary accent
-          accentMuted: "rgba(42, 77, 136, 0.12)",
-          muted: "#4A5B70",     // Muted Deep Glacial Salt text
-          border: "#B1BBC8",    // Glacial Salt border
-          borderBright: "#2A4D88",
-          text: "#122138",      // Midnight Navy primary text
+          bg: "#1E3347",        // Blue Whale
+          surface: "#3F5874",   // Inkjet
+          panel: "#2A4259",     // Elevated Blue Whale / Inkjet surface
+          panelHover: "#4A6788",// Inkjet hover
+          accent: "#899FBC",    // Sailing primary accent
+          accentMuted: "rgba(137, 159, 188, 0.15)",
+          muted: "#A3B8CA",     // Shallow Sea secondary text / metadata
+          border: "rgba(163, 184, 202, 0.22)", // Shallow Sea border
+          borderBright: "#899FBC",
+          text: "#CCD3E0",      // Ephemeral Blue primary text
         },
         // Backward-compatible color aliases
         ink: {
-          950: "#E8EAEF",       // Canvas
-          900: "#FFFFFF",       // White card surface
-          850: "#D9D9D8",       // Concerto panel
-          800: "#B1BBC8",       // Glacial Salt hover
-          750: "#B1BBC8",
-          700: "#B1BBC8",       // Border
-          600: "#B1BBC8",
-          500: "#2A4D88",       // Deep Blue Accent
-          400: "#4A5B70",       // Glacial Salt Muted Text
-          300: "#122138",       // Midnight Navy Primary Text
+          950: "#1E3347",       // Blue Whale
+          900: "#243A4F",       // Deep Surface
+          850: "#3F5874",       // Inkjet
+          800: "#4A6788",       // Inkjet hover
+          750: "#2A4259",
+          700: "rgba(163, 184, 202, 0.22)",
+          600: "rgba(163, 184, 202, 0.35)",
+          500: "#899FBC",       // Sailing Accent
+          400: "#A3B8CA",       // Shallow Sea Muted Text
+          300: "#CCD3E0",       // Ephemeral Blue Primary Text
         },
         paper: {
-          DEFAULT: "#122138",   // Midnight Navy Primary Text
-          dim: "#2A4D88",       // Deep Blue
-          muted: "#4A5B70",     // Muted Glacial Salt
-          bright: "#122138",
+          DEFAULT: "#CCD3E0",   // Ephemeral Blue
+          dim: "#A3B8CA",       // Shallow Sea
+          muted: "#899FBC",     // Sailing
+          bright: "#E8ECF4",
         },
         mute: {
-          DEFAULT: "#4A5B70",
-          dim: "#2A4D88",
+          DEFAULT: "#A3B8CA",
+          dim: "#899FBC",
         },
         signal: {
-          DEFAULT: "#2A4D88",   // Deep Blue Accent
-          dim: "#4A5B70",
-          bg: "rgba(42, 77, 136, 0.08)",
-          border: "rgba(42, 77, 136, 0.25)",
+          DEFAULT: "#899FBC",   // Sailing
+          dim: "#A3B8CA",
+          bg: "rgba(137, 159, 188, 0.12)",
+          border: "rgba(137, 159, 188, 0.30)",
         },
         // Security States (Restrained semantic colors)
         safe: {
-          DEFAULT: "#059669",   // Emerald 600
-          dim: "#047857",
-          bg: "#ECFDF5",        // Soft Emerald 50
-          border: "#A7F3D0",    // Emerald 200
+          DEFAULT: "#10B981",   // Restrained Green
+          dim: "#059669",
+          bg: "rgba(16, 185, 129, 0.12)",
+          border: "rgba(16, 185, 129, 0.30)",
         },
         warn: {
-          DEFAULT: "#D97706",   // Amber 600
-          dim: "#B45309",
-          bg: "#FFFBEB",        // Soft Amber 50
-          border: "#FDE68A",    // Amber 200
+          DEFAULT: "#F59E0B",   // Restrained Amber
+          dim: "#D97706",
+          bg: "rgba(245, 158, 11, 0.12)",
+          border: "rgba(245, 158, 11, 0.30)",
         },
         danger: {
-          DEFAULT: "#DC2626",   // Red 600
-          dim: "#B91C1C",
-          bg: "#FEF2F2",        // Soft Red 50
-          border: "#FECACA",    // Red 200
+          DEFAULT: "#EF4444",   // Restrained Red
+          dim: "#DC2626",
+          bg: "rgba(239, 68, 68, 0.15)",
+          border: "rgba(239, 68, 68, 0.35)",
         },
         degraded: {
           DEFAULT: "#D97706",
-          bg: "#FFFBEB",
-          border: "#FDE68A",
+          bg: "rgba(217, 119, 6, 0.12)",
+          border: "rgba(217, 119, 6, 0.25)",
         },
         offline: {
-          DEFAULT: "#4A5B70",
-          bg: "#D9D9D8",
-          border: "#B1BBC8",
+          DEFAULT: "#64748B",
+          bg: "rgba(100, 116, 139, 0.12)",
+          border: "rgba(100, 116, 139, 0.25)",
         },
         intel: {
-          DEFAULT: "#2A4D88",
-          dim: "#4A5B70",
-          bg: "rgba(42, 77, 136, 0.08)",
-          border: "rgba(42, 77, 136, 0.20)",
+          DEFAULT: "#899FBC",
+          dim: "#A3B8CA",
+          bg: "rgba(137, 159, 188, 0.12)",
+          border: "rgba(137, 159, 188, 0.25)",
         },
       },
       fontFamily: {
@@ -105,12 +113,12 @@ export default {
       },
       boxShadow: {
         none: "none",
-        panel: "0 1px 3px 0 rgba(42, 77, 136, 0.08), 0 1px 2px -1px rgba(42, 77, 136, 0.04), 0 0 0 1px #B1BBC8",
-        elevated: "0 10px 25px -5px rgba(42, 77, 136, 0.12), 0 8px 10px -6px rgba(42, 77, 136, 0.06), 0 0 0 1px #B1BBC8",
-        signal: "0 0 15px -3px rgba(42, 77, 136, 0.30)",
-        "glow-danger": "0 0 15px -2px rgba(220, 38, 38, 0.25)",
-        "glow-safe": "0 0 15px -3px rgba(5, 150, 105, 0.25)",
-        "glow-warn": "0 0 15px -3px rgba(217, 119, 6, 0.25)",
+        panel: "0 10px 30px -5px rgba(15, 23, 35, 0.75), 0 0 0 1px rgba(163, 184, 202, 0.18)",
+        elevated: "0 20px 45px -10px rgba(15, 23, 35, 0.90), 0 0 0 1px rgba(163, 184, 202, 0.25)",
+        signal: "0 0 20px -3px rgba(137, 159, 188, 0.35)",
+        "glow-danger": "0 0 20px -2px rgba(239, 68, 68, 0.35)",
+        "glow-safe": "0 0 20px -3px rgba(16, 185, 129, 0.30)",
+        "glow-warn": "0 0 20px -3px rgba(245, 158, 11, 0.30)",
       },
       keyframes: {
         sweep: {
