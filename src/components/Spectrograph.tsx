@@ -11,10 +11,10 @@ const BAR_COUNT = 56;
 
 const STATUS_PALETTES: Record<RiskStatus, { top: string; bottom: string; peak: string; glow: string }> = {
   ALLOW: {
-    top: "#2563EB",   // Royal Cobalt Blue
-    bottom: "#93C5FD",// Soft Blue
-    peak: "#1E40AF",   // Deep Navy Peak
-    glow: "rgba(37, 99, 235, 0.15)",
+    top: "#2A4D88",   // Deep Blue
+    bottom: "#B1BBC8",// Glacial Salt
+    peak: "#19315A",   // Navy Peak
+    glow: "rgba(42, 77, 136, 0.20)",
   },
   WARN: {
     top: "#D97706",   // Amber 600
