@@ -27,34 +27,34 @@ export default function StatusBadge({
 }: StatusBadgeProps) {
   const variantStyles: Record<BadgeVariant, { container: string; dot: string; iconColor: string }> = {
     safe: {
-      container: "border-safe/25 bg-safe-bg text-safe",
+      container: "border-safe/30 bg-safe-bg text-safe font-bold",
       dot: "bg-safe",
       iconColor: "text-safe",
     },
     warn: {
-      container: "border-warn/25 bg-warn-bg text-warn",
+      container: "border-warn/30 bg-warn-bg text-warn font-bold",
       dot: "bg-warn",
       iconColor: "text-warn",
     },
     danger: {
-      container: "border-danger/30 bg-danger-bg text-danger font-semibold",
+      container: "border-danger/40 bg-danger-bg text-danger font-extrabold",
       dot: "bg-danger animate-pulse",
       iconColor: "text-danger",
     },
     signal: {
-      container: "border-signal/25 bg-signal-bg text-signal",
-      dot: "bg-signal",
-      iconColor: "text-signal",
+      container: "border-forensic-accent/30 bg-forensic-accentMuted text-forensic-accent font-bold",
+      dot: "bg-forensic-accent",
+      iconColor: "text-forensic-accent",
     },
     neutral: {
-      container: "border-ink-700/60 bg-ink-850 text-paper-muted",
-      dot: "bg-ink-500",
-      iconColor: "text-paper-muted",
+      container: "border-forensic-border bg-forensic-surface text-forensic-muted font-bold",
+      dot: "bg-forensic-muted",
+      iconColor: "text-forensic-muted",
     },
     degraded: {
-      container: "border-warn/30 bg-warn-bg/40 text-warn-dim",
-      dot: "bg-warn-dim",
-      iconColor: "text-warn-dim",
+      container: "border-degraded/30 bg-degraded-bg text-degraded font-bold",
+      dot: "bg-degraded",
+      iconColor: "text-degraded",
     },
   };
 
@@ -63,7 +63,7 @@ export default function StatusBadge({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border font-sans font-medium tracking-wide ${sizeClasses} ${current.container} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border font-sans tracking-wide ${sizeClasses} ${current.container} ${className}`}
     >
       <span
         className={`h-1.5 w-1.5 rounded-full ${current.dot} ${
@@ -83,3 +83,4 @@ export default function StatusBadge({
     </span>
   );
 }
+

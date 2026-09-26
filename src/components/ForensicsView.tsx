@@ -75,17 +75,17 @@ function EvidenceSection({
   className?: string;
 }) {
   return (
-    <section className={`rounded-2xl border border-ink-700/40 bg-ink-900/90 p-5 shadow-panel ${className}`}>
-      <div className="mb-4 flex items-start justify-between gap-3 border-b border-ink-700/40 pb-3.5">
+    <section className={`rounded-3xl border border-forensic-border bg-forensic-panel/70 p-6 shadow-panel backdrop-blur ${className}`}>
+      <div className="mb-4 flex items-start justify-between gap-3 border-b border-forensic-border pb-3.5">
         <div>
-          <p className="eyebrow text-signal">{eyebrow}</p>
-          <h2 className="mt-0.5 text-sm font-bold tracking-tight text-paper-bright">
+          <p className="eyebrow text-forensic-accent">{eyebrow}</p>
+          <h2 className="mt-0.5 text-sm font-bold tracking-tight text-forensic-text">
             {title}
           </h2>
         </div>
         <div className="flex items-center gap-2">
           {badge}
-          <div className="text-signal">{icon}</div>
+          <div className="text-forensic-accent">{icon}</div>
         </div>
       </div>
       {children}
@@ -97,7 +97,7 @@ function DataField({
   label,
   value,
   mono = false,
-  tone = "text-paper-bright",
+  tone = "text-forensic-text",
 }: {
   label: string;
   value: ReactNode;
@@ -105,11 +105,11 @@ function DataField({
   tone?: string;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-t border-ink-700/30 py-2.5 first:border-t-0 text-xs">
-      <span className="text-paper-muted font-sans">{label}</span>
+    <div className="flex items-start justify-between gap-4 border-t border-forensic-border/40 py-2.5 first:border-t-0 text-xs font-sans">
+      <span className="text-forensic-muted">{label}</span>
       <span
         className={`max-w-[65%] break-all text-right ${tone} ${
-          mono ? "font-mono font-medium" : "font-medium"
+          mono ? "font-mono font-bold" : "font-medium"
         }`}
       >
         {value}
@@ -132,12 +132,12 @@ function SignalProgress({
     pct >= 70 ? "bg-danger text-danger" : pct >= 40 ? "bg-warn text-warn" : "bg-safe text-safe";
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex justify-between text-xs font-mono">
-        <span className="text-paper-dim">{label}</span>
-        <span className="font-bold">{pct}%</span>
+    <div className="space-y-1.5 font-sans">
+      <div className="flex justify-between text-xs">
+        <span className="text-forensic-muted">{label}</span>
+        <span className="font-mono font-bold">{pct}%</span>
       </div>
-      <div className="h-2 w-full rounded-full bg-ink-800 overflow-hidden">
+      <div className="h-2 w-full rounded-full bg-forensic-surface overflow-hidden border border-forensic-border/40">
         <div
           className={`h-full rounded-full transition-all duration-500 ${tone.split(" ")[0]}`}
           style={{ width: `${pct}%` }}
@@ -280,10 +280,10 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8 bg-ink-950">
+    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 bg-forensic-bg text-forensic-text">
       <div className="mx-auto max-w-[1440px] space-y-6">
         {/* Case Header & Actions Bar */}
-        <header className="rounded-3xl border border-ink-700/50 bg-ink-900/90 p-6 sm:p-8 shadow-elevated">
+        <header className="rounded-3xl border border-forensic-border bg-forensic-panel/80 p-6 sm:p-8 shadow-elevated backdrop-blur">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="flex items-center gap-2">
@@ -292,38 +292,38 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                     incidentDetected ? "bg-danger animate-pulse" : "bg-safe"
                   }`}
                 />
-                <span className="font-mono text-xs text-signal uppercase tracking-wider font-bold">
-                  Digital Forensic Case Dossier
+                <span className="font-mono text-xs text-forensic-accent uppercase tracking-wider font-extrabold">
+                  DIGITAL INVESTIGATION WORKSPACE
                 </span>
-                <span className="text-paper-muted font-mono text-xs">/ Post-Session Chain of Custody</span>
+                <span className="text-forensic-muted font-mono text-xs">/ Case Custody Dossier</span>
               </div>
 
-              <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-paper-bright sm:text-3xl">
+              <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-forensic-text sm:text-3xl">
                 {incidentDetected
                   ? "Voice Deepfake Incident & Biometric Spoof Dossier"
-                  : "Authentic Voice Session Forensic Summary"}
+                  : "Authentic Voice Session Forensic Dossier"}
               </h1>
 
-              <div className="mt-2.5 flex flex-wrap items-center gap-2.5 text-xs font-mono text-paper-muted">
-                <span className="text-paper-bright font-semibold">{meta?.callerId ?? "Unknown Caller"}</span>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2.5 text-xs font-sans text-forensic-muted">
+                <span className="text-forensic-text font-bold">{meta?.callerId ?? "Unknown Caller"}</span>
                 <span>→</span>
-                <span className="text-paper-dim">{meta?.recipientId ?? "Protected Desk"}</span>
-                <span className="text-ink-600">·</span>
-                <span>Case ID: <span className="text-signal font-semibold">{meta?.callId ?? "—"}</span></span>
+                <span className="text-forensic-muted">{meta?.recipientId ?? "Protected Desk"}</span>
+                <span className="text-forensic-muted/40">·</span>
+                <span>Evidence ID: <span className="font-mono font-bold text-forensic-accent">{meta?.callId ?? "—"}</span></span>
               </div>
             </div>
 
             {/* Forensic Actions Ribbon */}
-            <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5 font-sans">
               {/* Verify Chain Button */}
               <button
                 type="button"
                 onClick={handleVerifyChain}
                 disabled={verifyingChain}
-                className="flex items-center gap-2 rounded-xl border border-signal/40 bg-signal-bg px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-signal transition-all hover:bg-signal/20 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-2xl border border-forensic-accent/50 bg-forensic-accentMuted px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-forensic-accent transition-all hover:bg-forensic-accent/30 disabled:opacity-50"
               >
                 {verifyingChain ? (
-                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-signal border-t-transparent" />
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-forensic-accent border-t-transparent" />
                 ) : (
                   <ClipboardCheck size={15} />
                 )}
@@ -335,10 +335,10 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                 type="button"
                 onClick={handleIntegrityCheck}
                 disabled={verifyingIntegrity}
-                className="flex items-center gap-2 rounded-xl border border-ink-700/60 bg-ink-850 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-paper-bright transition-all hover:border-signal hover:text-signal disabled:opacity-50"
+                className="flex items-center gap-2 rounded-2xl border border-forensic-border bg-forensic-surface px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-forensic-text transition-all hover:border-forensic-accent hover:text-forensic-accent disabled:opacity-50"
               >
                 {verifyingIntegrity ? (
-                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-paper border-t-transparent" />
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-forensic-text border-t-transparent" />
                 ) : (
                   <Fingerprint size={15} />
                 )}
@@ -350,7 +350,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                 type="button"
                 onClick={handleExport}
                 disabled={exporting}
-                className="flex items-center gap-2 rounded-xl border border-safe/40 bg-safe-bg px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-safe transition-all hover:bg-safe/20 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-2xl border border-safe/40 bg-safe-bg px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-safe transition-all hover:bg-safe/20 disabled:opacity-50"
               >
                 {exporting ? (
                   <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-safe border-t-transparent" />
@@ -360,13 +360,13 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                 <span>{exporting ? "Generating PDF..." : "Export Forensic PDF"}</span>
               </button>
 
-              {/* Start New Call Button */}
+              {/* Start New Session */}
               <button
                 type="button"
                 onClick={startOver}
                 aria-label="Start new session"
                 title="Initialize New Monitored Session"
-                className="flex items-center gap-1.5 rounded-xl border border-ink-700/50 bg-ink-850 px-3.5 py-2.5 text-xs text-paper-muted hover:border-ink-500 hover:text-paper-bright transition-colors"
+                className="flex items-center gap-1.5 rounded-2xl border border-forensic-border bg-forensic-surface px-3.5 py-2.5 text-xs text-forensic-muted hover:border-forensic-accent hover:text-forensic-text transition-colors"
               >
                 <RotateCcw size={15} />
                 <span className="hidden sm:inline">New Session</span>
@@ -376,33 +376,33 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
 
           {/* Feedback alerts for export/verification */}
           {exportError && (
-            <div className="mt-4 rounded-xl border border-danger/40 bg-danger-bg p-3.5 text-xs text-danger">
+            <div className="mt-4 rounded-2xl border border-danger/40 bg-danger-bg p-3.5 text-xs text-danger font-sans">
               {exportError}
             </div>
           )}
           {exportSuccess && (
-            <div className="mt-4 rounded-xl border border-safe/40 bg-safe-bg p-3.5 text-xs text-safe flex items-center gap-2.5">
+            <div className="mt-4 rounded-2xl border border-safe/40 bg-safe-bg p-3.5 text-xs text-safe flex items-center gap-2.5 font-sans">
               <CheckCircle2 size={16} />
               <span>Official 5-page forensic evidence PDF downloaded with QR verification tag and SHA-256 seal.</span>
             </div>
           )}
           {verificationError && (
-            <div className="mt-4 rounded-xl border border-danger/40 bg-danger-bg p-3.5 text-xs text-danger">
+            <div className="mt-4 rounded-2xl border border-danger/40 bg-danger-bg p-3.5 text-xs text-danger font-sans">
               {verificationError}
             </div>
           )}
           {integrityError && (
-            <div className="mt-4 rounded-xl border border-danger/40 bg-danger-bg p-3.5 text-xs text-danger">
+            <div className="mt-4 rounded-2xl border border-danger/40 bg-danger-bg p-3.5 text-xs text-danger font-sans">
               {integrityError}
             </div>
           )}
 
-          {/* Summary Metadata Strip */}
-          <div className="mt-6 grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-5 border-t border-ink-700/40 pt-5 text-xs font-mono">
-            <div className="rounded-xl border border-ink-700/30 bg-ink-850/50 p-3">
-              <span className="text-[10px] text-paper-muted uppercase block">Case Disposition</span>
+          {/* Summary Case Metrics Strip */}
+          <div className="mt-6 grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-5 border-t border-forensic-border pt-5 text-xs font-sans">
+            <div className="rounded-2xl border border-forensic-border bg-forensic-surface/50 p-3.5">
+              <span className="text-[10px] text-forensic-muted uppercase tracking-wider font-bold block">Case Disposition</span>
               <span
-                className={`mt-1 font-bold text-sm block ${
+                className={`mt-1 font-extrabold text-sm block ${
                   incidentDetected ? "text-danger" : "text-safe"
                 }`}
               >
@@ -410,10 +410,10 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
               </span>
             </div>
 
-            <div className="rounded-xl border border-ink-700/30 bg-ink-850/50 p-3">
-              <span className="text-[10px] text-paper-muted uppercase block">Peak Threat Score</span>
+            <div className="rounded-2xl border border-forensic-border bg-forensic-surface/50 p-3.5">
+              <span className="text-[10px] text-forensic-muted uppercase tracking-wider font-bold block">Peak Threat Score</span>
               <span
-                className={`mt-1 font-bold text-sm block ${
+                className={`mt-1 font-mono font-extrabold text-sm block ${
                   maxScore >= 70 ? "text-danger" : maxScore >= 40 ? "text-warn" : "text-safe"
                 }`}
               >
@@ -421,48 +421,48 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
               </span>
             </div>
 
-            <div className="rounded-xl border border-ink-700/30 bg-ink-850/50 p-3">
-              <span className="text-[10px] text-paper-muted uppercase block">Monitored Duration</span>
-              <span className="mt-1 font-bold text-sm text-paper-bright block">
+            <div className="rounded-2xl border border-forensic-border bg-forensic-surface/50 p-3.5">
+              <span className="text-[10px] text-forensic-muted uppercase tracking-wider font-bold block">Monitored Duration</span>
+              <span className="mt-1 font-mono font-bold text-sm text-forensic-text block">
                 {Math.floor(durationSeconds / 60)}m {(durationSeconds % 60).toString().padStart(2, "0")}s
               </span>
             </div>
 
-            <div className="rounded-xl border border-ink-700/30 bg-ink-850/50 p-3">
-              <span className="text-[10px] text-paper-muted uppercase block">Analysis Windows</span>
-              <span className="mt-1 font-bold text-sm text-paper-bright block">
-                {telemetryHistory.length} windows (4s rolling)
+            <div className="rounded-2xl border border-forensic-border bg-forensic-surface/50 p-3.5">
+              <span className="text-[10px] text-forensic-muted uppercase tracking-wider font-bold block">Analysis Windows</span>
+              <span className="mt-1 font-mono font-bold text-sm text-forensic-text block">
+                {telemetryHistory.length} frames (4s rolling)
               </span>
             </div>
 
-            <div className="rounded-xl border border-ink-700/30 bg-ink-850/50 p-3">
-              <span className="text-[10px] text-paper-muted uppercase block">Final Policy State</span>
-              <span className="mt-1 font-bold text-sm text-paper-bright block">
+            <div className="rounded-2xl border border-forensic-border bg-forensic-surface/50 p-3.5">
+              <span className="text-[10px] text-forensic-muted uppercase tracking-wider font-bold block">Final Policy State</span>
+              <span className="mt-1 font-bold text-sm text-forensic-text block">
                 {statusLabel(finalPoint?.status ?? "PENDING")}
               </span>
             </div>
           </div>
         </header>
 
-        {/* Verification Matrix Ribbon */}
-        <section className="rounded-3xl border border-ink-700/40 bg-ink-900/90 p-6 shadow-panel">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-700/40 pb-3.5">
+        {/* Digital Certificate Verification Matrix */}
+        <section className="rounded-3xl border border-forensic-border bg-forensic-panel/80 p-6 shadow-panel backdrop-blur">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-forensic-border pb-3.5">
             <div className="flex items-center gap-2.5">
-              <ShieldCheck size={18} className="text-signal" />
-              <h2 className="text-sm font-bold text-paper-bright">
-                Four-Layer Cryptographic Verification Matrix
+              <ShieldCheck size={20} className="text-forensic-accent" />
+              <h2 className="text-sm font-bold text-forensic-text">
+                Four-Layer Cryptographic Verification Certificate
               </h2>
             </div>
-            <span className="font-mono text-xs text-paper-muted">
-              Independent deterministic validation
+            <span className="font-mono text-xs text-forensic-muted">
+              Independent deterministic verification
             </span>
           </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4 font-mono text-xs">
+          <div className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4 text-xs font-sans">
             {/* Layer 1: Local Integrity */}
-            <div className="rounded-2xl border border-ink-700/30 bg-ink-850/60 p-4">
+            <div className="rounded-2xl border border-forensic-border bg-forensic-surface/60 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-paper-muted text-[11px]">1. Local Hash Integrity</span>
+                <span className="text-forensic-muted text-[11px] font-bold uppercase">1. LOCAL INTEGRITY</span>
                 {verificationResult ? (
                   verificationResult.evidence_hash_integrity ? (
                     <CheckCircle2 size={16} className="text-safe" />
@@ -470,22 +470,22 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                     <XCircle size={16} className="text-danger" />
                   )
                 ) : (
-                  <span className="text-[10px] text-paper-muted">UNCHECKED</span>
+                  <span className="text-[10px] font-mono text-forensic-muted">UNCHECKED</span>
                 )}
               </div>
-              <span className="mt-2.5 block font-bold text-sm">
+              <span className="mt-2.5 block font-mono font-bold text-xs">
                 {verificationResult
                   ? verificationResult.evidence_hash_integrity
-                    ? "PASS (SHA-256 MATCH)"
-                    : "FAIL (CORRUPTED HASH)"
+                    ? "✓ LOCAL INTEGRITY"
+                    : "✗ INTEGRITY FAILED"
                   : "RUN VERIFY CHAIN"}
               </span>
             </div>
 
             {/* Layer 2: Ledger Chain */}
-            <div className="rounded-2xl border border-ink-700/30 bg-ink-850/60 p-4">
+            <div className="rounded-2xl border border-forensic-border bg-forensic-surface/60 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-paper-muted text-[11px]">2. Ledger Chain Continuity</span>
+                <span className="text-forensic-muted text-[11px] font-bold uppercase">2. LEDGER CHAIN</span>
                 {verificationResult ? (
                   verificationResult.local_chain_integrity ? (
                     <CheckCircle2 size={16} className="text-safe" />
@@ -493,22 +493,22 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                     <XCircle size={16} className="text-danger" />
                   )
                 ) : (
-                  <span className="text-[10px] text-paper-muted">UNCHECKED</span>
+                  <span className="text-[10px] font-mono text-forensic-muted">UNCHECKED</span>
                 )}
               </div>
-              <span className="mt-2.5 block font-bold text-sm">
+              <span className="mt-2.5 block font-mono font-bold text-xs">
                 {verificationResult
                   ? verificationResult.local_chain_integrity
-                    ? `VERIFIED (${verificationResult.ledger_record_count} NODES)`
-                    : "CHAIN CONTINUITY BROKEN"
+                    ? `✓ LEDGER (${verificationResult.ledger_record_count} NODES)`
+                    : "✗ LEDGER BROKEN"
                   : "RUN VERIFY CHAIN"}
               </span>
             </div>
 
             {/* Layer 3: Merkle Root */}
-            <div className="rounded-2xl border border-ink-700/30 bg-ink-850/60 p-4">
+            <div className="rounded-2xl border border-forensic-border bg-forensic-surface/60 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-paper-muted text-[11px]">3. Merkle Tree Root</span>
+                <span className="text-forensic-muted text-[11px] font-bold uppercase">3. MERKLE TREE</span>
                 {integrity ? (
                   integrity.merkle_root ? (
                     <CheckCircle2 size={16} className="text-safe" />
@@ -516,22 +516,22 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                     <XCircle size={16} className="text-warn" />
                   )
                 ) : (
-                  <span className="text-[10px] text-paper-muted">UNCHECKED</span>
+                  <span className="text-[10px] font-mono text-forensic-muted">UNCHECKED</span>
                 )}
               </div>
-              <span className="mt-2.5 block font-bold text-sm">
+              <span className="mt-2.5 block font-mono font-bold text-xs">
                 {integrity
                   ? integrity.merkle_root
-                    ? "SEALED MERKLE ROOT"
-                    : "PENDING ROOT DERIVATION"
+                    ? "✓ MERKLE ROOT SEALED"
+                    : "✗ MERKLE PENDING"
                   : "RUN VERIFY INTEGRITY"}
               </span>
             </div>
 
             {/* Layer 4: Blockchain Anchor */}
-            <div className="rounded-2xl border border-ink-700/30 bg-ink-850/60 p-4">
+            <div className="rounded-2xl border border-forensic-border bg-forensic-surface/60 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-paper-muted text-[11px]">4. Polygon Amoy Anchor</span>
+                <span className="text-forensic-muted text-[11px] font-bold uppercase">4. BLOCKCHAIN ANCHOR</span>
                 {verificationResult ? (
                   verificationResult.public_anchor_consistent ? (
                     <CheckCircle2 size={16} className="text-safe" />
@@ -539,13 +539,13 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                     <AlertOctagon size={16} className="text-warn" />
                   )
                 ) : (
-                  <span className="text-[10px] text-paper-muted">UNCHECKED</span>
+                  <span className="text-[10px] font-mono text-forensic-muted">UNCHECKED</span>
                 )}
               </div>
-              <span className="mt-2.5 block font-bold text-sm">
+              <span className="mt-2.5 block font-mono font-bold text-xs">
                 {verificationResult
                   ? verificationResult.public_anchor_consistent
-                    ? "ON-CHAIN ANCHOR CONFIRMED"
+                    ? "✓ BLOCKCHAIN CONFIRMED"
                     : verificationAnchorText(verificationResult)
                   : "RUN VERIFY CHAIN"}
               </span>
@@ -563,7 +563,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
               title="Continuous Multi-Window Threat Progression"
               icon={<ShieldAlert size={16} />}
               badge={
-                <span className="font-mono text-xs text-paper-muted">
+                <span className="font-mono text-xs text-forensic-muted">
                   Thresholds: 40% Warn · 70% Lock
                 </span>
               }
@@ -572,31 +572,31 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                 {chartData.length ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData} margin={{ top: 8, right: 12, left: -20, bottom: 0 }}>
-                      <CartesianGrid stroke="#383838" vertical={false} />
-                      <ReferenceArea y1={0} y2={40} fill="#E6E6E6" fillOpacity={0.03} />
-                      <ReferenceArea y1={40} y2={70} fill="#8E8E8E" fillOpacity={0.06} />
-                      <ReferenceArea y1={70} y2={100} fill="#FFFFFF" fillOpacity={0.10} />
+                      <CartesianGrid stroke="rgba(163, 184, 202, 0.15)" vertical={false} />
+                      <ReferenceArea y1={0} y2={40} fill="#10B981" fillOpacity={0.05} />
+                      <ReferenceArea y1={40} y2={70} fill="#F59E0B" fillOpacity={0.08} />
+                      <ReferenceArea y1={70} y2={100} fill="#EF4444" fillOpacity={0.12} />
                       <XAxis
                         dataKey="t"
                         tickFormatter={(v) => `T+${v}s`}
-                        stroke="#8E8E8E"
+                        stroke="#A3B8CA"
                         fontSize={11}
                         fontFamily="'JetBrains Mono', monospace"
                       />
                       <YAxis
                         domain={[0, 100]}
-                        stroke="#8E8E8E"
+                        stroke="#A3B8CA"
                         fontSize={11}
                         fontFamily="'JetBrains Mono', monospace"
                       />
                       <Tooltip
                         contentStyle={{
-                          background: "#141414",
-                          borderRadius: "12px",
-                          border: "1px solid #383838",
+                          background: "#1E3347",
+                          borderRadius: "14px",
+                          border: "1px solid rgba(163, 184, 202, 0.3)",
                           fontFamily: "'JetBrains Mono', monospace",
                           fontSize: 12,
-                          color: "#E6E6E6",
+                          color: "#CCD3E0",
                         }}
                         labelFormatter={(v) => `Time: T+${v}s`}
                         formatter={(val: number, name: string) => [
@@ -611,7 +611,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                       <Line
                         type="monotone"
                         dataKey="score"
-                        stroke="#FFFFFF"
+                        stroke="#CCD3E0"
                         strokeWidth={2.5}
                         dot={false}
                         name="score"
@@ -619,7 +619,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                       <Line
                         type="monotone"
                         dataKey="acoustic"
-                        stroke="#E6E6E6"
+                        stroke="#899FBC"
                         strokeWidth={1.5}
                         strokeDasharray="3 3"
                         dot={false}
@@ -628,7 +628,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                       <Line
                         type="monotone"
                         dataKey="intent"
-                        stroke="#8E8E8E"
+                        stroke="#A3B8CA"
                         strokeWidth={1.5}
                         strokeDasharray="4 2"
                         dot={false}
@@ -637,16 +637,16 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                     </LineChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="flex h-full items-center justify-center font-mono text-xs text-paper-muted">
+                  <div className="flex h-full items-center justify-center font-mono text-xs text-forensic-muted">
                     No timeline telemetry captured for this call.
                   </div>
                 )}
               </div>
 
               {/* Chart Legend & Summary Stats */}
-              <div className="mt-4 grid grid-cols-3 gap-2 border-t border-ink-700/40 pt-3 font-mono text-xs">
+              <div className="mt-4 grid grid-cols-3 gap-2 border-t border-forensic-border pt-3 font-mono text-xs">
                 <div>
-                  <span className="text-paper-muted text-[10px] block">PEAK RISK</span>
+                  <span className="text-forensic-muted text-[10px] block">PEAK RISK</span>
                   <span
                     className={`font-bold ${
                       maxScore >= 70 ? "text-danger" : maxScore >= 40 ? "text-warn" : "text-safe"
@@ -656,14 +656,14 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                   </span>
                 </div>
                 <div>
-                  <span className="text-paper-muted text-[10px] block">FLAGGED FRAMES</span>
-                  <span className="text-paper-bright font-semibold">
+                  <span className="text-forensic-muted text-[10px] block">FLAGGED FRAMES</span>
+                  <span className="text-forensic-text font-bold">
                     {flaggedEvents.length} of {telemetryHistory.length}
                   </span>
                 </div>
                 <div>
-                  <span className="text-paper-muted text-[10px] block">POLICY SHIFTS</span>
-                  <span className="text-paper-bright font-semibold">{transitions.length}</span>
+                  <span className="text-forensic-muted text-[10px] block">POLICY SHIFTS</span>
+                  <span className="text-forensic-text font-bold">{transitions.length}</span>
                 </div>
               </div>
             </EvidenceSection>
@@ -695,10 +695,10 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                     }
                     tone={
                       acousticPeak >= 0.7
-                        ? "text-danger font-semibold"
+                        ? "text-danger font-bold"
                         : acousticPeak >= 0.4
-                          ? "text-warn font-semibold"
-                          : "text-safe font-semibold"
+                          ? "text-warn font-bold"
+                          : "text-safe font-bold"
                     }
                   />
                 </div>
@@ -710,11 +710,11 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                 icon={<UserRound size={16} />}
               >
                 <div className="space-y-3">
-                  <div className="rounded-xl border border-ink-700/40 bg-ink-850/60 p-3">
-                    <span className="font-mono text-[10px] uppercase text-paper-muted block">
+                  <div className="rounded-2xl border border-forensic-border bg-forensic-surface/60 p-3.5">
+                    <span className="font-sans text-[10px] uppercase font-bold text-forensic-muted block">
                       Enrolled Voiceprint Match
                     </span>
-                    <p className="mt-1 text-xs text-paper-dim leading-relaxed">
+                    <p className="mt-1 text-xs text-forensic-muted leading-relaxed font-sans">
                       {session.telemetry?.speaker_score != null
                         ? `Similarity index: ${Math.round(session.telemetry.speaker_score * 100)}%`
                         : "No enrolled biometric reference found for this caller profile."}
@@ -737,7 +737,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                       session.telemetry?.identity_mismatch &&
                       session.telemetry.identity_mismatch >= 0.7
                         ? "text-danger font-bold"
-                        : "text-paper-bright"
+                        : "text-forensic-text"
                     }
                   />
                   <DataField
@@ -754,30 +754,30 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
               title="ASR Transcript &amp; Dialogue Context"
               icon={<FileWarning size={16} />}
             >
-              <div className="rounded-xl border border-ink-700/40 bg-ink-850/60 p-3.5">
-                <span className="font-mono text-[10px] text-paper-muted uppercase block">
+              <div className="rounded-2xl border border-forensic-border bg-forensic-surface/60 p-4">
+                <span className="font-sans text-[10px] text-forensic-muted font-bold uppercase block">
                   Persisted Dialogue Transcript
                 </span>
-                <p className="mt-1.5 font-sans text-xs leading-relaxed text-paper-bright italic">
+                <p className="mt-1.5 font-sans text-xs leading-relaxed text-forensic-text italic">
                   “{liveTranscript || "No real-time transcript input logged during this monitoring window."}”
                 </p>
               </div>
 
               <div className="mt-3.5 space-y-2">
-                <span className="font-semibold text-xs text-paper-dim block">
+                <span className="font-bold text-xs text-forensic-muted block">
                   Observed Speech-Acts &amp; Rationale:
                 </span>
                 {session.telemetry?.rationale && session.telemetry.rationale.length > 0 ? (
                   session.telemetry.rationale.map((r, i) => (
                     <div
                       key={`${r}-${i}`}
-                      className="rounded-lg border border-danger/25 bg-danger-bg px-3 py-2 text-xs text-paper-bright"
+                      className="rounded-xl border border-danger/30 bg-danger-bg px-3.5 py-2 text-xs text-forensic-text font-sans"
                     >
                       {r}
                     </div>
                   ))
                 ) : (
-                  <p className="text-xs text-paper-muted">No flagged intent triggers registered.</p>
+                  <p className="text-xs text-forensic-muted font-sans">No flagged intent triggers registered.</p>
                 )}
               </div>
             </EvidenceSection>
@@ -790,12 +790,12 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
             >
               <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
                 {telemetryHistory.length === 0 ? (
-                  <p className="font-mono text-xs text-paper-muted">No telemetry frames recorded.</p>
+                  <p className="font-sans text-xs text-forensic-muted">No telemetry frames recorded.</p>
                 ) : (
                   telemetryHistory.map((ev, i) => (
                     <div
                       key={`${ev.timestamp}-${i}`}
-                      className="flex items-start gap-3 rounded-xl border border-ink-700/30 bg-ink-850/50 p-2.5 font-mono text-xs"
+                      className="flex items-start gap-3 rounded-2xl border border-forensic-border bg-forensic-surface/60 p-3 font-sans text-xs"
                     >
                       <span
                         className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${
@@ -808,12 +808,12 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between text-[11px]">
-                          <span className="font-bold text-paper-bright">
-                            Frame #{i + 1} · {statusLabel(ev.status)} ({Math.round(ev.risk_score)}%)
+                          <span className="font-bold text-forensic-text">
+                            Frame #{i + 1} · {statusLabel(ev.status)} (<span className="font-mono">{Math.round(ev.risk_score)}%</span>)
                           </span>
-                          <span className="text-paper-muted">{formatTime(ev.timestamp)}</span>
+                          <span className="text-forensic-muted font-mono">{formatTime(ev.timestamp)}</span>
                         </div>
-                        <p className="mt-1 font-sans text-xs text-paper-dim">
+                        <p className="mt-1 text-xs text-forensic-muted">
                           {ev.rationale[0] ?? "Nominal audio parameters"}
                         </p>
                       </div>
@@ -864,10 +864,10 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                   mono
                   tone={
                     integrity?.ledger?.valid
-                      ? "text-safe font-semibold"
+                      ? "text-safe font-bold"
                       : integrity?.ledger
-                        ? "text-danger font-semibold"
-                        : "text-paper-muted"
+                        ? "text-danger font-bold"
+                        : "text-forensic-muted"
                   }
                 />
               </div>
@@ -929,12 +929,12 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                   mono
                 />
                 {verificationResult?.tx_hash && (
-                  <div className="pt-2.5 border-t border-ink-700/40">
+                  <div className="pt-2.5 border-t border-forensic-border">
                     <a
                       href={`https://amoy.polygonscan.com/tx/${verificationResult.tx_hash}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs font-mono text-signal hover:underline"
+                      className="inline-flex items-center gap-1.5 text-xs font-mono text-forensic-accent hover:underline"
                     >
                       <span>Inspect on Polygonscan Explorer</span>
                       <ExternalLink size={13} />
@@ -950,7 +950,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
               title="Model Provenance &amp; Runtime Stack"
               icon={<Cpu size={16} />}
             >
-              <div className="space-y-1 font-mono text-xs">
+              <div className="space-y-1 font-sans text-xs">
                 <DataField label="Platform Version" value="SatyaVoice Defense Suite v0.1.0" mono />
                 <DataField label="Detector Execution" value={meta?.audioMode ?? "cloud"} mono />
                 <DataField label="Audio Sampling" value="16,000 Hz 16-bit Mono PCM" mono />
@@ -962,11 +962,11 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
             </EvidenceSection>
 
             {/* Forensic Analyst Sign-off Advisory */}
-            <div className="rounded-2xl border border-ink-700/40 bg-ink-900/60 p-4 font-mono text-xs">
-              <span className="font-bold text-paper-bright uppercase block">
+            <div className="rounded-2xl border border-forensic-border bg-forensic-surface/60 p-4 font-sans text-xs">
+              <span className="font-bold text-forensic-text uppercase tracking-wider block">
                 Forensic Closeout Protocol:
               </span>
-              <p className="mt-1.5 text-paper-muted leading-relaxed font-sans text-xs">
+              <p className="mt-1.5 text-forensic-muted leading-relaxed text-xs">
                 Incident closeout requires deterministic agreement across local package hashes,
                 sequential ledger integrity, and Polygon Amoy public anchor confirmation. All
                 reported evidence is frozen upon session closeout and cannot be modified.
@@ -978,3 +978,4 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
     </div>
   );
 }
+

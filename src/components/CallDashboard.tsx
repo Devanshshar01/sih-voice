@@ -34,31 +34,31 @@ interface MetricTileProps {
 
 function MetricTile({ label, value, detail, tone = "neutral", icon }: MetricTileProps) {
   const toneClasses = {
-    safe: "text-safe border-safe/25 bg-safe-bg/30",
-    warn: "text-warn border-warn/25 bg-warn-bg/30",
-    danger: "text-danger border-danger/30 bg-danger-bg/40",
-    signal: "text-signal border-signal/25 bg-signal-bg/30",
-    neutral: "text-paper-bright border-ink-700/40 bg-ink-850/60",
+    safe: "text-safe border-safe/30 bg-safe-bg/40",
+    warn: "text-warn border-warn/30 bg-warn-bg/40",
+    danger: "text-danger border-danger/40 bg-danger-bg/50 font-bold",
+    signal: "text-forensic-accent border-forensic-border bg-forensic-surface/60",
+    neutral: "text-forensic-text border-forensic-border bg-forensic-surface/60",
   };
 
   const textTone = {
     safe: "text-safe",
     warn: "text-warn",
     danger: "text-danger",
-    signal: "text-signal",
-    neutral: "text-paper-bright",
+    signal: "text-forensic-accent",
+    neutral: "text-forensic-text",
   };
 
   return (
-    <div className={`rounded-2xl border p-4 transition-all ${toneClasses[tone]}`}>
-      <div className="flex items-center justify-between text-xs text-paper-muted">
-        <span className="font-semibold uppercase tracking-wider text-[10px]">{label}</span>
+    <div className={`rounded-2xl border p-4 transition-all shadow-sm backdrop-blur ${toneClasses[tone]}`}>
+      <div className="flex items-center justify-between text-xs text-forensic-muted">
+        <span className="font-bold uppercase tracking-wider text-[10px]">{label}</span>
         {icon && <span className="opacity-80">{icon}</span>}
       </div>
       <p className={`mt-2 font-sans text-2xl sm:text-3xl font-extrabold tracking-tight ${textTone[tone]}`}>
         {value}
       </p>
-      <p className="mt-1 text-xs text-paper-dim leading-tight">{detail}</p>
+      <p className="mt-1 text-xs text-forensic-muted leading-tight">{detail}</p>
     </div>
   );
 }
@@ -122,35 +122,34 @@ export default function CallDashboard({ session }: CallDashboardProps) {
   const statusTone =
     currentStatus === "LOCKED" ? "danger" : currentStatus === "SUSPICIOUS" ? "warn" : "safe";
 
-
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-ink-950">
-      {/* Scrollable Main Operations Workspace */}
+    <div className="flex min-h-0 flex-1 flex-col bg-forensic-bg text-forensic-text">
+      {/* Scrollable Operations Workspace */}
       <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
         <div className="mx-auto max-w-[1440px] space-y-6">
-          {/* Top Session Breadcrumb Bar */}
-          <div className="flex flex-col gap-3 border-b border-ink-700/40 pb-4 sm:flex-row sm:items-center sm:justify-between">
+
+          {/* 1. Connection & Call State Header */}
+          <div className="flex flex-col gap-3 border-b border-forensic-border pb-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-signal/25 bg-signal-bg px-2.5 py-0.5 text-[10px] font-semibold text-signal uppercase tracking-wider">
-                  <Radio size={10} className="animate-pulse" /> Live Telemetry
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-forensic-accent/30 bg-forensic-accentMuted px-2.5 py-0.5 text-[10px] font-bold text-forensic-accent uppercase tracking-wider">
+                  <Radio size={10} className="animate-pulse" /> Live Protection Active
                 </span>
-                <span className="text-xs text-paper-muted">
-                  Mode: <span className="font-semibold text-paper-bright uppercase">{meta?.audioMode ?? "CLOUD"}</span>
+                <span className="text-xs text-forensic-muted">
+                  Mode: <span className="font-bold text-forensic-text uppercase">{meta?.audioMode ?? "CLOUD"}</span>
                 </span>
               </div>
-              <h1 className="mt-1 text-xl font-bold tracking-tight text-paper-bright sm:text-2xl">
-                Active Telemetry &amp; Voice Deepfake Protection
+              <h1 className="mt-1 text-xl font-extrabold tracking-tight text-forensic-text sm:text-2xl">
+                Live Protection &amp; Voice Deepfake Inspection
               </h1>
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="rounded-xl border border-ink-700/40 bg-ink-900/80 px-3.5 py-1.5 text-right font-mono">
-                <span className="block text-[10px] uppercase tracking-wider text-paper-muted">
+              <div className="rounded-xl border border-forensic-border bg-forensic-surface/80 px-3.5 py-1.5 text-right font-mono">
+                <span className="block text-[10px] uppercase tracking-wider text-forensic-muted">
                   Session ID
                 </span>
-                <span className="text-xs font-bold text-signal">
+                <span className="text-xs font-bold text-forensic-accent">
                   {meta?.callId ?? "INITIALIZING"}
                 </span>
               </div>
@@ -169,7 +168,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
             verified={verified}
           />
 
-          {/* Four Core Telemetry Metric Cards */}
+          {/* Core Telemetry Metric Cards */}
           <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
             <MetricTile
               label="Fused Risk Index"
@@ -201,49 +200,50 @@ export default function CallDashboard({ session }: CallDashboardProps) {
             />
           </div>
 
-          {/* Hero Decision Surface & Spectral Stream */}
+          {/* 2. Large Risk State & 3. Voice Waveform Visualizer */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-            {/* Left: Focal Risk Gauge & Verdict Card */}
-            <section className="rounded-3xl border border-ink-700/40 bg-ink-900/90 p-6 sm:p-7 shadow-elevated lg:col-span-5 flex flex-col justify-between">
+            {/* Left: Focal Risk Gauge & Verdict Card (5 cols on desktop, primary on mobile) */}
+            <section className="rounded-3xl border border-forensic-border bg-forensic-panel/80 p-6 sm:p-7 shadow-elevated lg:col-span-5 flex flex-col justify-between backdrop-blur">
               <div>
-                <div className="flex items-center justify-between border-b border-ink-700/40 pb-3">
-                  <p className="eyebrow text-signal">Decision Engine</p>
-                  <span className="font-mono text-xs text-paper-muted">Sub-second evaluation</span>
+                <div className="flex items-center justify-between border-b border-forensic-border pb-3">
+                  <p className="eyebrow text-forensic-accent">Decision Engine</p>
+                  <span className="font-mono text-xs text-forensic-muted">Sub-second evaluation</span>
                 </div>
 
                 <div className="mt-4 flex flex-col items-center">
                   {telemetry ? (
                     <TrustGauge score={score} status={status} />
                   ) : (
-                    <div className="flex h-48 flex-col items-center justify-center font-mono text-xs text-paper-muted">
-                      <Activity size={24} className="animate-spin text-signal mb-2" />
-                      <span>Calibrating Audio Engine...</span>
+                    <div className="flex h-48 flex-col items-center justify-center font-mono text-xs text-forensic-muted">
+                      <Activity size={24} className="animate-spin text-forensic-accent mb-2" />
+                      <span>Calibrating Signal Engine...</span>
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="mt-4 rounded-xl border border-ink-700/30 bg-ink-850/50 p-3 text-xs text-paper-dim leading-relaxed">
-                <span className="font-semibold text-paper-bright block mb-0.5">Policy Rationale:</span>
+              {/* 5. Risk Explanation / Rationale */}
+              <div className="mt-4 rounded-2xl border border-forensic-border bg-forensic-surface/60 p-3.5 text-xs text-forensic-muted leading-relaxed">
+                <span className="font-bold text-forensic-text block mb-1">Policy Rationale:</span>
                 {rationale.length > 0 ? (
                   <span>{rationale.join("; ")}</span>
                 ) : (
-                  <span>Acoustic features nominal. No synthetic voice clone indicators detected.</span>
+                  <span>Acoustic features nominal. Zero synthetic voice clone indicators detected.</span>
                 )}
               </div>
             </section>
 
-            {/* Right: Live Voice Spectrogram & Spectral Ribbon */}
-            <section className="lg:col-span-7 flex flex-col justify-between">
+            {/* Right: Voice Waveform / Spectrogram Visualization (7 cols on desktop) */}
+            <section className="lg:col-span-7 flex flex-col justify-between space-y-4">
               <Spectrograph analyser={analyser} status={status} />
 
               {/* On-Device / Edge-Local Inference Telemetry */}
               {(meta?.audioMode === "hybrid" || meta?.audioMode === "edge-local") && (
-                <div className="mt-4 rounded-2xl border border-signal/30 bg-ink-900/90 p-4 shadow-panel">
+                <div className="rounded-2xl border border-forensic-accent/40 bg-forensic-panel/70 p-4 shadow-panel backdrop-blur">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="eyebrow text-signal">In-Browser Edge AI</p>
-                      <h2 className="mt-0.5 text-xs font-bold text-paper-bright">
+                      <p className="eyebrow text-forensic-accent">In-Browser Edge AI</p>
+                      <h2 className="mt-0.5 text-xs font-bold text-forensic-text">
                         On-Device ONNX Runtime WebAssembly Accelerator
                       </h2>
                     </div>
@@ -260,19 +260,19 @@ export default function CallDashboard({ session }: CallDashboardProps) {
                     />
                   </div>
 
-                  <div className="mt-2.5 rounded-xl border border-ink-700/50 bg-ink-950 p-3 font-mono text-xs text-signal">
+                  <div className="mt-2.5 rounded-xl border border-forensic-border bg-forensic-bg p-3 font-mono text-xs text-forensic-accent">
                     {browserOnnxStatus === "loading" && "INITIALIZING ONNX WEB WORKER & WEIGHTS..."}
                     {browserOnnxStatus === "ready" && browserOnnxResult && (
                       <div className="space-y-1">
                         <div>
                           SPOOF PROBABILITY:{" "}
-                          <span className="font-bold text-paper-bright">
+                          <span className="font-bold text-forensic-text">
                             {Math.round(browserOnnxResult.score * 100)}%
                           </span>{" "}
                           ({browserOnnxResult.label})
                         </div>
                         {localRisk && (
-                          <div className="text-[11px] text-paper-muted flex flex-wrap gap-x-3 gap-y-0.5 pt-1 border-t border-ink-800">
+                          <div className="text-[11px] text-forensic-muted flex flex-wrap gap-x-3 gap-y-0.5 pt-1 border-t border-forensic-border">
                             <span>MODEL: {localRisk.modelId}</span>
                             <span>INFER: {Math.round(localRisk.inferenceMs)}ms</span>
                             <span>
@@ -296,25 +296,25 @@ export default function CallDashboard({ session }: CallDashboardProps) {
             </section>
           </div>
 
-          {/* Main Telemetry & Analytics Grid */}
+          {/* 4. Three Threat Signals & 6. Timeline & 7. Action */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-            {/* Left Column: Risk Evolution & Conversational ASR */}
+            {/* Left Column: Chronological Risk Timeline & Conversational Intelligence */}
             <div className="space-y-6 lg:col-span-7">
               {/* Chronological Risk Timeline */}
               <RiskTimeline points={telemetryHistory} />
 
               {/* Conversational Context & ASR Intent Stream */}
-              <section className="rounded-2xl border border-ink-700/40 bg-ink-900/90 p-5 sm:p-6 shadow-panel">
-                <div className="flex items-start justify-between gap-3 border-b border-ink-700/40 pb-3.5">
+              <section className="rounded-3xl border border-forensic-border bg-forensic-panel/70 p-6 shadow-panel backdrop-blur">
+                <div className="flex items-start justify-between gap-3 border-b border-forensic-border pb-3.5">
                   <div>
-                    <p className="eyebrow text-signal">Conversational Intelligence</p>
-                    <h2 className="mt-0.5 text-sm font-bold text-paper-bright">
+                    <p className="eyebrow text-forensic-accent">Conversational Intelligence</p>
+                    <h2 className="mt-0.5 text-sm font-bold text-forensic-text">
                       ASR Transcript &amp; Fraud Intent Markers
                     </h2>
                   </div>
                   <div className="flex items-center gap-2">
                     {languageLabel && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-signal/30 bg-signal-bg px-2.5 py-0.5 text-[11px] font-medium text-signal">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-forensic-accent/30 bg-forensic-accentMuted px-2.5 py-0.5 text-[11px] font-medium text-forensic-accent">
                         <Languages size={11} /> {languageLabel}
                       </span>
                     )}
@@ -333,7 +333,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
                     placeholder="Type dialogue as it occurs (e.g. 'I need you to wire the ₹50,000 urgently without OTP verification')..."
                     className="field-input mt-1.5 w-full resize-none font-sans text-sm"
                   />
-                  <p className="mt-1.5 text-xs text-paper-muted">
+                  <p className="mt-1.5 text-xs text-forensic-muted">
                     Real-time intent analyzer extracts extortion cues, sensitive transaction
                     redirects (UPI/OTP), and psychological urgency.
                   </p>
@@ -341,13 +341,13 @@ export default function CallDashboard({ session }: CallDashboardProps) {
                   {/* Intent Risk Chips */}
                   {intentRisks.length > 0 && (
                     <div className="mt-3.5 space-y-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-paper-muted">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-forensic-muted">
                         Structured Extortion Signals:
                       </p>
                       {intentRisks.map((risk, i) => (
                         <div
                           key={`${risk.category}-${risk.matched_phrase}-${i}`}
-                          className="rounded-xl border border-ink-700/40 bg-ink-850/70 p-3"
+                          className="rounded-2xl border border-forensic-border bg-forensic-surface/60 p-3.5"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span
@@ -356,18 +356,18 @@ export default function CallDashboard({ session }: CallDashboardProps) {
                                   ? "text-danger"
                                   : risk.severity === "elevated"
                                     ? "text-warn"
-                                    : "text-signal"
+                                    : "text-forensic-accent"
                               }`}
                             >
                               Category: {risk.category} · Speech Act: {risk.speech_act}
                             </span>
-                            <span className="font-mono text-[10px] text-paper-muted uppercase">
+                            <span className="font-mono text-[10px] text-forensic-muted uppercase">
                               {risk.language} · {Math.round(risk.confidence * 100)}% conf
                             </span>
                           </div>
-                          <p className="mt-1 text-xs text-paper-bright">
+                          <p className="mt-1 text-xs text-forensic-text">
                             “<span className="font-bold text-danger">{risk.matched_phrase}</span>”
-                            — <span className="text-paper-dim">{risk.evidence}</span>
+                            — <span className="text-forensic-muted">{risk.evidence}</span>
                           </p>
                         </div>
                       ))}
@@ -377,37 +377,37 @@ export default function CallDashboard({ session }: CallDashboardProps) {
               </section>
             </div>
 
-            {/* Right Column: Threat Breakdown & Action Clearance */}
+            {/* Right Column: Three Threat Signals Breakdown & Action Clearance */}
             <div className="space-y-6 lg:col-span-5">
               {/* Identity Verification Posture */}
-              <section className="rounded-2xl border border-ink-700/40 bg-ink-900/90 p-5 shadow-panel">
-                <div className="flex items-start justify-between gap-3 border-b border-ink-700/40 pb-3">
+              <section className="rounded-3xl border border-forensic-border bg-forensic-panel/70 p-5 shadow-panel backdrop-blur">
+                <div className="flex items-start justify-between gap-3 border-b border-forensic-border pb-3">
                   <div>
-                    <p className="eyebrow text-signal">Identity Assurance</p>
-                    <h2 className="mt-0.5 text-sm font-bold text-paper-bright">
+                    <p className="eyebrow text-forensic-accent">Identity Assurance</p>
+                    <h2 className="mt-0.5 text-sm font-bold text-forensic-text">
                       Voice Biometric Posture
                     </h2>
                   </div>
-                  <Fingerprint size={18} className="text-signal" />
+                  <Fingerprint size={18} className="text-forensic-accent" />
                 </div>
 
                 <div className="mt-3.5 space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-ink-700/30 pb-2 text-xs">
-                    <span className="text-paper-muted">Speaker Similarity</span>
-                    <span className="font-mono font-semibold text-paper-bright">
+                  <div className="flex items-center justify-between border-b border-forensic-border/40 pb-2 text-xs">
+                    <span className="text-forensic-muted">Speaker Similarity</span>
+                    <span className="font-mono font-bold text-forensic-text">
                       {speakerSimilarity != null
                         ? `${Math.round(speakerSimilarity * 100)}%`
                         : "Unknown (Unregistered)"}
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between border-b border-ink-700/30 pb-2 text-xs">
-                    <span className="text-paper-muted">Derived Identity Mismatch</span>
+                  <div className="flex items-center justify-between border-b border-forensic-border/40 pb-2 text-xs">
+                    <span className="text-forensic-muted">Derived Identity Mismatch</span>
                     <span
                       className={`font-mono font-bold ${
                         identityMismatch && identityMismatch >= 0.7
                           ? "text-danger"
-                          : "text-paper-bright"
+                          : "text-forensic-text"
                       }`}
                     >
                       {identityMismatch != null
@@ -417,7 +417,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
                   </div>
 
                   <div className="flex items-center justify-between text-xs pt-0.5">
-                    <span className="text-paper-muted">Step-Up Challenge State</span>
+                    <span className="text-forensic-muted">Step-Up Challenge State</span>
                     <StatusBadge
                       label={verified ? "VERIFIED" : showVerification ? "LOCKED" : "NOT REQUIRED"}
                       variant={verified ? "safe" : showVerification ? "danger" : "neutral"}
@@ -428,7 +428,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
                 </div>
               </section>
 
-              {/* Threat Signal Breakdown */}
+              {/* Three-Signal Intelligence Breakdown */}
               <ThreatBreakdown
                 acousticScore={acousticScore}
                 intentScore={intentScore}
@@ -438,7 +438,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
                 status={status}
               />
 
-              {/* Wire Transfer Simulation Panel */}
+              {/* 7. Action: Wire Transfer Simulation Panel */}
               <WireTransferPanel
                 locked={showVerification}
                 feedback={actionFeedback}
@@ -451,7 +451,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
       </main>
 
       {/* Docked Audio & Intervention Controls Footer */}
-      <footer className="shrink-0 border-t border-ink-700/40 bg-ink-950/90 px-6 py-3.5 backdrop-blur-md sm:px-8">
+      <footer className="shrink-0 border-t border-forensic-border bg-forensic-bg/95 px-6 py-3.5 backdrop-blur-xl sm:px-8">
         <div className="mx-auto max-w-[1440px]">
           <CallControls
             muted={muted}
@@ -476,3 +476,4 @@ export default function CallDashboard({ session }: CallDashboardProps) {
     </div>
   );
 }
+

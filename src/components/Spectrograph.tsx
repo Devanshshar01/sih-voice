@@ -11,22 +11,22 @@ const BAR_COUNT = 56;
 
 const STATUS_PALETTES: Record<RiskStatus, { top: string; bottom: string; peak: string; glow: string }> = {
   ALLOW: {
-    top: "#E6E6E6",
-    bottom: "#4A4A4A",
+    top: "#CCD3E0",   // Ephemeral Blue highlight
+    bottom: "#899FBC",// Sailing base
     peak: "#FFFFFF",
-    glow: "rgba(230, 230, 230, 0.2)",
+    glow: "rgba(137, 159, 188, 0.25)",
   },
   WARN: {
-    top: "#8E8E8E",
-    bottom: "#2B2B2B",
-    peak: "#B0B0B0",
-    glow: "rgba(142, 142, 142, 0.25)",
+    top: "#F59E0B",   // Restrained Warning Amber
+    bottom: "#899FBC",// Sailing base
+    peak: "#FBBF24",
+    glow: "rgba(245, 158, 11, 0.35)",
   },
   LOCK_VERIFY: {
-    top: "#FFFFFF",
-    bottom: "#666666",
+    top: "#EF4444",   // Restrained Danger Red
+    bottom: "#3F5874",// Inkjet panel base
     peak: "#FFFFFF",
-    glow: "rgba(255, 255, 255, 0.35)",
+    glow: "rgba(239, 68, 68, 0.45)",
   },
 };
 
@@ -59,8 +59,8 @@ export default function Spectrograph({ analyser, status }: SpectrographProps) {
       const { width, height } = bounds;
       ctx.clearRect(0, 0, width, height);
 
-      // Subtle frequency grid background
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
+      // Frequency grid background
+      ctx.strokeStyle = "rgba(163, 184, 202, 0.08)";
       ctx.lineWidth = 1;
       const gridSteps = 4;
       for (let g = 1; g < gridSteps; g++) {
@@ -147,33 +147,33 @@ export default function Spectrograph({ analyser, status }: SpectrographProps) {
   }, [analyser, status]);
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-ink-700/40 bg-ink-900/80 shadow-panel">
+    <div className="relative overflow-hidden rounded-2xl border border-forensic-border bg-forensic-panel/70 shadow-panel backdrop-blur">
       {/* Header Bar */}
-      <div className="flex items-center justify-between border-b border-ink-700/40 bg-ink-850/60 px-4 py-2 text-xs">
-        <div className="flex items-center gap-2 text-paper-dim">
-          <Activity size={14} className="text-signal animate-pulse" />
-          <span className="font-semibold tracking-wide">Spectral Energy &amp; Voice Activity</span>
-          <span className="text-ink-600">·</span>
-          <span className="font-mono text-[11px] text-paper-muted">16.0 kHz Mono</span>
+      <div className="flex items-center justify-between border-b border-forensic-border bg-forensic-surface/60 px-4 py-2.5 text-xs">
+        <div className="flex items-center gap-2 text-forensic-muted">
+          <Activity size={14} className="text-forensic-accent animate-pulse" />
+          <span className="font-bold text-forensic-text tracking-wide">Acoustic Spectrogram &amp; Voice Energy</span>
+          <span className="text-forensic-muted/50">·</span>
+          <span className="font-mono text-[11px] text-forensic-muted">16.0 kHz Mono PCM</span>
         </div>
         <div className="flex items-center gap-3 font-mono text-[11px]">
-          <span className="text-paper-muted">
-            Peak: <span className="text-paper-bright font-semibold">{peakDb}</span>
+          <span className="text-forensic-muted">
+            Peak: <span className="text-forensic-text font-semibold">{peakDb}</span>
           </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-signal-bg px-2 py-0.5 text-[10px] font-medium text-signal">
-            <span className="h-1.5 w-1.5 rounded-full bg-signal animate-pulse" />
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-forensic-accentMuted px-2.5 py-0.5 text-[10px] font-semibold text-forensic-accent">
+            <span className="h-1.5 w-1.5 rounded-full bg-forensic-accent animate-pulse" />
             VAD Stream
           </span>
         </div>
       </div>
 
       {/* Main Canvas Viewport */}
-      <div className="relative h-32 sm:h-36 w-full p-2">
-        <canvas ref={canvasRef} className="h-full w-full rounded-lg" />
+      <div className="relative h-32 sm:h-36 w-full p-2.5">
+        <canvas ref={canvasRef} className="h-full w-full rounded-xl" />
       </div>
 
       {/* Frequency Ticks Footer */}
-      <div className="flex justify-between border-t border-ink-700/30 bg-ink-850/40 px-4 py-1.5 font-mono text-[10px] text-paper-muted">
+      <div className="flex justify-between border-t border-forensic-border bg-forensic-surface/40 px-4 py-1.5 font-mono text-[10px] text-forensic-muted">
         <span>100 Hz</span>
         <span>500 Hz</span>
         <span>1.0 kHz</span>
@@ -184,3 +184,4 @@ export default function Spectrograph({ analyser, status }: SpectrographProps) {
     </div>
   );
 }
+

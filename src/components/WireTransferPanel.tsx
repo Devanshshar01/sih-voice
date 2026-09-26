@@ -21,12 +21,12 @@ export default function WireTransferPanel({
   const presets = [10000, 50000, 250000];
 
   return (
-    <section className="rounded-2xl border border-ink-700/40 bg-ink-900/90 p-5 shadow-panel">
+    <section className="rounded-3xl border border-forensic-border bg-forensic-panel/70 p-6 shadow-panel backdrop-blur">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3 border-b border-ink-700/40 pb-3.5">
+      <div className="flex items-start justify-between gap-3 border-b border-forensic-border pb-3.5">
         <div>
-          <p className="eyebrow text-signal">Protected Enterprise Action</p>
-          <h2 className="mt-0.5 text-sm font-bold text-paper-bright">
+          <p className="eyebrow text-forensic-accent">Protected Enterprise Action</p>
+          <h2 className="mt-0.5 text-sm font-bold text-forensic-text">
             Financial Wire Clearance Simulation
           </h2>
         </div>
@@ -38,7 +38,7 @@ export default function WireTransferPanel({
         />
       </div>
 
-      <p className="mt-3 text-xs leading-relaxed text-paper-dim">
+      <p className="mt-3 text-xs leading-relaxed text-forensic-muted font-sans">
         Simulated high-value transaction. When acoustic or conversational fraud indicators escalate,
         clearance is automatically gated until secondary out-of-band challenge verifies caller identity.
       </p>
@@ -49,10 +49,10 @@ export default function WireTransferPanel({
           <label className="field-label" htmlFor="wire-amount">
             Wire Authorization Amount (INR)
           </label>
-          <span className="font-mono text-[10px] text-paper-muted">Instant RTGS / NEFT</span>
+          <span className="font-mono text-[10px] text-forensic-muted">Instant RTGS / NEFT</span>
         </div>
         <div className="relative mt-1.5">
-          <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 font-mono text-sm text-paper-muted">
+          <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 font-mono text-sm text-forensic-muted">
             ₹
           </span>
           <input
@@ -68,16 +68,16 @@ export default function WireTransferPanel({
         </div>
 
         {/* Quick Presets */}
-        <div className="mt-2.5 flex gap-2">
+        <div className="mt-2.5 flex gap-2 font-mono">
           {presets.map((preset) => (
             <button
               type="button"
               key={preset}
               onClick={() => setAmount(preset)}
-              className={`rounded-lg border px-2.5 py-1 font-mono text-xs transition-colors ${
+              className={`rounded-xl border px-3 py-1 text-xs transition-colors ${
                 amount === preset
-                  ? "border-signal bg-signal-bg text-signal font-semibold"
-                  : "border-ink-700/50 bg-ink-850/60 text-paper-muted hover:border-ink-600 hover:text-paper"
+                  ? "border-forensic-accent bg-forensic-accentMuted text-forensic-text font-bold"
+                  : "border-forensic-border bg-forensic-surface/60 text-forensic-muted hover:border-forensic-accent/40 hover:text-forensic-text"
               }`}
             >
               ₹{preset.toLocaleString("en-IN")}
@@ -90,10 +90,10 @@ export default function WireTransferPanel({
       <button
         onClick={() => onAttempt(amount)}
         disabled={pending || !Number.isFinite(amount) || amount <= 0}
-        className={`mt-4 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
+        className={`mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-xs font-extrabold uppercase tracking-wider transition-all ${
           locked
             ? "border-danger/50 bg-danger-bg text-danger hover:bg-danger/20"
-            : "border-signal/50 bg-signal-bg text-signal hover:bg-signal/20"
+            : "border-forensic-accent/50 bg-forensic-accentMuted text-forensic-text hover:bg-forensic-accent/20"
         } disabled:cursor-not-allowed disabled:opacity-50`}
       >
         {pending ? (
@@ -118,7 +118,7 @@ export default function WireTransferPanel({
       {feedback && (
         <div
           role="status"
-          className={`mt-3.5 flex items-start gap-2.5 rounded-xl border p-3.5 text-xs leading-relaxed ${
+          className={`mt-3.5 flex items-start gap-2.5 rounded-2xl border p-3.5 text-xs leading-relaxed font-sans ${
             feedback.ok
               ? "border-safe/30 bg-safe-bg text-safe"
               : "border-danger/40 bg-danger-bg text-danger"
@@ -130,7 +130,7 @@ export default function WireTransferPanel({
             <ShieldAlert size={16} className="shrink-0 mt-0.5" />
           )}
           <div>
-            <span className="font-semibold uppercase tracking-wider block">
+            <span className="font-bold uppercase tracking-wider block">
               {feedback.ok ? "Clearance Approved" : "Clearance Intercepted"}
             </span>
             <span>{feedback.message}</span>
@@ -140,3 +140,4 @@ export default function WireTransferPanel({
     </section>
   );
 }
+

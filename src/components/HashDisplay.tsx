@@ -39,7 +39,7 @@ export default function HashDisplay({
         ? "text-safe"
         : status === "warn"
           ? "text-warn"
-          : "text-paper-dim";
+          : "text-forensic-text";
 
   const displayString = !value
     ? pendingLabel
@@ -51,7 +51,7 @@ export default function HashDisplay({
     <div className={`py-2 ${className}`}>
       {label && (
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-mute font-sans">{label}</span>
+          <span className="text-xs text-forensic-muted font-sans">{label}</span>
           {value && (
             <div className="flex items-center gap-2">
               <button
@@ -59,10 +59,10 @@ export default function HashDisplay({
                 onClick={copy}
                 title="Copy full cryptographic digest"
                 aria-label={`Copy ${label || "hash"}`}
-                className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-mute hover:text-signal transition-colors"
+                className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-forensic-muted hover:text-forensic-accent transition-colors"
               >
                 {copied ? <Check size={11} className="text-safe" /> : <Copy size={11} />}
-                <span className={copied ? "text-safe" : ""}>{copied ? "Copied" : "Copy"}</span>
+                <span className={copied ? "text-safe font-bold" : ""}>{copied ? "Copied" : "Copy"}</span>
               </button>
               {value.length > truncateLength.lead + truncateLength.tail + 3 && (
                 <button
@@ -70,7 +70,7 @@ export default function HashDisplay({
                   onClick={() => setExpanded((v) => !v)}
                   title={expanded ? "Show shortened hash" : "Show complete digest"}
                   aria-label={expanded ? "Collapse full hash" : "Expand full hash"}
-                  className="flex items-center gap-0.5 font-mono text-[10px] uppercase tracking-wider text-mute hover:text-signal transition-colors"
+                  className="flex items-center gap-0.5 font-mono text-[10px] uppercase tracking-wider text-forensic-muted hover:text-forensic-accent transition-colors"
                 >
                   {expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
                   <span>{expanded ? "Fold" : "Expand"}</span>
@@ -83,7 +83,7 @@ export default function HashDisplay({
       <div className="mt-1 flex items-center justify-between gap-2">
         <p
           className={`font-mono text-xs break-all ${tone} select-all ${
-            expanded ? "bg-ink-900/90 p-1.5 border border-ink-700/60 leading-relaxed text-[11px]" : ""
+            expanded ? "bg-forensic-bg/90 p-2 rounded-xl border border-forensic-border leading-relaxed text-[11px]" : ""
           }`}
           title={value ?? pendingLabel}
         >
@@ -95,7 +95,7 @@ export default function HashDisplay({
             onClick={copy}
             title="Copy full cryptographic digest"
             aria-label="Copy hash"
-            className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-mute hover:text-signal transition-colors shrink-0"
+            className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-forensic-muted hover:text-forensic-accent transition-colors shrink-0"
           >
             {copied ? <Check size={12} className="text-safe" /> : <Copy size={12} />}
           </button>
@@ -104,3 +104,4 @@ export default function HashDisplay({
     </div>
   );
 }
+

@@ -1,18 +1,19 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   Check,
   Cpu,
   Fingerprint,
-  Layers,
   Lock,
   Mic,
+  MicOff,
   Radio,
   Server,
   Shield,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Waves,
 } from "lucide-react";
 import type { AudioMode } from "../types";
 import StatusBadge from "./StatusBadge";
@@ -38,10 +39,10 @@ const AUDIO_OPTIONS: AudioOptionConfig[] = [
     mode: "cloud",
     badge: "FULL MULTIMODAL",
     badgeVariant: "signal",
-    label: "Cloud Full Pipeline",
+    label: "Cloud Multimodal Pipeline",
     description:
       "Streams microphone audio via secure WebSocket for MMS-300M acoustic anti-spoofing, multilingual ASR intent evaluation, and dynamic risk fusion.",
-    architecture: "16 kHz PCM · Silero VAD · 4s Window · Cloud GPU Fusion",
+    architecture: "16 kHz Mono PCM · Silero VAD · 4s Window · Cloud GPU Fusion",
     icon: Server,
   },
   {
@@ -66,12 +67,12 @@ const AUDIO_OPTIONS: AudioOptionConfig[] = [
   },
 ];
 
-const PIPELINE_STEPS = [
-  { step: "01", name: "Voice Stream", desc: "16 kHz mono capture & Silero VAD" },
-  { step: "02", name: "Acoustic AI", desc: "MMS-300M anti-spoof (4s window)" },
-  { step: "03", name: "Intent Analysis", desc: "Multilingual ASR & extortion tokens" },
-  { step: "04", name: "Risk Fusion", desc: "Dynamic policy gating & step-up MFA" },
-  { step: "05", name: "Forensic Ledger", desc: "SHA-256 Merkle & Polygon Amoy anchor" },
+const INTELLIGENCE_CHAIN = [
+  { step: "VOICE", label: "Signal Stream", desc: "16 kHz mono PCM stream" },
+  { step: "ANALYSIS", label: "Feature Extraction", desc: "MMS-300M & ECAPA biometrics" },
+  { step: "SIGNALS", label: "Three Threat Vectors", desc: "Spoof + Identity + Intent" },
+  { step: "RISK", label: "Dynamic Fusion", desc: "Weighted risk index calculation" },
+  { step: "DECISION", label: "Policy Gating", desc: "ALLOW / WARN / LOCK_VERIFY" },
 ];
 
 export default function StartCallForm({ onStart, error, connecting }: StartCallFormProps) {
@@ -79,31 +80,102 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
   const [recipientId, setRecipientId] = useState("finance-desk-01");
   const [audioMode, setAudioMode] = useState<AudioMode>("cloud");
 
+  // Mic test / preview state
+  const [testingMic, setTestingMic] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const startMicTest = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = stream;
+      const audioCtx = new AudioContext();
+      audioCtxRef.current = audioCtx;
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx) return;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      setTestingMic(true);
+
+      const render = () => {
+        analyser.getByteFrequencyData(dataArray);
+        const { width, height } = canvas.getBoundingClientRect();
+        canvas.width = width * (window.devicePixelRatio || 1);
+        canvas.height = height * (window.devicePixelRatio || 1);
+        ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+
+        ctx.clearRect(0, 0, width, height);
+
+        const barWidth = width / dataArray.length;
+        dataArray.forEach((val, i) => {
+          const barHeight = (val / 255) * (height - 4);
+          const x = i * barWidth;
+          const y = height - barHeight;
+
+          const gradient = ctx.createLinearGradient(0, y, 0, height);
+          gradient.addColorStop(0, "#CCD3E0"); // Ephemeral Blue highlight
+          gradient.addColorStop(1, "#899FBC"); // Sailing base
+
+          ctx.fillStyle = gradient;
+          ctx.fillRect(x, y, barWidth - 1, barHeight);
+        });
+
+        rafRef.current = requestAnimationFrame(render);
+      };
+
+      render();
+    } catch {
+      setTestingMic(false);
+    }
+  };
+
+  const stopMicTest = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    audioCtxRef.current?.close();
+    setTestingMic(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      stopMicTest();
+    };
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!callerId.trim() || !recipientId.trim() || connecting) return;
+    stopMicTest();
     onStart(callerId.trim(), recipientId.trim(), audioMode);
   };
 
   return (
-    <div className="min-h-[100dvh] bg-ink-950 text-paper flex flex-col selection:bg-signal/20 selection:text-paper-bright">
-      {/* ── Nav Header ─────────────────────────────────────────── */}
-      <header className="sticky top-0 z-30 border-b border-ink-700/40 bg-ink-950/95 px-6 py-3 backdrop-blur-md sm:px-10">
+    <div className="min-h-[100dvh] bg-forensic-bg text-forensic-text flex flex-col selection:bg-forensic-accent/30 selection:text-white">
+      {/* ── Editorial Top Navigation Bar ─────────────────────────────────────────── */}
+      <header className="sticky top-0 z-30 border-b border-forensic-border bg-forensic-bg/95 px-6 py-3.5 backdrop-blur-xl sm:px-10">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-signal/30 bg-signal/8 text-signal">
-              <Shield size={16} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-forensic-accent/40 bg-forensic-panel/60 text-forensic-accent shadow-signal">
+              <Shield size={19} />
             </div>
             <div className="flex items-center gap-2.5">
-              <span className="text-sm font-bold tracking-tight text-paper-bright">SatyaVoice</span>
-              <span className="rounded-md bg-ink-800 px-2 py-0.5 font-mono text-[10px] font-semibold text-paper-muted uppercase tracking-wider">
-                Defense Platform
+              <span className="text-base font-extrabold tracking-tight text-forensic-text">SatyaVoice</span>
+              <span className="rounded-md border border-forensic-accent/30 bg-forensic-panel/80 px-2.5 py-0.5 font-mono text-[10px] font-bold text-forensic-accent uppercase tracking-wider">
+                Forensic Intelligence
               </span>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <StatusBadge label="System Ready" variant="safe" pulse />
-            <span className="hidden font-mono text-xs text-paper-muted sm:inline">
+            <StatusBadge label="Defense Engine Ready" variant="safe" pulse />
+            <span className="hidden font-mono text-xs text-forensic-muted sm:inline">
               Polygon Amoy Anchor Active
             </span>
           </div>
@@ -111,112 +183,151 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
       </header>
 
       {/* ── Page Body ──────────────────────────────────────────── */}
-      <div className="mx-auto w-full max-w-7xl flex-1 px-6 pt-4 pb-16 sm:px-10 lg:pt-5">
+      <div className="mx-auto w-full max-w-7xl flex-1 px-6 py-8 sm:px-10 lg:py-12">
+        {/* Intelligence Chain Header Ribbon */}
+        <div className="mb-8 rounded-2xl border border-forensic-border bg-forensic-surface/60 p-4 shadow-panel backdrop-blur">
+          <div className="mb-2 flex items-center justify-between border-b border-forensic-border pb-2">
+            <span className="eyebrow flex items-center gap-2">
+              <Radio size={12} className="animate-pulse text-forensic-accent" />
+              Intelligence Architecture Flow
+            </span>
+            <span className="font-mono text-[11px] text-forensic-muted">Continuous Multimodal Pipeline</span>
+          </div>
 
-        {/* Hero eyebrow */}
-        <div className="inline-flex items-center gap-2 rounded-full border border-signal/25 bg-signal/8 px-3 py-1 text-xs font-medium text-signal">
-          <Radio size={11} className="animate-pulse" />
-          <span>Real-Time Voice Intelligence &amp; Synthetic Media Interception</span>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {INTELLIGENCE_CHAIN.map((item, idx) => (
+              <div
+                key={item.step}
+                className="group relative rounded-xl border border-forensic-border bg-forensic-panel/40 p-3 transition-all hover:border-forensic-accent/50 hover:bg-forensic-panel/80"
+              >
+                <div className="flex items-center justify-between font-mono text-[11px]">
+                  <span className="font-extrabold text-forensic-accent">{item.step}</span>
+                  {idx < INTELLIGENCE_CHAIN.length - 1 && (
+                    <span className="hidden text-forensic-muted sm:inline">→</span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs font-bold text-forensic-text">{item.label}</p>
+                <p className="mt-0.5 text-[11px] text-forensic-muted leading-tight">{item.desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* ── Two-column grid ──────────────────────────────────── */}
-        <div className="mt-6 grid w-full grid-cols-1 items-start gap-10 lg:grid-cols-12 lg:gap-16">
+        {/* ── Main Editorial Asymmetric Grid ──────────────────────────────────── */}
+        <div className="grid w-full grid-cols-1 items-start gap-10 lg:grid-cols-12 lg:gap-14">
 
-          {/* ── LEFT: Editorial overview ─────────────────────── */}
-          <section className="lg:col-span-7 lg:sticky lg:top-24 flex flex-col gap-8">
-
-            {/* Hero headline */}
+          {/* ── LEFT: Product Experience & Signal Visualizer Showcase (7 cols) ── */}
+          <section className="lg:col-span-7 flex flex-col gap-8">
+            {/* Main Headline */}
             <div>
-              <h1 className="text-3xl font-extrabold tracking-tight text-paper-bright sm:text-4xl lg:text-[2.75rem] lg:leading-[1.12]">
-                Continuous voice analysis,<br className="hidden sm:block" />
-                zero-trust fraud defense.
+              <h1 className="text-3xl font-extrabold tracking-tight text-forensic-text sm:text-4xl lg:text-[2.85rem] lg:leading-[1.12]">
+                Calm, precise, and sophisticated AI voice security.
               </h1>
-              <p className="mt-4 max-w-xl text-sm leading-relaxed text-paper-dim">
-                SatyaVoice safeguards enterprise communications and financial desks from voice clones,
-                AI speech synthesis, and social engineering. Acoustic features, conversational intent,
-                and speaker biometrics are fused in real time to enforce deterministic policy clearance
-                before sensitive actions execute.
+              <p className="mt-4 max-w-2xl text-sm leading-relaxed text-forensic-muted">
+                SatyaVoice secures financial desks, executive communications, and contact centers against
+                synthetic deepfakes, AI voice clones, and social engineering extortion. Continuous acoustic
+                spectrograms, speaker biometrics, and language intent are fused in real time to produce court-verifiable evidence.
               </p>
             </div>
 
-            {/* Pipeline flow */}
-            <div>
-              <div className="mb-3 flex items-center justify-between">
-                <p className="eyebrow flex items-center gap-1.5 text-signal">
-                  <Layers size={12} />
-                  Continuous Intelligence Pipeline
-                </p>
-                <span className="font-mono text-[11px] text-paper-muted">Sub-second rolling window</span>
+            {/* Live Voice Signal Waveform Visualizer Section */}
+            <div className="rounded-3xl border border-forensic-border bg-forensic-panel/60 p-6 shadow-elevated backdrop-blur">
+              <div className="flex items-center justify-between border-b border-forensic-border pb-3.5">
+                <div>
+                  <p className="eyebrow">Real-Time Signal Engine</p>
+                  <h2 className="mt-0.5 text-sm font-bold text-forensic-text">
+                    Acoustic Waveform &amp; Spectral Monitor
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={testingMic ? stopMicTest : startMicTest}
+                  className={`flex items-center gap-2 rounded-xl border px-3.5 py-1.5 font-mono text-xs font-semibold transition-all ${
+                    testingMic
+                      ? "border-warn/50 bg-warn-bg text-warn"
+                      : "border-forensic-accent/40 bg-forensic-accentMuted text-forensic-text hover:bg-forensic-accent/20"
+                  }`}
+                >
+                  {testingMic ? <MicOff size={14} /> : <Mic size={14} />}
+                  <span>{testingMic ? "Stop Mic Test" : "Test Live Signal"}</span>
+                </button>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
-                {PIPELINE_STEPS.map((s, idx) => (
-                  <div
-                    key={s.step}
-                    className="relative rounded-xl border border-ink-700/30 bg-ink-900/50 p-3 transition-colors hover:border-signal/30 hover:bg-ink-900"
-                  >
-                    <div className="flex items-center justify-between font-mono text-[11px]">
-                      <span className="text-signal font-semibold">{s.step}</span>
-                      {idx < PIPELINE_STEPS.length - 1 && (
-                        <span className="hidden text-paper-muted sm:inline">→</span>
-                      )}
-                    </div>
-                    <p className="mt-1.5 text-xs font-semibold text-paper-bright">{s.name}</p>
-                    <p className="mt-0.5 text-[11px] text-paper-muted leading-tight">{s.desc}</p>
+
+              {/* Waveform Canvas */}
+              <div className="relative mt-4 h-36 w-full rounded-2xl border border-forensic-border bg-forensic-bg/90 p-3 overflow-hidden">
+                <canvas ref={canvasRef} className="h-full w-full rounded-lg" />
+                {!testingMic && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 bg-forensic-bg/40 backdrop-blur-[2px]">
+                    <Waves size={24} className="text-forensic-accent animate-pulse mb-1.5" />
+                    <span className="font-mono text-xs font-semibold text-forensic-text">
+                      16.0 kHz Mono PCM Stream Ready
+                    </span>
+                    <span className="text-[11px] text-forensic-muted mt-0.5">
+                      Click "Test Live Signal" to verify local microphone input
+                    </span>
                   </div>
-                ))}
+                )}
+              </div>
+
+              <div className="mt-3 flex justify-between font-mono text-[10px] text-forensic-muted">
+                <span>Base: Sailing #899FBC</span>
+                <span>Highlights: Ephemeral Blue #CCD3E0</span>
+                <span>VAD Window: 4.0s</span>
               </div>
             </div>
 
-            {/* Security pillars */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-xl border border-ink-700/30 bg-ink-900/40 p-3.5">
+            {/* Three Security Pillars */}
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+              <div className="rounded-2xl border border-forensic-border bg-forensic-surface/50 p-4 transition-all hover:bg-forensic-surface">
                 <div className="flex items-center gap-2 text-safe">
-                  <ShieldCheck size={15} />
-                  <span className="text-xs font-semibold text-paper-bright">Zero Persistence</span>
+                  <ShieldCheck size={16} />
+                  <span className="text-xs font-bold text-forensic-text">Zero Persistence</span>
                 </div>
-                <p className="mt-1.5 text-xs text-paper-muted leading-relaxed">
-                  Raw voice is strictly ephemeral. Cryptographic hashes and telemetry metrics only.
+                <p className="mt-2 text-xs text-forensic-muted leading-relaxed">
+                  Raw voice is ephemeral. Only SHA-256 hashes and encrypted vector telemetry are preserved.
                 </p>
               </div>
-              <div className="rounded-xl border border-ink-700/30 bg-ink-900/40 p-3.5">
-                <div className="flex items-center gap-2 text-signal">
-                  <Sparkles size={15} />
-                  <span className="text-xs font-semibold text-paper-bright">MMS-300M Model</span>
+
+              <div className="rounded-2xl border border-forensic-border bg-forensic-surface/50 p-4 transition-all hover:bg-forensic-surface">
+                <div className="flex items-center gap-2 text-forensic-accent">
+                  <Sparkles size={16} />
+                  <span className="text-xs font-bold text-forensic-text">MMS-300M Model</span>
                 </div>
-                <p className="mt-1.5 text-xs text-paper-muted leading-relaxed">
-                  Production anti-spoof model detecting vocoder artifacts and synthetic phonemes.
+                <p className="mt-2 text-xs text-forensic-muted leading-relaxed">
+                  Fine-tuned Meta detector identifying vocoder artifacts, synthetic phase shifts, and neural speech.
                 </p>
               </div>
-              <div className="rounded-xl border border-ink-700/30 bg-ink-900/40 p-3.5">
-                <div className="flex items-center gap-2 text-intel">
-                  <Fingerprint size={15} />
-                  <span className="text-xs font-semibold text-paper-bright">Polygon Immutability</span>
+
+              <div className="rounded-2xl border border-forensic-border bg-forensic-surface/50 p-4 transition-all hover:bg-forensic-surface">
+                <div className="flex items-center gap-2 text-forensic-muted">
+                  <Fingerprint size={16} />
+                  <span className="text-xs font-bold text-forensic-text">Polygon Anchor</span>
                 </div>
-                <p className="mt-1.5 text-xs text-paper-muted leading-relaxed">
-                  SHA-256 Merkle roots committed to Polygon Amoy for court-ready chain of custody.
+                <p className="mt-2 text-xs text-forensic-muted leading-relaxed">
+                  Cryptographic Merkle tree roots committed to Polygon Amoy for immutable chain of custody.
                 </p>
               </div>
             </div>
           </section>
 
-          {/* ── RIGHT: Launch form ───────────────────────────── */}
-          <section className="lg:col-span-5">
-            <div className="rounded-2xl border border-ink-700/50 bg-ink-900/90 p-6 shadow-elevated">
-              {/* Form header */}
-              <div className="border-b border-ink-700/40 pb-4 mb-5">
-                <p className="eyebrow text-signal">Initialize Defense Session</p>
-                <h2 className="mt-1 text-xl font-bold tracking-tight text-paper-bright">
-                  Session Configuration
+          {/* ── RIGHT: Streamlined Session Setup Panel (5 cols) ───────────────── */}
+          <section className="lg:col-span-5 lg:sticky lg:top-24">
+            <div className="rounded-3xl border border-forensic-border bg-forensic-panel p-6 sm:p-7 shadow-elevated">
+              {/* Panel Header */}
+              <div className="border-b border-forensic-border pb-4 mb-5">
+                <p className="eyebrow text-forensic-accent">Session Configuration</p>
+                <h2 className="mt-1 text-xl font-extrabold tracking-tight text-forensic-text">
+                  Target &amp; Monitoring Setup
                 </h2>
-                <p className="mt-1 text-xs text-paper-muted">
-                  Choose an inspection execution mode and designate communication parties.
+                <p className="mt-1 text-xs text-forensic-muted">
+                  Designate protected lines and select inspection pipeline mode.
                 </p>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 {/* Pipeline selector */}
                 <div>
-                  <label className="field-label mb-2.5 block">Inspection Execution Pipeline</label>
+                  <label className="field-label mb-2.5 block">Inspection Pipeline Mode</label>
                   <div className="space-y-2">
                     {AUDIO_OPTIONS.map((opt) => {
                       const isSelected = audioMode === opt.mode;
@@ -226,17 +337,17 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
                           type="button"
                           key={opt.mode}
                           onClick={() => setAudioMode(opt.mode)}
-                          className={`group relative flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all ${
+                          className={`group relative flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition-all ${
                             isSelected
-                              ? "border-signal/70 bg-ink-800 ring-1 ring-signal/20"
-                              : "border-ink-700/40 bg-ink-850/40 hover:border-ink-600 hover:bg-ink-800/60"
+                              ? "border-forensic-accent bg-forensic-surface shadow-signal ring-1 ring-forensic-accent/30"
+                              : "border-forensic-border bg-forensic-surface/40 hover:border-forensic-accent/40 hover:bg-forensic-surface/70"
                           }`}
                         >
                           <div
-                            className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+                            className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border transition-colors ${
                               isSelected
-                                ? "border-signal/50 bg-signal/10 text-signal"
-                                : "border-ink-700 bg-ink-800 text-paper-muted group-hover:text-paper"
+                                ? "border-forensic-accent bg-forensic-accent/20 text-forensic-accent"
+                                : "border-forensic-border bg-forensic-surface text-forensic-muted group-hover:text-forensic-text"
                             }`}
                           >
                             <Icon size={14} />
@@ -244,20 +355,20 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between gap-2">
                               <span
-                                className={`text-xs font-semibold tracking-tight ${
-                                  isSelected ? "text-paper-bright" : "text-paper-dim"
+                                className={`text-xs font-bold tracking-tight ${
+                                  isSelected ? "text-forensic-text" : "text-forensic-muted"
                                 }`}
                               >
                                 {opt.label}
                               </span>
                               <StatusBadge label={opt.badge} variant={opt.badgeVariant} size="sm" icon={false} />
                             </div>
-                            <p className="mt-1 text-[11px] leading-relaxed text-paper-muted">{opt.description}</p>
-                            <p className="mt-1 font-mono text-[10px] text-paper-muted/70">{opt.architecture}</p>
+                            <p className="mt-1 text-[11px] leading-relaxed text-forensic-muted">{opt.description}</p>
+                            <p className="mt-1 font-mono text-[10px] text-forensic-muted/80">{opt.architecture}</p>
                           </div>
                           {isSelected && (
-                            <div className="absolute right-3 top-3 text-signal">
-                              <Check size={13} />
+                            <div className="absolute right-3.5 top-3.5 text-forensic-accent">
+                              <Check size={14} />
                             </div>
                           )}
                         </button>
@@ -267,7 +378,7 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
                 </div>
 
                 {/* Call party inputs */}
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <div>
                     <label className="field-label" htmlFor="caller-id">
                       Caller ID / Inbound Line
@@ -283,7 +394,7 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
                       maxLength={120}
                       placeholder="+91..."
                     />
-                    <span className="mt-1 block text-[11px] text-paper-muted">Simulated caller number</span>
+                    <span className="mt-1 block text-[11px] text-forensic-muted">Caller number identifier</span>
                   </div>
                   <div>
                     <label className="field-label" htmlFor="recipient-id">
@@ -300,7 +411,7 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
                       maxLength={120}
                       placeholder="finance-desk-01"
                     />
-                    <span className="mt-1 block text-[11px] text-paper-muted">Authorized terminal</span>
+                    <span className="mt-1 block text-[11px] text-forensic-muted">Target operational terminal</span>
                   </div>
                 </div>
 
@@ -308,11 +419,11 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
                 {error && (
                   <div
                     role="alert"
-                    className="flex items-start gap-2.5 rounded-xl border border-danger/30 bg-danger/8 p-3 text-xs leading-relaxed text-danger"
+                    className="flex items-start gap-2.5 rounded-2xl border border-danger/40 bg-danger-bg p-3.5 text-xs leading-relaxed text-danger"
                   >
-                    <ShieldAlert size={15} className="shrink-0 mt-0.5" />
+                    <ShieldAlert size={16} className="shrink-0 mt-0.5" />
                     <div>
-                      <span className="font-semibold uppercase tracking-wider block">Connection Advisory</span>
+                      <span className="font-bold uppercase tracking-wider block">Connection Advisory</span>
                       <span>{error}</span>
                     </div>
                   </div>
@@ -322,17 +433,17 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
                 <button
                   type="submit"
                   disabled={connecting || !callerId.trim() || !recipientId.trim()}
-                  className="group relative flex w-full items-center justify-center gap-2 rounded-xl border border-signal/50 bg-signal px-5 py-3 text-sm font-semibold tracking-wide text-ink-950 transition-all hover:bg-signal/90 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:border-ink-700 disabled:bg-ink-800 disabled:text-paper-muted"
+                  className="group relative flex w-full items-center justify-center gap-2.5 rounded-2xl border border-forensic-accent/60 bg-forensic-accent px-5 py-3.5 text-sm font-extrabold tracking-wide text-forensic-bg transition-all hover:bg-white hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:border-forensic-border disabled:bg-forensic-surface disabled:text-forensic-muted"
                 >
                   {connecting ? (
                     <>
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink-950 border-t-transparent" />
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-forensic-bg border-t-transparent" />
                       <span>Establishing Secure Stream Channel...</span>
                     </>
                   ) : (
                     <>
                       <span>Initiate Real-Time Voice Protection</span>
-                      <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
+                      <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
                     </>
                   )}
                 </button>
@@ -344,3 +455,4 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
     </div>
   );
 }
+
