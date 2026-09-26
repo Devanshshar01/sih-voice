@@ -4,107 +4,117 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Exact Brand Foundation: Blue Forensic Intelligence
+        // Exact CloudPilot SaaS Aesthetic Palette (Purple/Violet Glow + Crisp Light Canvas)
+        cloudPilot: {
+          dark: "#080B11",
+          violet: "#7C3AED",
+          indigo: "#6366F1",
+          purple: "#A855F7",
+          pink: "#EC4899",
+          softBg: "#F8FAFC",
+          cardBorder: "#E2E8F0",
+        },
+        // Exact Brand Foundation: Blue Forensic Intelligence + CloudPilot Hybrids
         blueWhale: {
-          DEFAULT: "#1E3347",
-          deep: "#152535",
-          surface: "#243A4F",
+          DEFAULT: "#080B11",
+          deep: "#05070B",
+          surface: "#121824",
         },
         inkjet: {
-          DEFAULT: "#3F5874",
-          light: "#4A6788",
-          dark: "#2F445B",
+          DEFAULT: "#1E293B",
+          light: "#334155",
+          dark: "#0F172A",
         },
         sailing: {
-          DEFAULT: "#899FBC",
-          hover: "#A0B4CF",
-          glow: "rgba(137, 159, 188, 0.35)",
+          DEFAULT: "#7C3AED",
+          hover: "#8B5CF6",
+          glow: "rgba(124, 58, 237, 0.35)",
         },
         shallowSea: {
-          DEFAULT: "#A3B8CA",
-          muted: "rgba(163, 184, 202, 0.65)",
-          border: "rgba(163, 184, 202, 0.22)",
+          DEFAULT: "#94A3B8",
+          muted: "#64748B",
+          border: "#E2E8F0",
         },
         ephemeralBlue: {
-          DEFAULT: "#CCD3E0",
-          bright: "#E8ECF4",
+          DEFAULT: "#FFFFFF",
+          bright: "#F8FAFC",
         },
         // Base Palette Mapping
         forensic: {
-          bg: "#1E3347",        // Blue Whale
-          surface: "#3F5874",   // Inkjet
-          panel: "#2A4259",     // Elevated Blue Whale / Inkjet surface
-          panelHover: "#4A6788",// Inkjet hover
-          accent: "#899FBC",    // Sailing primary accent
-          accentMuted: "rgba(137, 159, 188, 0.15)",
-          muted: "#A3B8CA",     // Shallow Sea secondary text / metadata
-          border: "rgba(163, 184, 202, 0.22)", // Shallow Sea border
-          borderBright: "#899FBC",
-          text: "#CCD3E0",      // Ephemeral Blue primary text
+          bg: "#FFFFFF",        // Crisp White Canvas
+          surface: "#FFFFFF",   // Pure White Card
+          panel: "#F8FAFC",     // Soft Slate Panel
+          panelHover: "#F1F5F9",// Slate Hover
+          accent: "#7C3AED",    // Violet Primary Accent
+          accentMuted: "rgba(124, 58, 237, 0.12)",
+          muted: "#64748B",     // Secondary text
+          border: "#E2E8F0",    // Crisp light border
+          borderBright: "#7C3AED",
+          text: "#0F172A",      // Dark primary text
         },
         // Backward-compatible color aliases
         ink: {
-          950: "#1E3347",       // Blue Whale
-          900: "#243A4F",       // Deep Surface
-          850: "#3F5874",       // Inkjet
-          800: "#4A6788",       // Inkjet hover
-          750: "#2A4259",
-          700: "rgba(163, 184, 202, 0.22)",
-          600: "rgba(163, 184, 202, 0.35)",
-          500: "#899FBC",       // Sailing Accent
-          400: "#A3B8CA",       // Shallow Sea Muted Text
-          300: "#CCD3E0",       // Ephemeral Blue Primary Text
+          950: "#080B11",
+          900: "#FFFFFF",
+          850: "#F8FAFC",
+          800: "#F1F5F9",
+          750: "#E2E8F0",
+          700: "#E2E8F0",
+          600: "#CBD5E1",
+          500: "#7C3AED",
+          400: "#64748B",
+          300: "#0F172A",
         },
         paper: {
-          DEFAULT: "#CCD3E0",   // Ephemeral Blue
-          dim: "#A3B8CA",       // Shallow Sea
-          muted: "#899FBC",     // Sailing
-          bright: "#E8ECF4",
+          DEFAULT: "#0F172A",
+          dim: "#475569",
+          muted: "#64748B",
+          bright: "#0F172A",
         },
         mute: {
-          DEFAULT: "#A3B8CA",
-          dim: "#899FBC",
+          DEFAULT: "#64748B",
+          dim: "#475569",
         },
         signal: {
-          DEFAULT: "#899FBC",   // Sailing
-          dim: "#A3B8CA",
-          bg: "rgba(137, 159, 188, 0.12)",
-          border: "rgba(137, 159, 188, 0.30)",
+          DEFAULT: "#7C3AED",
+          dim: "#64748B",
+          bg: "rgba(124, 58, 237, 0.08)",
+          border: "rgba(124, 58, 237, 0.25)",
         },
         // Security States (Restrained semantic colors)
         safe: {
-          DEFAULT: "#10B981",   // Restrained Green
+          DEFAULT: "#10B981",   // Emerald
           dim: "#059669",
-          bg: "rgba(16, 185, 129, 0.12)",
-          border: "rgba(16, 185, 129, 0.30)",
+          bg: "#ECFDF5",
+          border: "#A7F3D0",
         },
         warn: {
-          DEFAULT: "#F59E0B",   // Restrained Amber
+          DEFAULT: "#F59E0B",   // Amber
           dim: "#D97706",
-          bg: "rgba(245, 158, 11, 0.12)",
-          border: "rgba(245, 158, 11, 0.30)",
+          bg: "#FFFBEB",
+          border: "#FDE68A",
         },
         danger: {
-          DEFAULT: "#EF4444",   // Restrained Red
+          DEFAULT: "#EF4444",   // Red
           dim: "#DC2626",
-          bg: "rgba(239, 68, 68, 0.15)",
-          border: "rgba(239, 68, 68, 0.35)",
+          bg: "#FEF2F2",
+          border: "#FECACA",
         },
         degraded: {
           DEFAULT: "#D97706",
-          bg: "rgba(217, 119, 6, 0.12)",
-          border: "rgba(217, 119, 6, 0.25)",
+          bg: "#FFFBEB",
+          border: "#FDE68A",
         },
         offline: {
           DEFAULT: "#64748B",
-          bg: "rgba(100, 116, 139, 0.12)",
-          border: "rgba(100, 116, 139, 0.25)",
+          bg: "#F8FAFC",
+          border: "#E2E8F0",
         },
         intel: {
-          DEFAULT: "#899FBC",
-          dim: "#A3B8CA",
-          bg: "rgba(137, 159, 188, 0.12)",
-          border: "rgba(137, 159, 188, 0.25)",
+          DEFAULT: "#7C3AED",
+          dim: "#64748B",
+          bg: "rgba(124, 58, 237, 0.08)",
+          border: "rgba(124, 58, 237, 0.20)",
         },
       },
       fontFamily: {
