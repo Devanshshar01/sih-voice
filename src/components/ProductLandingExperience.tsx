@@ -117,9 +117,9 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
 
   return (
     <div className="relative min-h-screen bg-white text-[#0F172A] selection:bg-[#C084FC]/30 selection:text-[#0F172A]">
-      {/* ── CLOUDPILOT TOP NAVBAR ────────────────────────────────────────── */}
-      <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#080B11]/95 px-6 py-4 backdrop-blur-xl transition-all">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+      {/* ── CLOUDPILOT TOP NAVBAR (ULTRA-GLASSMORPHIC FLOATING BAR) ───── */}
+      <nav className="sticky top-0 z-50 px-4 py-3 sm:px-6 sm:py-4 transition-all">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 rounded-full border border-white/15 bg-[#080B11]/70 px-6 py-3 shadow-[0_8px_32px_0_rgba(0,0,0,0.45)] backdrop-blur-2xl">
           <div className="flex items-center gap-3">
             {/* Brand Logo: Gradient Circle Icon */}
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-[#7C3AED] via-[#A855F7] to-[#EC4899] text-white shadow-[0_0_15px_rgba(168,85,247,0.5)]">
@@ -494,27 +494,27 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
             </div>
           ) : (
             /* Idle Preview Workspace */
-            <div className="surface-hero p-8 sm:p-12 space-y-8">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-6 sm:p-10 space-y-8 shadow-sm overflow-hidden">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-slate-200 pb-6">
                 <div className="space-y-2">
                   <span className="hud-badge hud-badge-safe">LIVE PROTECTION READY</span>
-                  <h3 className="text-2xl sm:text-3xl font-extrabold text-white">
+                  <h3 className="text-2xl sm:text-3xl font-extrabold text-[#0F172A]">
                     Start Monitoring an Incoming Audio Stream
                   </h3>
-                  <p className="text-sm text-slate-300 max-w-xl">
+                  <p className="text-sm text-slate-600 max-w-xl">
                     Connect your microphone to evaluate live voice authenticity, view real-time spectral energy, and monitor fused threat indices.
                   </p>
                 </div>
                 <button
                   onClick={() => setShowSetupModal(true)}
-                  className="rounded-full bg-white px-8 py-4 text-sm font-extrabold text-[#080B11] shadow-2xl transition-all hover:bg-slate-100 hover:scale-[1.03] active:scale-[0.98] self-start md:self-center"
+                  className="rounded-full bg-[#0F172A] px-8 py-3.5 text-sm font-extrabold text-white shadow-lg transition-all hover:bg-slate-800 hover:scale-[1.03] active:scale-[0.98] self-start md:self-center shrink-0"
                 >
                   START LIVE PROTECTION NOW
                 </button>
               </div>
 
               {/* Simulated Live Preview Card */}
-              <div className="grid gap-6 lg:grid-cols-12">
+              <div className="grid gap-6 lg:grid-cols-12 items-start">
                 <div className="lg:col-span-8 space-y-6">
                   <Spectrograph analyser={analyser} status={currentRiskStatus} />
                   <ThreatBreakdown

@@ -1,4 +1,4 @@
-import { AlertCircle, Cpu, MessageSquareWarning, UserCheck, UserX, ArrowDown } from "lucide-react";
+import { AlertCircle, CheckCircle2, Cpu, MessageSquareWarning, UserCheck, UserX, ArrowDown } from "lucide-react";
 import type { RiskStatus } from "../types";
 import StatusBadge from "./StatusBadge";
 
@@ -175,16 +175,35 @@ export default function ThreatBreakdown({
             Nominal acoustics. Zero threat keywords or spoof characteristics detected in the active rolling window.
           </p>
         ) : (
-          <div className="mt-2.5 space-y-1.5">
-            {rationale.map((r, i) => (
-              <div
-                key={`${r}-${i}`}
-                className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-900"
-              >
-                <AlertCircle size={14} className="shrink-0 text-red-600 mt-0.5" />
-                <span>{r}</span>
-              </div>
-            ))}
+          <div className="mt-2.5 space-y-1.5 max-h-48 overflow-y-auto pr-1">
+            {rationale.map((r, i) => {
+              const isThreat =
+                status === "LOCK_VERIFY" ||
+                /synthetic|spoof|mismatch|extortion|fraud|pressure|anomaly|critical/i.test(r);
+              const isWarning = status === "WARN" && !isThreat;
+
+              const styleClass = isThreat
+                ? "border-red-200 bg-red-50 text-red-900"
+                : isWarning
+                  ? "border-amber-200 bg-amber-50 text-amber-900"
+                  : "border-emerald-200 bg-emerald-50/80 text-emerald-900";
+
+              return (
+                <div
+                  key={`${r}-${i}`}
+                  className={`flex items-start gap-2.5 rounded-xl border px-3 py-2 text-xs leading-relaxed ${styleClass}`}
+                >
+                  {isThreat ? (
+                    <AlertCircle size={14} className="shrink-0 text-red-600 mt-0.5" />
+                  ) : isWarning ? (
+                    <AlertCircle size={14} className="shrink-0 text-amber-600 mt-0.5" />
+                  ) : (
+                    <CheckCircle2 size={14} className="shrink-0 text-emerald-600 mt-0.5" />
+                  )}
+                  <span>{r}</span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
