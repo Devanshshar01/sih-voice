@@ -120,26 +120,26 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
       {/* ── SECTION 1: CLOUDPILOT VIBRANT PURPLE/VIOLET HERO ─────────── */}
       <section id="overview" className="hero-cloudpilot-bg relative overflow-hidden text-white">
         {/* ShapeWaves Ambient Interactive Wavefield (covers full hero from top:0) */}
-        <div className="absolute inset-0 z-0 pointer-events-auto opacity-80">
+        <div className="absolute inset-0 z-0 pointer-events-auto opacity-40">
           <ShapeWaves
             text=""
             shapes="mixed"
             cellSize={14}
-            dotSize={0.78}
-            color="#C084FC"
-            hoverColor="#FFFFFF"
+            dotSize={0.72}
+            color="#7C3AED"
+            hoverColor="#E879F9"
             backgroundColor="transparent"
-            speed={1.0}
-            scale={1.2}
-            contrast={1.2}
-            brightness={0.45}
-            flow={0.2}
+            speed={0.8}
+            scale={1.3}
+            contrast={0.9}
+            brightness={0.32}
+            flow={0.15}
             direction={35}
-            fade={0.2}
+            fade={0.4}
             interactive={true}
             splashRadius={50}
-            splashStrength={0.6}
-            glow={0.4}
+            splashStrength={0.55}
+            glow={0.25}
             intro={true}
             introDuration={1.5}
             paused={false}
@@ -217,17 +217,17 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
             {/* Left Headline */}
             <div className="lg:col-span-7 space-y-6">
               {/* Eyebrow Pill */}
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-xs font-bold text-[#E879F9] backdrop-blur-md">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#E879F9]/40 bg-[#3B1278]/60 px-3.5 py-1.5 text-xs font-bold text-[#F0ABFC] backdrop-blur-md shadow-[0_0_12px_rgba(232,121,249,0.2)]">
                 <span>⚡</span>
                 <span className="uppercase tracking-wider">All-In-One Voice Defense Platform</span>
                 <span>⚡</span>
               </div>
 
               {/* Main Headline */}
-              <h1 className="text-4xl sm:text-6xl lg:text-[68px] font-black tracking-tight text-white leading-[1.05]">
+              <h1 className="text-4xl sm:text-6xl lg:text-[68px] font-black tracking-tight text-white leading-[1.05] drop-shadow-[0_2px_24px_rgba(0,0,0,0.8)]">
                 Simplify. <br />
                 Protect. <br />
-                <span className="bg-gradient-to-r from-[#C084FC] via-[#E879F9] to-[#818CF8] bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-[#F0ABFC] via-[#F472B6] to-[#C4B5FD] bg-clip-text text-transparent drop-shadow-none">
                   Secure Your Voice.
                 </span> <br />
                 All in One Platform.
@@ -236,7 +236,7 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
 
             {/* Right Subtitle & CTAs */}
             <div className="lg:col-span-5 space-y-8 flex flex-col justify-center">
-              <p className="text-base sm:text-lg text-slate-200 leading-relaxed max-w-md">
+              <p className="text-base sm:text-lg text-white/90 leading-relaxed max-w-md drop-shadow-[0_1px_12px_rgba(0,0,0,0.7)]">
                 SatyaVoice empowers teams to detect voice deepfakes, verify caller biometrics, and prevent wire fraud in real-time — faster than ever.
               </p>
 

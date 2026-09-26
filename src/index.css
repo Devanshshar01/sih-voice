@@ -61,18 +61,19 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* ── CloudPilot Hero Vibrant Purple/Violet Gradient Surface ──── */
+  /* ── CloudPilot Hero Vibrant Deep Purple/Midnight Gradient Surface ──── */
   .hero-cloudpilot-bg {
-    background: linear-gradient(
-      180deg,
-      #080B11 0%,
-      #2E1065 25%,
-      #4C1D95 45%,
-      #6D28D9 65%,
-      #A855F7 82%,
-      #F3E8FF 94%,
-      #FFFFFF 100%
-    );
+    background: radial-gradient(circle at 50% 15%, rgba(124, 58, 237, 0.22) 0%, transparent 60%),
+      linear-gradient(
+        180deg,
+        #05070B 0%,
+        #080B12 20%,
+        #0E0C22 40%,
+        #150D32 60%,
+        #220E48 80%,
+        #3B1278 92%,
+        #FFFFFF 100%
+      );
   }
 
   .dot-pattern {
