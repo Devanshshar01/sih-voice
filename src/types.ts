@@ -81,7 +81,10 @@ export interface VerificationChallengeResponse {
 }
 
 export interface VerificationRequestResponse {
-  code: string;
+  /**
+   * Deliberately NO `code` field (F6B): the challenge code is delivered out
+   * of band and must never appear in an HTTP response body.
+   */
   expires_in_seconds: number;
   delivery_channel: string;
 }

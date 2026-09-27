@@ -19,13 +19,37 @@ from app.tasks import CELERY_AVAILABLE, generate_forensic_report
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/audio", tags=["audio"])
 
-detector = get_detector(
-    config.VOICE_DETECTOR_MODE,
-    model_path=config.VOICE_MODEL_PATH or None,
-    model_id=config.VOICE_MODEL_ID,
-    device=config.VOICE_MODEL_DEVICE,
-    revision=config.VOICE_MODEL_REVISION,
-)
+# Lazy detector construction (F2): importing this module must not require a
+# configured inference provider. Built on first request and cached; a missing
+# configuration becomes a structured 503, never an import-time crash.
+_detector = None
+
+
+def get_analyze_detector():
+    global _detector
+    # An explicitly assigned module attribute (e.g. mock.patch.object(analyze,
+    # "detector", ...)) is an intentional override and wins over the lazy
+    # default; otherwise the detector is built once and cached.
+    override = globals().get("detector")
+    if override is not None:
+        return override
+    if _detector is None:
+        _detector = get_detector(
+            config.VOICE_DETECTOR_MODE,
+            model_path=config.VOICE_MODEL_PATH or None,
+            model_id=config.VOICE_MODEL_ID,
+            device=config.VOICE_MODEL_DEVICE,
+            revision=config.VOICE_MODEL_REVISION,
+        )
+    return _detector
+
+
+def __getattr__(name: str):
+    """PEP 562: keep ``analyze.detector`` working for existing consumers
+    without constructing anything at import time."""
+    if name == "detector":
+        return get_analyze_detector()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 @router.post("/analyze", response_model=AudioAnalyzeResponse)
@@ -50,6 +74,25 @@ async def analyze_audio(audio_file: UploadFile = File(...), language: str = Form
         raise HTTPException(status_code=413, detail={"status": "error", "error_code": "AUDIO_TOO_LONG"})
     if samples.size == 0 or not np.isfinite(samples).all():
         raise HTTPException(status_code=400, detail={"status": "error", "error_code": "INVALID_AUDIO"})
+
+    try:
+        detector = get_analyze_detector()
+    except (RuntimeError, ValueError) as exc:
+        # F2: a missing/invalid provider configuration is a structured 503,
+        # never an import-time crash. No internal stack details are exposed.
+        logger.error("detector configuration unavailable: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "error",
+                "error_code": "DETECTOR_CONFIGURATION_UNAVAILABLE",
+                "error_message": (
+                    "The anti-spoof detector is not configured on this server. "
+                    "Configure HF_ZERO_GPU_SPACE for ZeroGPU mode (or the "
+                    "equivalent provider settings)."
+                ),
+            },
+        ) from exc
 
     result = detector.predict(samples)
     score = result["acoustic_score"]

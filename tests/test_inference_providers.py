@@ -187,7 +187,11 @@ def test_local_provider_invalid_input_is_not_a_score() -> None:
 
 
 def test_local_provider_cuda_configured_but_unavailable_refuses_silent_fallback() -> None:
-    import torch
+    # This test asserts torch's CUDA availability, so it is only meaningful
+    # where torch is installed (the in-process "local" GPU provider environment).
+    # Elsewhere (CI, the mocked-provider suite) it is skipped rather than
+    # reported as a product failure.
+    torch = pytest.importorskip("torch")
 
     p = LocalInferenceProvider(env={"DEVICE": "cuda"})
     if torch.cuda.is_available():

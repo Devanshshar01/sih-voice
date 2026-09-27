@@ -153,6 +153,13 @@ def client(tmp_path_factory):
     engine.dispose()
 
 
+def _auth_headers() -> dict:
+    """F6C: /forensics/register requires an authenticated principal."""
+    from app.core.ws_auth import create_access_token
+
+    return {"Authorization": f"Bearer {create_access_token('bc-hardening-caller')}"}
+
+
 def _payload(evidence_id: str) -> dict:
     return {
         "schema_version": "phase7-v1",
@@ -194,7 +201,9 @@ def test_canonical_register_calls_anchorEvidence_never_legacy_anchor(
         legacy_factory.return_value = mock.MagicMock()
 
         response = client.post(
-            "/api/v1/forensics/register", json={"payload": _payload(evidence_id)}
+            "/api/v1/forensics/register",
+            json={"payload": _payload(evidence_id)},
+            headers=_auth_headers(),
         )
 
     assert response.status_code == 200, response.text

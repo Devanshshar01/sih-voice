@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    name: Frontend typecheck + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun tsc -b --noEmit
+      - run: bun run test
+
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Import boot check (F2 regression)
+        env:
+          HF_ZERO_GPU_SPACE: dummy
+          VOICETRUST_DETECTOR_MODE: mock
+        run: python -c "import app.main; print('IMPORT_OK')"
+      - name: Production config gate (F6A/F2 regression)
+        env:
+          HF_ZERO_GPU_SPACE: dummy
+          VOICETRUST_DETECTOR_MODE: mock
+          VOICETRUST_WS_JWT_SECRET: ""
+        run: |
+          python - <<'PY'
+          import os
+          os.environ["VOICETRUST_ENVIRONMENT"] = "production"
+          import importlib, app.config as config
+          importlib.reload(config)
+          assert config.IS_PRODUCTION
+          import app.config as c
+          from app.core.ws_auth import validate_ws_auth_config
+          try:
+              validate_ws_auth_config()
+          except RuntimeError:
+              print("PROD_SECRET_GATE_OK (missing secret correctly refused)")
+          else:
+              # a strong secret in env is also fine; only a missing one must fail
+              if not os.environ.get("VOICETRUST_WS_JWT_SECRET"):
+                  raise SystemExit("validate_ws_auth_config must refuse a missing production secret")
+              print("PROD_SECRET_GATE_OK (strong secret accepted)")
+          PY
+      - name: Run backend test suite
+        env:
+          VOICETRUST_WS_JWT_SECRET: test-secret-ci-abc123
+          VOICETRUST_DETECTOR_MODE: mock
+          HF_ZERO_GPU_SPACE: dummy
+        run: python -m pytest tests/ -q

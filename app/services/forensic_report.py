@@ -503,6 +503,8 @@ def _assemble_report_data(
     verification: dict[str, Any] | None,
     integrity: dict[str, Any] | None = None,
     session_id: str | None = None,
+    payload: dict[str, Any] | None = None,
+    artifacts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Freeze everything the report will show (Phase 6: no live queries).
 
@@ -510,11 +512,59 @@ def _assemble_report_data(
     EvidenceIntegritySummary. Either may be absent (report rendered before
     verification) — every missing field renders as an explicit "Not available",
     never as "null"/"None".
+
+    ``payload`` is the FROZEN legacy evidence snapshot (stored canonical JSON)
+    and ``artifacts`` the real artifact digests computed by the caller from
+    stored bytes. Both are optional. Precedence: verification data wins where
+    it exists (it is recomputed server-side); the frozen payload fills the
+    detection/model gaps the verification envelope does not carry, and
+    caller-computed artifact digests take precedence for page 3. Nothing is
+    invented: only fields the snapshot actually holds are surfaced.
     """
     v = verification or {}
     s = integrity or {}
+    p = payload if isinstance(payload, dict) else {}
     anchor = s.get("blockchain") or {}
     ledger = s.get("ledger") or {}
+
+    # --- Page 2: detection summary -------------------------------------
+    # Verification (recomputed server-side) takes precedence; the frozen
+    # payload's own detection block and summary fields fill any gaps.
+    v_detection = v.get("detection") if isinstance(v.get("detection"), dict) else {}
+    payload_detection = (
+        p.get("detection") if isinstance(p.get("detection"), dict) else {}
+    )
+    derived_detection: dict[str, Any] = {}
+    if p:
+        if p.get("final_status") is not None:
+            derived_detection["risk_status"] = p.get("final_status")
+        if p.get("max_risk_score") is not None:
+            derived_detection["risk_score"] = p.get("max_risk_score")
+        if p.get("acoustic_peak") is not None:
+            derived_detection["model_score"] = p.get("acoustic_peak")
+    detection = {**derived_detection, **payload_detection, **v_detection}
+
+    # --- Page 2: model metadata -----------------------------------------
+    # The backend snapshot stores it as ``model_metadata``; the frontend
+    # export snapshot stores it as ``model_version_metadata``. Both are read
+    # from the frozen payload; verification metadata wins on conflict.
+    payload_models: dict[str, Any] = {}
+    for key in ("model_metadata", "model_version_metadata"):
+        candidate = p.get(key)
+        if isinstance(candidate, dict) and candidate:
+            payload_models = candidate
+            break
+    v_models = v.get("model_metadata") if isinstance(v.get("model_metadata"), dict) else {}
+    model_metadata = {**payload_models, **v_models}
+    if model_metadata.get("model_version") is None and model_metadata.get("model_revision"):
+        # The backend snapshot records the model *revision*; the report row is
+        # labelled "Model version". Same fact, no new value invented.
+        model_metadata["model_version"] = model_metadata["model_revision"]
+
+    # --- Page 3: artifact digests ---------------------------------------
+    # Caller-computed digests of stored bytes win; otherwise the verification
+    # dict's artifact list. Empty list renders "No artifacts recorded".
+    assembled_artifacts = artifacts or v.get("artifacts") or []
 
     return {
         "evidence_id": evidence_id,
@@ -540,9 +590,9 @@ def _assemble_report_data(
             else "MISMATCH" if v.get("valid") is False
             else "UNVERIFIED"
         ),
-        "detection": v.get("detection") or {},
-        "model_metadata": v.get("model_metadata") or {},
-        "artifacts": v.get("artifacts") or [],
+        "detection": detection,
+        "model_metadata": model_metadata,
+        "artifacts": assembled_artifacts,
         "blockchain": anchor
         or {
             "status": v.get("anchor_status") or "unavailable",

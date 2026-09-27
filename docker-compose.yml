@@ -6,9 +6,13 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # Local-only demo stack: explicit mock opt-in (refused in production),
+      # SQLite persistence, and a permissive localhost CORS allow-list.
+      # F6D: the previous CORS_ORIGINS=* wildcard is gone — origins must be
+      # listed explicitly (comma-separated) in every deployment.
       - VOICETRUST_DETECTOR_MODE=mock
       - VOICETRUST_DATABASE_URL=sqlite:////app/data/satyavoice.db
-      - VOICETRUST_CORS_ORIGINS=*
+      - VOICETRUST_CORS_ORIGINS=http://localhost:5173,http://localhost:4173,http://127.0.0.1:5173
     volumes:
       - satyavoice-data:/app/data
 

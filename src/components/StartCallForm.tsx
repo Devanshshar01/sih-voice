@@ -108,9 +108,17 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
       const render = () => {
         analyser.getByteFrequencyData(dataArray);
         const { width, height } = canvas.getBoundingClientRect();
-        canvas.width = width * (window.devicePixelRatio || 1);
-        canvas.height = height * (window.devicePixelRatio || 1);
-        ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+        // F12: resize + scale the canvas transform once per frame reset —
+        // calling ctx.scale() every frame compounded the transform (previous
+        // scales accumulated) and visually shrank the waveform over time.
+        const dpr = window.devicePixelRatio || 1;
+        const pixelWidth = Math.max(1, Math.round(width * dpr));
+        const pixelHeight = Math.max(1, Math.round(height * dpr));
+        if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+          canvas.width = pixelWidth;
+          canvas.height = pixelHeight;
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
 
         ctx.clearRect(0, 0, width, height);
 
@@ -291,10 +299,10 @@ export default function StartCallForm({ onStart, error, connecting }: StartCallF
               <div className="rounded-2xl border border-forensic-border bg-forensic-surface/50 p-4 transition-all hover:bg-forensic-surface">
                 <div className="flex items-center gap-2 text-forensic-accent">
                   <Sparkles size={16} />
-                  <span className="text-xs font-bold text-forensic-text">MMS-300M Model</span>
+                  <span className="text-xs font-bold text-forensic-text">MMS-300M Anti-Deepfake</span>
                 </div>
                 <p className="mt-2 text-xs text-forensic-muted leading-relaxed">
-                  Fine-tuned Meta detector identifying vocoder artifacts, synthetic phase shifts, and neural speech.
+                  Off-the-shelf NII MMS-300M checkpoint identifying vocoder artifacts, synthetic phase shifts, and neural speech.
                 </p>
               </div>
 

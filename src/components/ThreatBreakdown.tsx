@@ -1,4 +1,5 @@
 import { AlertCircle, CheckCircle2, Cpu, MessageSquareWarning, UserCheck, UserX, ArrowDown } from "lucide-react";
+import { RISK_WEIGHTS, weightPercent } from "../lib/modelAttribution";
 import type { RiskStatus } from "../types";
 import StatusBadge from "./StatusBadge";
 
@@ -105,7 +106,7 @@ export default function ThreatBreakdown({
             sublabel="Vocoder artifacts & synthetic phase analysis"
             value={acousticScore}
             icon={<Cpu size={16} />}
-            weightLabel="Weight: 50%"
+            weightLabel={`Weight: ${weightPercent(RISK_WEIGHTS.acoustic)}`}
           />
 
           {/* Signal 2: Speaker Identity */}
@@ -117,10 +118,10 @@ export default function ThreatBreakdown({
                   ? `Voiceprint similarity: ${Math.round(speakerSimilarity * 100)}%`
                   : "Enrolled profile baseline"
               }
-              value={identityMismatch}
-              icon={identityMismatch >= 0.7 ? <UserX size={16} /> : <UserCheck size={16} />}
-              weightLabel="Weight: 20%"
-            />
+            value={identityMismatch}
+            icon={identityMismatch >= 0.7 ? <UserX size={16} /> : <UserCheck size={16} />}
+            weightLabel={`Weight: ${weightPercent(RISK_WEIGHTS.identityMismatch)}`}
+          />
           ) : (
             <SignalVector
               label="2. Speaker Identity (ECAPA)"
@@ -137,7 +138,7 @@ export default function ThreatBreakdown({
             sublabel="Extortion tokens & unauthorized transfer pressure"
             value={intentScore}
             icon={<MessageSquareWarning size={16} />}
-            weightLabel="Weight: 30%"
+            weightLabel={`Weight: ${weightPercent(RISK_WEIGHTS.intent)}`}
           />
         </div>
 

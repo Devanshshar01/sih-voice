@@ -6,19 +6,27 @@ SECURITY:
   - The EvidenceAnchorService is exception-safe and returns explicit status
     dicts rather than raising; only ValueError propagates (evidence not found).
   - Payload size is validated in the service layer (MAX_EVIDENCE_PAYLOAD_BYTES).
+  - F6C: WRITE endpoints (register, merkle/register) and operational endpoints
+    (report.pdf, anchor queue/flush) require an authenticated principal and,
+    when the owning call session is still resolvable, ownership of it. READ
+    verification endpoints (GET/POST /{id}/verify, /merkle/{id}/verify,
+    /merkle/{id}/proof/{item}) stay public on purpose: they are the QR "verify
+    independently" portal, return only server-derived hash commitments over an
+    opaque evidence id, and contain no PII.
 """
 from __future__ import annotations
 
 import base64
 import logging
 import re
-from typing import Any
+from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.http_auth import assert_evidence_owner, require_authenticated
 from app.db.database import get_db
 from app.services.evidence_anchor import EVIDENCE_ID_CONFLICT, EvidenceAnchorService
 from app.services.merkle_evidence import MerkleEvidenceError, MerkleEvidenceService
@@ -39,6 +47,50 @@ def _validate_evidence_id(evidence_id: str) -> str:
             detail="Invalid evidence_id: use 1-128 characters from [A-Za-z0-9._:-].",
         )
     return evidence_id
+
+
+def _evidence_session_id(db: Session, evidence_id: str) -> Optional[str]:
+    """Best-effort owning call session for an evidence id (F6C owner check).
+
+    Canonical Merkle manifests and legacy payload JSON both keep the owning
+    ``session_id`` inside their stored (frozen) JSON. Returns None when it
+    cannot be resolved (historical/opaque evidence) — callers then fall back
+    to authenticated-only access.
+    """
+    import json as _json
+
+    from app.db import models as db_models
+
+    def _session_from_json(raw: str | None) -> Optional[str]:
+        if not raw:
+            return None
+        try:
+            document = _json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+        if isinstance(document, dict):
+            session_id = document.get("session_id") or document.get("call_id")
+            return str(session_id) if session_id else None
+        return None
+
+    merkle_row = (
+        db.query(db_models.EvidenceMerklePackage)
+        .filter(db_models.EvidenceMerklePackage.evidence_id == evidence_id)
+        .first()
+    )
+    if merkle_row is not None:
+        from_merkle = _session_from_json(merkle_row.canonical_package)
+        if from_merkle:
+            return from_merkle
+
+    legacy_row = (
+        db.query(db_models.EvidencePackage)
+        .filter(db_models.EvidencePackage.evidence_id == evidence_id)
+        .first()
+    )
+    if legacy_row is not None:
+        return _session_from_json(legacy_row.package_payload)
+    return None
 
 
 class EvidenceRegistrationRequest(BaseModel):
@@ -73,6 +125,7 @@ class MerkleVerifyRequest(BaseModel):
 def register_evidence(
     request: EvidenceRegistrationRequest,
     db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None),
 ):
     """Register an evidence package in the local integrity ledger.
 
@@ -89,13 +142,20 @@ def register_evidence(
     same ``evidence_hash``. Removed paths are echoed back as
     ``ignored_export_fields``.
 
-    Successful registration also creates the canonical Merkle commitment for the
-    same snapshot, so ``GET /{evidence_id}/verify``, the integrity summary, the
-    QR target and the forensic PDF all work from one canonical snapshot.
+    F6C: registration is never anonymous; when the payload's call session is
+    still live, the bearer subject must own it.    Successful registration also creates the canonical Merkle commitment for the
+    same snapshot, so ``GET /{evidence_id}/verify``, the integrity summary,
+    the QR target and the forensic PDF all work from one canonical snapshot.
 
-    The service layer never raises on DB failures; check status=='error' in the
-    response body when integrating (HTTP 500 is reserved for truly unexpected errors).
+    The service layer never raises on DB failures; check status=='error' in
+    the response body when integrating (HTTP 500 is reserved for truly unexpected errors).
     """
+    # --- F6C: authenticated + owner-of-the-evidence-session (when resolvable)
+    subject = require_authenticated(authorization)
+    payload = request.payload if isinstance(request.payload, dict) else {}
+    payload_session = payload.get("session_id") or payload.get("call_id")
+    assert_evidence_owner(subject, str(payload_session) if payload_session else None)
+
     service = EvidenceAnchorService(db)
     result = service.register_evidence_package(request.payload, request.evidence_id)
 
@@ -275,13 +335,19 @@ def _items_to_bytes(items: list[MerkleEvidenceItem]) -> dict[str, bytes]:
 def register_merkle_evidence(
     request: MerkleEvidenceRegistrationRequest,
     db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None),
 ):
     """Register a Merkle-root evidence package and (optionally) anchor its root.
 
     Each item is hashed individually (SHA-256) and combined into a Merkle tree
     (RFC 8785 canonical manifest). Only the root + a hashed evidence id go
     on-chain; raw items never leave the local ledger.
+
+    F6C: never anonymous; owner-checked when ``session_id`` is provided and
+    its call session is still live.
     """
+    subject = require_authenticated(authorization)
+    assert_evidence_owner(subject, request.session_id)
     if request.evidence_id is not None:
         _validate_evidence_id(request.evidence_id)
     if not request.items:
@@ -380,17 +446,25 @@ def get_merkle_report_pdf(
     evidence_id: str,
     verify_on_chain: bool = True,
     db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None),
 ):
     """Render the authoritative five-page forensic PDF and register its hash.
 
     Phase 7: the PDF is rendered from the frozen stored package, hashed after
     rendering, and the digest is persisted (evidence_report_records) — the PDF
     never contains its own hash.
+
+    F6C: authenticated, and owner-checked while the evidence's call session is
+    still resolvable (the QR *verification* portal remains public — it serves
+    commitments, not this full report).
     """
     _validate_evidence_id(evidence_id)
     from app.services.evidence_package import build_integrity_summary
     from app.services.forensic_report import render_and_register_report
     from app.services.merkle_evidence import MerkleEvidenceError
+
+    subject = require_authenticated(authorization)
+    assert_evidence_owner(subject, _evidence_session_id(db, evidence_id))
 
     service = MerkleEvidenceService(db)
     try:
@@ -418,10 +492,18 @@ def get_merkle_report_pdf(
 
 
 @router.get("/anchor/queue")
-def get_anchor_queue(status: str | None = None, db: Session = Depends(get_db)):
-    """List offline/pending anchor-queue entries (optionally filtered by status)."""
+def get_anchor_queue(
+    status: str | None = None,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None),
+):
+    """List offline/pending anchor-queue entries (optionally filtered by status).
+
+    F6C: authenticated — the queue spans every tenant's evidence.
+    """
     from app.services import anchor_queue
 
+    require_authenticated(authorization)
     if status is not None and status.upper() not in anchor_queue.ALL_STATES:
         raise HTTPException(
             status_code=400,
@@ -432,8 +514,16 @@ def get_anchor_queue(status: str | None = None, db: Session = Depends(get_db)):
 
 
 @router.post("/anchor/flush")
-def flush_anchor_queue(db: Session = Depends(get_db)):
-    """Attempt to anchor every queued (OFFLINE/FAILED) entry — call on reconnect."""
+def flush_anchor_queue(
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None),
+):
+    """Attempt to anchor every queued (OFFLINE/FAILED) entry — call on reconnect.
+
+    F6C: authenticated — flushing submits blockchain transactions on behalf of
+    every queued evidence id and must never be triggerable anonymously.
+    """
     from app.services import anchor_queue
 
+    require_authenticated(authorization)
     return anchor_queue.flush_queue(db)

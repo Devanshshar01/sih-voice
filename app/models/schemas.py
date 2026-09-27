@@ -126,7 +126,12 @@ class VerificationRequest(BaseModel):
 
 
 class VerificationRequestResponse(BaseModel):
-    code: str
+    """Challenge dispatch acknowledgement (F6B).
+
+    Deliberately carries NO ``code`` field: the challenge code is delivered
+    out of band and must never appear in an HTTP response body.
+    """
+
     expires_in_seconds: int
     delivery_channel: str
 

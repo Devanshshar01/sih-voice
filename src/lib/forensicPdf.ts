@@ -47,7 +47,16 @@ export interface ForensicsExportReport {
   technical_integrity_note: string;
 }
 
-const LOCAL_SIGNING_KEY = "satyavoice-local-signing-key";
+/**
+ * F13: This is NOT a cryptographic signing key and the `package_signature`
+ * value is NOT a digital signature. It is a keyed SHA-256 INTEGRITY CHECKSUM:
+ * a browser-side constant salt bound into the digest so accidental payload
+ * mutation is detectable within the exported document. It provides no
+ * authenticity, no non-repudiation, and no secret — anyone with this source
+ * can reproduce or forge it. Authenticity comes from the SERVER-side evidence
+ * hash returned by /forensics/register (and its Merkle/on-chain anchoring).
+ */
+const LOCAL_SIGNING_KEY = "satyavoice-local-integrity-checksum-salt";
 const textEncoder = new TextEncoder();
 
 const compactJson = (value: Record<string, unknown>) => JSON.stringify(value).replace(/\s+/g, " ");
@@ -165,7 +174,9 @@ export async function buildTechnicalEvidenceReport({
 
   const evidenceHash = await sha256Hex(JSON.stringify(reportWithoutSignature));
   const packageSignature = {
-    algorithm: "HMAC-SHA256 placeholder",
+    // F13: honest algorithm label — this is a local integrity checksum,
+    // not an HMAC and not a signature (no secret key is involved).
+    algorithm: "SHA-256 local integrity checksum (non-cryptographic)",
     signed_by: operatorIdentity,
     signature: await buildPackageSignature({
       ...reportWithoutSignature,
@@ -229,8 +240,8 @@ const buildPdfText = (report: ForensicsExportReport) => {
 
   lines.push(
     "",
-    `Package signature: ${report.package_signature.algorithm} | signed_by=${report.package_signature.signed_by}`,
-    `Signature value: ${report.package_signature.signature}`,
+    `Local integrity checksum (not a signature): ${report.package_signature.algorithm} | produced_by=${report.package_signature.signed_by}`,
+    `Checksum value: ${report.package_signature.signature}`,
     "",
     `Technical integrity note: ${report.technical_integrity_note}`
   );

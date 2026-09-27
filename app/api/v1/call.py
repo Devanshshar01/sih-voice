@@ -3,22 +3,21 @@ REST endpoints for call lifecycle: start a session, check the current risk
 snapshot, and gate sensitive actions behind the live risk score.
 
 SECURITY (B2 / B10):
-  - GET /{call_id}/risk and POST /{call_id}/terminate require the requester to
-    be the authenticated owner of the call session (IDOR/BOLA prevention via
-    require_call_owner dependency from app.core.http_auth).
-  - POST /action is intentionally more permissive in the current prototype
-    (any caller can attempt an action; the risk gate is the primary control).
-    In production, action gating should also require ownership verification.
+  - GET /{call_id}/risk, POST /{call_id}/terminate and POST /action require the
+    requester to be the authenticated owner of the call session (IDOR/BOLA
+    prevention via require_call_owner / verify_call_owner from
+    app.core.http_auth — F6C closed the previously unowned /action path).
   - POST /start does NOT require auth (creates a new session for the caller).
 """
 from datetime import datetime, timezone
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session as DBSession
 
 from app import config
-from app.core.http_auth import require_call_owner
+from app.core.http_auth import require_call_owner, verify_call_owner
 from app.core.session_manager import session_manager
 from app.core.ws_auth import create_access_token
 from app.db import models as db_models
@@ -120,7 +119,12 @@ def get_risk(
 
 
 @router.post("/action", response_model=CallActionResponse)
-def execute_action(payload: CallActionRequest):
+def execute_action(
+    payload: CallActionRequest,
+    authorization: Optional[str] = Header(default=None),
+):
+    # F6C: only the authenticated owner of the call may execute actions.
+    verify_call_owner(payload.call_id, authorization)
     session = session_manager.get(payload.call_id)
     if not session:
         raise HTTPException(status_code=404, detail="Call session not found or expired.")

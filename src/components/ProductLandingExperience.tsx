@@ -48,6 +48,7 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
     requestChallenge,
     setVerificationInput,
     submitVerification,
+    getAuthToken,
   } = session;
 
   // State management
@@ -58,47 +59,78 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
   const [downloadingReport, setDownloadingReport] = useState(false);
 
 
+  // F9: there is no fabricated demo case ID. Without a real completed call
+  // there is nothing to verify/export — the operator is told so instead of a
+  // silent console.error with fake identifiers.
   const handleVerifyIntegrityClick = async () => {
+    if (!meta?.callId) {
+      setVerificationResult({
+        error: "No completed call is available to verify. Start and finish a call first — the dossier preview above is illustrative only.",
+      });
+      setShowIntegrityResultModal(true);
+      return;
+    }
     setVerifyingApi(true);
     try {
-      const evidenceId = meta?.callId || "SV-2026-9842-DEMO";
-      const res = await verifyEvidenceIntegrity(evidenceId);
+      const res = await verifyEvidenceIntegrity(meta.callId);
       setVerificationResult(res);
       setShowIntegrityResultModal(true);
     } catch (e) {
-      console.error(e);
+      setVerificationResult({
+        error: e instanceof Error ? e.message : "Integrity verification failed.",
+      });
+      setShowIntegrityResultModal(true);
     } finally {
       setVerifyingApi(false);
     }
   };
 
   const handleVerifyChainClick = async () => {
+    if (!meta?.callId) {
+      setVerificationResult({
+        error: "No completed call is available to verify. Start and finish a call first — the dossier preview above is illustrative only.",
+      });
+      setShowIntegrityResultModal(true);
+      return;
+    }
     setVerifyingApi(true);
     try {
-      const evidenceId = meta?.callId || "SV-2026-9842-DEMO";
-      const res = await verifyForensicsEvidence(evidenceId);
+      const res = await verifyForensicsEvidence(meta.callId);
       setVerificationResult(res);
       setShowIntegrityResultModal(true);
     } catch (e) {
-      console.error(e);
+      setVerificationResult({
+        error: e instanceof Error ? e.message : "Chain verification failed.",
+      });
+      setShowIntegrityResultModal(true);
     } finally {
       setVerifyingApi(false);
     }
   };
 
   const handleDownloadPdf = async () => {
-    const evidenceId = meta?.callId || "SV-2026-9842-DEMO";
+    if (!meta?.callId) {
+      setVerificationResult({
+        error: "No completed call is available to export. Start and finish a call first — the dossier preview above is illustrative only.",
+      });
+      setShowIntegrityResultModal(true);
+      return;
+    }
     setDownloadingReport(true);
     try {
-      const { blob } = await downloadForensicReportPdf(evidenceId);
+      const { blob } = await downloadForensicReportPdf(meta.callId, getAuthToken());
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `satya_voice_forensics_${evidenceId}.pdf`;
+      a.download = `satya_voice_forensics_${meta.callId}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      console.error("PDF report export error", e);
+      // F5: export failures must be visible in the UI, not only the console.
+      setVerificationResult({
+        error: e instanceof Error ? e.message : "The forensic report could not be generated.",
+      });
+      setShowIntegrityResultModal(true);
     } finally {
       setDownloadingReport(false);
     }
@@ -609,7 +641,9 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
               <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
                 <div>
                   <span className="text-xs text-slate-500 uppercase font-mono">CASE DOSSIER PREVIEW</span>
-                  <h3 className="text-xl font-bold text-[#0F172A] font-mono mt-0.5">SV-2026-9842-DEMO</h3>
+                  <h3 className="text-xl font-bold text-[#0F172A] font-mono mt-0.5">
+                    {meta?.callId ?? "AWAITING CALL — NO CASE ASSIGNED"}
+                  </h3>
                 </div>
                 <span className="hud-badge hud-badge-safe font-mono">STANDBY FOR CASE CAPTURE</span>
               </div>
@@ -727,7 +761,9 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
       )}
 
       {/* ── VERIFICATION CODE CHALLENGE MODAL (FOR LIVE MFA STEP-UP) ── */}
-      {verification.deliveredCode && (
+      {/* F6B: modal gates on a dispatched challenge (requestedAt), not an
+          in-band code — the code is never delivered client-side. */}
+      {verification.requestedAt !== null && (
         <VerificationModal
           verification={verification}
           onRequestCode={requestChallenge}

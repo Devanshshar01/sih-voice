@@ -45,6 +45,13 @@ from app.services.evidence_anchor import (
 from app.db.database import Base, get_db
 
 
+def _auth_headers() -> dict:
+    """F6C: HTTP registration requires an authenticated principal."""
+    from app.core.ws_auth import create_access_token
+
+    return {"Authorization": f"Bearer {create_access_token('forensics-hardening-caller')}"}
+
+
 @pytest.fixture(scope="module")
 def _engine(tmp_path_factory):
     """Isolated, schema-complete DB.
@@ -375,7 +382,9 @@ def test_verify_report_contains_on_chain_verified_when_disabled(db_session):
 
 def test_forensics_register_via_http(client: TestClient):
     payload = build_evidence_payload(session_id="call-http-register", max_risk_score=25)
-    response = client.post("/api/v1/forensics/register", json={"payload": payload})
+    response = client.post(
+        "/api/v1/forensics/register", json={"payload": payload}, headers=_auth_headers()
+    )
     assert response.status_code == 200
     data = response.json()
     assert "evidence_hash" in data
@@ -383,7 +392,9 @@ def test_forensics_register_via_http(client: TestClient):
 
 
 def test_forensics_register_empty_payload_returns_400(client: TestClient):
-    response = client.post("/api/v1/forensics/register", json={"payload": {}})
+    response = client.post(
+        "/api/v1/forensics/register", json={"payload": {}}, headers=_auth_headers()
+    )
     assert response.status_code == 400
 
 
@@ -394,7 +405,9 @@ def test_forensics_verify_not_found_returns_404(client: TestClient):
 
 def test_forensics_verify_existing_package(client: TestClient):
     payload = build_evidence_payload(session_id="call-http-verify", max_risk_score=45)
-    reg = client.post("/api/v1/forensics/register", json={"payload": payload})
+    reg = client.post(
+        "/api/v1/forensics/register", json={"payload": payload}, headers=_auth_headers()
+    )
     assert reg.status_code == 200
     eid = reg.json()["evidence_id"]
 

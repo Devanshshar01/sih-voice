@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Copy, KeyRound, PhoneOff, Send, ShieldAlert, Timer } from "lucide-react";
+import { KeyRound, PhoneOff, Send, ShieldAlert, Timer } from "lucide-react";
 import type { VerificationState } from "../hooks/useCallSession";
 
 interface VerificationModalProps {
@@ -18,7 +18,6 @@ export default function VerificationModal({
   onTerminate,
 }: VerificationModalProps) {
   const [now, setNow] = useState(Date.now());
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -32,18 +31,9 @@ export default function VerificationModal({
       )
     : null;
   const expired = remaining === 0;
-  const showCodeEntry = verification.deliveredCode && !expired;
-
-  const copyCode = async () => {
-    if (!verification.deliveredCode) return;
-    try {
-      await navigator.clipboard.writeText(verification.deliveredCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopied(false);
-    }
-  };
+  // F6B: the challenge code is delivered out-of-band only — the client never
+  // receives it, so code entry opens as soon as a challenge is dispatched.
+  const showCodeEntry = Boolean(verification.requestedAt) && !expired;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-forensic-bg/85 p-4 backdrop-blur-xl animate-fadeIn">
@@ -96,27 +86,21 @@ export default function VerificationModal({
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Delivered Code Display (for testing environment) */}
+              {/* Out-of-band delivery notice (F6B: code never crosses this channel) */}
               <div className="rounded-2xl border border-forensic-border bg-forensic-surface p-3.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-mono uppercase text-forensic-muted font-bold">
-                    In-Band Sandbox Challenge Code
+                    Challenge Dispatched Out-of-Band
                   </span>
-                  <button
-                    type="button"
-                    onClick={copyCode}
-                    className="flex items-center gap-1 font-mono text-[10px] text-forensic-muted hover:text-forensic-accent transition-colors"
-                  >
-                    <Copy size={11} />
-                    <span>{copied ? "Copied" : "Copy"}</span>
-                  </button>
-                </div>
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="tabular font-mono text-2xl font-black tracking-[0.35em] text-forensic-accent">
-                    {verification.deliveredCode}
+                  <span className="font-mono text-[10px] text-forensic-muted">
+                    {(verification.deliveryChannel ?? "DEVICE").toUpperCase()}
                   </span>
-                  <span className="font-mono text-[10px] text-forensic-muted">AUTO-GENERATED</span>
                 </div>
+                <p className="mt-2 text-xs leading-relaxed text-forensic-muted font-sans">
+                  A 6-digit verification code was sent directly to the enrolled
+                  {verification.deliveryChannel ? ` ${verification.deliveryChannel}` : ""} channel.
+                  Enter it below — the code is never displayed in this session.
+                </p>
               </div>
 
               {/* Code Entry Input */}

@@ -135,8 +135,20 @@ def client(session_factory):
     app.dependency_overrides.pop(get_db, None)
 
 
+def _auth_headers() -> dict:
+    """F6C: /forensics/register and the report.pdf download now require an
+    authenticated principal (Bearer JWT minted by /call/start in production)."""
+    from app.core.ws_auth import create_access_token
+
+    return {"Authorization": f"Bearer {create_access_token('forensic-reg-caller')}"}
+
+
 def _register(client: TestClient, payload: dict):
-    return client.post("/api/v1/forensics/register", json={"payload": payload})
+    return client.post(
+        "/api/v1/forensics/register",
+        json={"payload": payload},
+        headers=_auth_headers(),
+    )
 
 
 def _merkle_rows(session_factory, evidence_id: str) -> tuple[list, list]:
@@ -297,7 +309,11 @@ def test_5b_endpoint_maps_service_errors_to_500(client: TestClient):
         "register_evidence_package",
         return_value={"status": "error", "error": "database exploded"},
     ):
-        r = client.post("/api/v1/forensics/register", json={"payload": {"a": 1}})
+        r = client.post(
+            "/api/v1/forensics/register",
+            json={"payload": {"a": 1}},
+            headers=_auth_headers(),
+        )
     assert r.status_code == 500
 
 
@@ -597,7 +613,10 @@ def test_backend_pdf_report_hash_roundtrip(client):
     assert response.status_code == 200, response.text
 
     # --- authoritative backend PDF (the endpoint the frontend now downloads) --
-    pdf = client.get(f"/api/v1/forensics/merkle/{evidence_id}/report.pdf")
+    pdf = client.get(
+        f"/api/v1/forensics/merkle/{evidence_id}/report.pdf",
+        headers=_auth_headers(),
+    )
     assert pdf.status_code == 200, pdf.text
     assert pdf.content[:5] == b"%PDF-"
     reader = PdfReader(_io.BytesIO(pdf.content))
@@ -633,4 +652,162 @@ def test_backend_pdf_report_hash_roundtrip(client):
     # --- QR target: verification URL carries the opaque evidence id only -----
     if "verification_url" in body:
         assert evidence_id in body["verification_url"]
+
+
+# ---------------------------------------------------------------------------
+# F7: true multi-thread ledger concurrency
+# ---------------------------------------------------------------------------
+
+
+def test_f7_concurrent_distinct_evidence_ids_chain_is_linearizable(
+    session_factory, db
+):
+    """N threads registering DISTINCT evidence ids concurrently must produce a
+    fully linearizable ledger chain: every record's previous_record_hash equals
+    the chain root of some earlier commit, exactly one record per evidence id,
+    and a full verify_ledger walk passes for every evidence id.
+
+    This is the real concurrency shape (separate sessions on separate threads),
+    unlike test 4 which simulates a stale pre-check with mocks.
+    """
+    import threading
+
+    from sqlalchemy import func
+
+    evidence_ids = [f"SV-F7-{i:02d}" for i in range(8)]
+    results: dict[str, dict] = {}
+    errors: list[str] = []
+    barrier = threading.Barrier(len(evidence_ids))
+
+    def _register_one(eid: str) -> None:
+        session = session_factory()
+        try:
+            barrier.wait(timeout=10)  # maximize overlap
+            result = EvidenceAnchorService(session).register_evidence_package(
+                _payload(eid)
+            )
+            results[eid] = result
+        except Exception as exc:  # surface any thread failure loudly
+            errors.append(f"{eid}: {type(exc).__name__}: {exc}")
+        finally:
+            session.close()
+
+    threads = [
+        threading.Thread(target=_register_one, args=(eid,)) for eid in evidence_ids
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert not errors, f"concurrent registration raised: {errors}"
+    for eid in evidence_ids:
+        assert results[eid]["status"] == "registered", (eid, results[eid])
+        # Fresh, non-duplicate registration: "duplicate" is only ever present
+        # as an explicit key on idempotent responses.
+        assert results[eid].get("duplicate", False) is not True
+
+    session = session_factory()
+    try:
+        # Exactly one ledger record per evidence id.
+        counts = dict(
+            session.query(
+                db_models.EvidenceLedgerRecord.evidence_id,
+                func.count(db_models.EvidenceLedgerRecord.record_id),
+            )
+            .filter(db_models.EvidenceLedgerRecord.evidence_id.in_(evidence_ids))
+            .group_by(db_models.EvidenceLedgerRecord.evidence_id)
+            .all()
+        )
+        assert all(counts.get(eid) == 1 for eid in evidence_ids), counts
+
+        # The stored previous_record_hash of every record must be either the
+        # GENESIS boundary or a chain root that EXISTS in the table (i.e. an
+        # earlier-committed record) — never a fabricated or dangling value.
+        all_roots = {
+            row.chain_root_hash
+            for row in session.query(db_models.EvidenceLedgerRecord).all()
+        }
+        genesis = "GENESIS"
+        for eid in evidence_ids:
+            record = (
+                session.query(db_models.EvidenceLedgerRecord)
+                .filter(db_models.EvidenceLedgerRecord.evidence_id == eid)
+                .one()
+            )
+            prev = record.previous_record_hash
+            assert prev == genesis or prev in all_roots, (
+                f"{eid}: dangling previous_record_hash {prev[:16]}"
+            )
+
+        # Per-evidence chain walk must pass for every concurrently registered id.
+        service = EvidenceAnchorService(session)
+        for eid in evidence_ids:
+            ledger = service.verify_ledger(eid)
+            assert ledger["valid"] is True, (eid, ledger)
+    finally:
+        session.close()
+
+
+def test_f7_concurrent_same_evidence_id_same_payload_yields_one_row(
+    session_factory, db
+):
+    """N threads racing the SAME evidence_id + SAME payload must end with
+    exactly one package row and exactly one ledger record (idempotent under
+    the IntegrityError race handler), and every caller reports success."""
+    import threading
+
+    from sqlalchemy import func
+
+    eid = "SV-F7-SAME"
+    n_threads = 6
+    results: list[dict] = []
+    errors: list[str] = []
+    barrier = threading.Barrier(n_threads)
+    results_lock = threading.Lock()
+
+    def _register_same() -> None:
+        session = session_factory()
+        try:
+            barrier.wait(timeout=10)
+            result = EvidenceAnchorService(session).register_evidence_package(
+                _payload(eid)
+            )
+            with results_lock:
+                results.append(result)
+        except Exception as exc:
+            errors.append(f"{type(exc).__name__}: {exc}")
+        finally:
+            session.close()
+
+    threads = [
+        threading.Thread(target=_register_same) for _ in range(n_threads)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert not errors, f"concurrent same-id registration raised: {errors}"
+    assert all(r["status"] != "error" for r in results)
+    # All successful responses must agree on the single registered identity.
+    hashes = {r["evidence_hash"] for r in results}
+    assert len(hashes) == 1, hashes
+
+    session = session_factory()
+    try:
+        package_count = (
+            session.query(func.count(db_models.EvidencePackage.evidence_id))
+            .filter(db_models.EvidencePackage.evidence_id == eid)
+            .scalar()
+        )
+        ledger_count = (
+            session.query(func.count(db_models.EvidenceLedgerRecord.record_id))
+            .filter(db_models.EvidenceLedgerRecord.evidence_id == eid)
+            .scalar()
+        )
+        assert package_count == 1, package_count
+        assert ledger_count == 1, ledger_count
+    finally:
+        session.close()
 

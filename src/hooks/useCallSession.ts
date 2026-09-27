@@ -21,7 +21,9 @@ import type {
 } from "../types";
 
 export interface VerificationState {
-  deliveredCode: string | null;
+  /** How the challenge was dispatched (F6B: the CODE itself is never held
+   *  client-side — it is delivered out of band). */
+  deliveryChannel: string | null;
   requestedAt: number | null;
   expiresInSeconds: number;
   input: string;
@@ -31,7 +33,7 @@ export interface VerificationState {
 }
 
 const initialVerification: VerificationState = {
-  deliveredCode: null,
+  deliveryChannel: null,
   requestedAt: null,
   expiresInSeconds: 60,
   input: "",
@@ -296,7 +298,17 @@ export function useCallSession() {
 
         ws.onmessage = (event) => {
           try {
-            const parsed = JSON.parse(event.data) as RiskTelemetry;
+            const parsed = JSON.parse(event.data) as RiskTelemetry & {
+              error?: string;
+              error_code?: string;
+            };
+            if (typeof parsed.error === "string" && parsed.error) {
+              // Structured server-side error frames (codec rejection, detector
+              // misconfiguration) must be visible to the operator, not parsed
+              // as telemetry with undefined fields.
+              setError(parsed.error);
+              return;
+            }
             setTelemetry(parsed);
             setTelemetryHistory((prev) => [...prev.slice(-499), parsed]);
           } catch {
@@ -396,10 +408,11 @@ export function useCallSession() {
     if (!meta) return;
     setVerification((prev) => ({ ...prev, requesting: true, error: null }));
     try {
-      const res = await requestVerificationCode(meta.callId);
+      const res = await requestVerificationCode(meta.callId, callTokenRef.current);
       setVerification((prev) => ({
         ...prev,
-        deliveredCode: res.code,
+        // F6B: the response carries metadata only — no code.
+        deliveryChannel: res.delivery_channel,
         requestedAt: Date.now(),
         expiresInSeconds: res.expires_in_seconds,
         requesting: false,
@@ -423,7 +436,7 @@ export function useCallSession() {
     if (!meta) return;
     setVerification((prev) => ({ ...prev, submitting: true, error: null }));
     try {
-      const res = await submitVerificationCode(meta.callId, verification.input);
+      const res = await submitVerificationCode(meta.callId, verification.input, callTokenRef.current);
       if (res.success) {
         setVerified(true);
         setVerification(initialVerification);
@@ -444,13 +457,23 @@ export function useCallSession() {
       if (!meta) return;
       setActionPending(true);
       try {
-        const result = await attemptAction(meta.callId, "WIRE_TRANSFER", amount);
+        const result = await attemptAction(meta.callId, "WIRE_TRANSFER", amount, callTokenRef.current);
         setActionFeedback({ ok: result.ok && result.executed, message: result.message });
+      } catch (actionError) {
+        // F12: a network/HTTP failure must reach the operator — previously a
+        // thrown error left actionPending cleared but NO feedback at all.
+        setActionFeedback({
+          ok: false,
+          message:
+            actionError instanceof Error
+              ? actionError.message
+              : "The action request could not be completed.",
+        });
+      } finally {
         if (actionFeedbackTimeoutRef.current !== null) {
           window.clearTimeout(actionFeedbackTimeoutRef.current);
         }
         actionFeedbackTimeoutRef.current = window.setTimeout(() => setActionFeedback(null), 6000);
-      } finally {
         setActionPending(false);
       }
     },
@@ -488,6 +511,9 @@ export function useCallSession() {
     setVerificationInput,
     submitVerification,
     attemptWireTransfer,
+    /** Current call JWT (memory-only), for call-scoped HTTP calls the view
+     *  layer makes directly (forensics export/report download). */
+    getAuthToken: useCallback(() => callTokenRef.current, []),
   };
 }
 

@@ -36,6 +36,7 @@ import {
   verifyForensicsEvidence,
 } from "../lib/api";
 import { buildEvidenceSnapshot, buildTechnicalEvidenceReport } from "../lib/forensicPdf";
+import { PROD_ANTISPOOF_LABEL } from "../lib/modelAttribution";
 import {
   ledgerLabel,
   verificationAnchorText,
@@ -217,12 +218,12 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
       });
 
       try {
-        await registerForensicsEvidence(meta.callId, buildEvidenceSnapshot(report));
+        await registerForensicsEvidence(meta.callId, buildEvidenceSnapshot(report), session.getAuthToken());
       } catch (error) {
         if (!(error instanceof HttpStatusError && error.status === 409)) throw error;
       }
 
-      const { blob } = await downloadForensicReportPdf(meta.callId);
+      const { blob } = await downloadForensicReportPdf(meta.callId, session.getAuthToken());
       const url = URL.createObjectURL(blob);
       try {
         const link = document.createElement("a");
@@ -681,7 +682,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                   <DataField label="Analysis Window" value="4.0s rolling window" mono />
                   <DataField
                     label="Backbone Model"
-                    value="Meta MMS-300M (nii-yamagishilab)"
+                    value={PROD_ANTISPOOF_LABEL}
                     mono
                   />
                   <DataField
@@ -954,7 +955,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                 <DataField label="Platform Version" value="SatyaVoice Defense Suite v0.1.0" mono />
                 <DataField label="Detector Execution" value={meta?.audioMode ?? "cloud"} mono />
                 <DataField label="Audio Sampling" value="16,000 Hz 16-bit Mono PCM" mono />
-                <DataField label="Acoustic Model" value="MMS-300M (Fine-Tuned Anti-Deepfake)" mono />
+                <DataField label="Acoustic Model" value={PROD_ANTISPOOF_LABEL} mono />
                 <DataField label="Intent Stage" value="Multilingual ASR + Keyword Extortion Regex" mono />
                 <DataField label="VAD Engine" value="Silero Voice Activity Detector" mono />
                 <DataField label="Auditing Operator" value={meta?.callerId || "SOC-ANALYST-01"} mono />

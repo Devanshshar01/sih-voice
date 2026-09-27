@@ -250,7 +250,14 @@ def test_nan_inf_waveform_handled(client: TestClient):
 # ---------------------------------------------------------------------------
 
 def test_forensics_register_error_does_not_expose_stack_trace(client: TestClient):
-    resp = client.post("/api/v1/forensics/register", json={"payload": {}})
+    from app.core.ws_auth import create_access_token
+
+    headers = {
+        "Authorization": f"Bearer {create_access_token('security-resilience-caller')}"
+    }
+    resp = client.post(
+        "/api/v1/forensics/register", json={"payload": {}}, headers=headers
+    )
     assert resp.status_code == 400
     body = resp.text.lower()
     # Must NOT contain internal implementation details

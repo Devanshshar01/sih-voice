@@ -187,7 +187,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
             <MetricTile
               label="Acoustic Anti-Spoof"
               value={`${formatVectorPercent(acousticScore)}%`}
-              detail="MMS-300M vocoder probability"
+              detail="MMS-300M synthetic-speech probability"
               tone={acousticScore >= 0.7 ? "danger" : acousticScore >= 0.4 ? "warn" : "safe"}
               icon={<Cpu size={16} />}
             />

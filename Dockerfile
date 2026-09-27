@@ -14,6 +14,11 @@ COPY alembic.ini .
 COPY alembic ./alembic
 COPY scripts ./scripts
 
+# F11: run as an unprivileged user — the app never needs root.
+RUN useradd --system --create-home --uid 10001 satyavoice \
+    && chown -R satyavoice:satyavoice /app
+USER satyavoice
+
 EXPOSE 8000
 
 # Baseline-stamp a pre-existing (create_all-built) database ONCE and only when

@@ -125,6 +125,7 @@ async def run_window_inference(
     run_anti_spoof: Callable[[Any], Dict[str, Any]],
     run_asr: Optional[Callable[[Any], str]] = None,
     run_speaker: Optional[Callable[[Any], Dict[str, Any]]] = None,
+    stage_timings: Optional[Dict[str, float]] = None,
 ) -> Tuple[Dict[str, Any], Optional[str], Dict[str, Any], Dict[str, str]]:
     """Run the three inference stages concurrently for one window.
 
@@ -135,13 +136,32 @@ async def run_window_inference(
     timed out. Acoustic failure yields the uninformative 0.5 placeholder;
     ASR failure yields None (fusion treats missing ASR as neutral); speaker
     failure yields similarity None (identity evidence neutral, not fraud).
+
+    When ``stage_timings`` (a mutable dict) is supplied, per-stage wall-clock
+    durations are written into it as ``anti_spoof`` / ``asr`` / ``speaker``
+    (milliseconds, None when the stage was not run) so the caller can feed
+    LatencyTracker without re-instrumenting each lane (F4).
     """
     degraded: Dict[str, str] = {}
     timeout = config.INFERENCE_TIMEOUT_SECONDS
+    loop = asyncio.get_running_loop()
+
+    async def _timed(stage: str, coro_factory) -> Any:
+        """Run one lane call, recording its wall-clock duration (F4)."""
+        if stage_timings is None:
+            return await coro_factory()
+        start = loop.time()
+        try:
+            return await coro_factory()
+        finally:
+            stage_timings[stage] = (loop.time() - start) * 1000.0
 
     async def _anti_spoof() -> Tuple[Dict[str, Any], Optional[str]]:
         try:
-            res = await _anti_spoof_lane().run(run_anti_spoof, window, timeout=timeout)
+            res = await _timed(
+                "anti_spoof",
+                lambda: _anti_spoof_lane().run(run_anti_spoof, window, timeout=timeout),
+            )
             if isinstance(res, dict) and res.get("acoustic_score") is None and res.get("success") is False:
                 return res, res.get("error_message") or "anti_spoof_unavailable"
             return res, None
@@ -154,9 +174,13 @@ async def run_window_inference(
 
     async def _asr() -> Tuple[Optional[str], Optional[str]]:
         if run_asr is None:
+            if stage_timings is not None:
+                stage_timings["asr"] = None  # type: ignore[assignment]
             return None, None
         try:
-            return await _asr_lane().run(run_asr, window, timeout=timeout), None
+            return await _timed(
+                "asr", lambda: _asr_lane().run(run_asr, window, timeout=timeout)
+            ), None
         except asyncio.TimeoutError:
             return None, f"timeout after {timeout:.1f}s"
         except Exception as exc:
@@ -164,9 +188,14 @@ async def run_window_inference(
 
     async def _speaker() -> Tuple[Dict[str, Any], Optional[str]]:
         if run_speaker is None:
+            if stage_timings is not None:
+                stage_timings["speaker"] = None  # type: ignore[assignment]
             return dict(_EMPTY_SPEAKER), None
         try:
-            return await _speaker_lane().run(run_speaker, window, timeout=timeout), None
+            return await _timed(
+                "speaker",
+                lambda: _speaker_lane().run(run_speaker, window, timeout=timeout),
+            ), None
         except asyncio.TimeoutError:
             return dict(_EMPTY_SPEAKER), f"timeout after {timeout:.1f}s"
         except Exception as exc:

@@ -61,13 +61,6 @@ _logger = logging.getLogger("satyavoice.stream")
 # 4 seconds at 16kHz float32 = 256 KB. 8 MB is extremely generous.
 MAX_FRAME_BYTES = 8 * 1024 * 1024  # 8 MB
 
-detector = get_detector(
-    config.VOICE_DETECTOR_MODE,
-    model_path=config.VOICE_MODEL_PATH or None,
-    model_id=config.VOICE_MODEL_ID,
-    device=config.VOICE_MODEL_DEVICE,
-    revision=config.VOICE_MODEL_REVISION,
-)
 intent_analyzer = IntentAnalyzer(
     model_size=config.ASR_MODEL_SIZE,
     device=config.ASR_DEVICE,
@@ -75,16 +68,69 @@ intent_analyzer = IntentAnalyzer(
 )
 speaker_vault = get_speaker_vault()
 
+# ---------------------------------------------------------------------------
+# Lazy detector construction (F2: import-time boot safety)
+#
+# Importing this module (and therefore app.main / uvicorn startup) must not
+# require a fully configured inference provider: a missing HF_ZERO_GPU_SPACE
+# in ZeroGPU mode used to raise RuntimeError at import. The detector is now
+# built on first use and cached; a missing production configuration surfaces
+# as a structured WebSocket error frame (close 4403) or an HTTP 503 from the
+# batch endpoint instead of an import-time crash. Production configuration
+# validation itself (config.validate_detector_config / /ready) is unchanged.
+# ---------------------------------------------------------------------------
+_detector = None
+
+
+def get_stream_detector():
+    """Construct (once) and return the configured anti-spoof detector.
+
+    Raises RuntimeError/ValueError when the configured provider cannot be
+    constructed (e.g. ZeroGPU mode without HF_ZERO_GPU_SPACE) — callers on the
+    request path translate that into a structured 503/close instead of
+    crashing the process.
+    """
+    global _detector
+    # An explicitly assigned module attribute (stream.detector = x) is an
+    # intentional override and wins over the lazy default.
+    override = globals().get("detector")
+    if override is not None:
+        return override
+    if _detector is None:
+        _detector = get_detector(
+            config.VOICE_DETECTOR_MODE,
+            model_path=config.VOICE_MODEL_PATH or None,
+            model_id=config.VOICE_MODEL_ID,
+            device=config.VOICE_MODEL_DEVICE,
+            revision=config.VOICE_MODEL_REVISION,
+        )
+    return _detector
+
+
+def __getattr__(name: str):
+    """PEP 562: preserve the historical module-attribute surface
+    (``stream.detector``, ``stream._VAD_GATES_INFERENCE``,
+    ``stream._ACOUSTIC_CADENCE_ENABLED``) without constructing anything at
+    import time. Values are derived on access, never cached here, so the
+    cached ``_detector`` remains the single source of truth.
+    """
+    if name == "detector":
+        return get_stream_detector()
+    if name in {"_VAD_GATES_INFERENCE", "_ACOUSTIC_CADENCE_ENABLED"}:
+        return not isinstance(get_stream_detector(), MockVoiceDetector)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 # The deterministic mock detector is demo scaffolding, not ML inference, so
 # the VAD gate is bypassed in mock mode to keep the forced-score demo working.
-_VAD_GATES_INFERENCE = not isinstance(detector, MockVoiceDetector)
+# Both mode flags are computed per connection from the lazy detector:
+#   vad_gates_inference / acoustic_cadence_enabled (handler locals below).
 
 # Remote anti-spoof cadence gate. A 4-second window becomes ready every 0.5 s
 # while one remote MMS inference costs ~8 s of wall-clock, so a request per
 # window cannot be sustained (it backlogged the ring buffer and scored audio
 # that was already stale). The gate applies ONLY to real remote providers: the
-# deterministic mock demo keeps its per-window scoring.
-_ACOUSTIC_CADENCE_ENABLED = not isinstance(detector, MockVoiceDetector)
+# deterministic mock demo keeps its per-window scoring. Computed per connection
+# (handler local ``acoustic_cadence_enabled``) from the lazy detector.
 
 
 def _acoustic_provider_available() -> bool:
@@ -94,7 +140,7 @@ def _acoustic_provider_available() -> bool:
     spending GPU quota, so a latched provider is not asked once per window.
     The provider still fail-fasts internally as the final guard.
     """
-    provider = getattr(detector, "provider", None)
+    provider = getattr(get_stream_detector(), "provider", None)
     checker = getattr(provider, "is_available", None)
     if not callable(checker):
         return True
@@ -125,6 +171,7 @@ def _empty_speaker_match() -> Dict[str, Any]:
 
 
 def _run_acoustic_detector(window, forced_score: Optional[float]):
+    detector = get_stream_detector()
     if isinstance(detector, MockVoiceDetector):
         return detector.predict(window, force_score=forced_score)
     return detector.predict(window)
@@ -374,6 +421,33 @@ async def stream_audio(websocket: WebSocket, call_id: str):
         return
 
     await websocket.accept()
+
+    # ---- Lazy detector acquisition (F2: structured config failure) --------
+    # The detector is built on first use, not at import time. A missing or
+    # invalid provider configuration is reported as a structured error frame
+    # and a policy close — the process stays up and /ready still fails the
+    # deployment via config.validate_detector_config().
+    try:
+        detector = get_stream_detector()
+    except (RuntimeError, ValueError) as exc:
+        _logger.error("detector configuration unavailable for call_id=%s: %s", call_id, exc)
+        await websocket.send_json(
+            {
+                "error": (
+                    "The anti-spoof detector is not configured on this server. "
+                    "Configure HF_ZERO_GPU_SPACE for ZeroGPU mode (or the "
+                    "equivalent provider settings) and retry."
+                ),
+                "error_code": "DETECTOR_CONFIGURATION_UNAVAILABLE",
+            }
+        )
+        await websocket.close(code=4403)
+        return
+    # Mock detector = demo scaffolding, not ML inference: bypass the VAD gate
+    # (forced-score demo) and the remote cadence gate (per-window scoring).
+    vad_gates_inference = not isinstance(detector, MockVoiceDetector)
+    acoustic_cadence_enabled = not isinstance(detector, MockVoiceDetector)
+
     latest_transcript = ""
     manual_transcript = False
     stream_language: Optional[str] = config.ASR_LANGUAGE or None
@@ -388,7 +462,7 @@ async def stream_audio(websocket: WebSocket, call_id: str):
     # requests. Audio ingestion below is untouched -- windows keep being emitted
     # every 0.5 s.
     acoustic_scheduler: Optional[AcousticEvidenceScheduler] = None
-    if _ACOUSTIC_CADENCE_ENABLED:
+    if acoustic_cadence_enabled:
         async def _infer_remote(window_data):
             # Runs on the shared anti-spoof lane: the same serialization and
             # timeout as the per-window fan-out, so MMS is never run against
@@ -518,7 +592,7 @@ async def stream_audio(websocket: WebSocket, call_id: str):
                 tracker.start("vad")
                 _, vad_telemetry = vad.assess(window)
                 tracker.stop("vad")
-                speech_active = bool(vad_telemetry["vad_active"]) or not _VAD_GATES_INFERENCE
+                speech_active = bool(vad_telemetry["vad_active"]) or not vad_gates_inference
 
                 if not speech_active and last_risk_result is not None:
                     # Skip ML inference on complete silence; re-emit the last
@@ -586,12 +660,19 @@ async def stream_audio(websocket: WebSocket, call_id: str):
 
                     acoustic_runner = _timed_acoustic
 
+                # F4: per-stage wall-clock timings captured inside the fan-out
+                # (None = stage not run) and merged into the latency tracker.
+                stage_timings: Dict[str, Optional[float]] = {}
                 (acoustic_result, transcript, speaker_match, degraded) = await run_window_inference(
                     window,
                     run_anti_spoof=acoustic_runner,
                     run_asr=_run_asr_blocking if (config.ASR_MODE == "real" and not manual_transcript) else None,
                     run_speaker=_run_speaker_blocking if speaker_vault.enabled else None,
+                    stage_timings=stage_timings,
                 )
+                tracker.record("anti_spoof", stage_timings.get("anti_spoof") or 0.0)
+                tracker.record("asr", stage_timings.get("asr") or 0.0)
+                tracker.record("speaker", stage_timings.get("speaker") or 0.0)
                 acoustic_trace.record(
                     acoustic_result=acoustic_result,
                     degraded=degraded,
@@ -658,12 +739,31 @@ async def stream_audio(websocket: WebSocket, call_id: str):
     except WebSocketDisconnect:
         pass
     finally:
-        summary = acoustic_trace.summary()
+        # F4: teardown is exception-safe — every cleanup step is guarded so an
+        # error in one step can never skip the remaining ones (previously a
+        # failing scheduler close left the DB session open for the event loop's
+        # lifetime).
+        summary = None
+        try:
+            summary = acoustic_trace.summary()
+        except Exception:  # pragma: no cover - defensive
+            _logger.exception("acoustic trace summary failed for call_id=%s", call_id)
         if summary:
             _logger.error("anti_spoof_provider_summary %s", summary)
         if acoustic_scheduler is not None:
             # Stop scheduling immediately and unwind any in-flight inference, so
             # a closed session never leaves GPU work running against a dead call.
-            await acoustic_scheduler.aclose()
-        db.close()
-        session.ring_buffer.reset()
+            try:
+                await acoustic_scheduler.aclose()
+            except Exception:  # pragma: no cover - defensive
+                _logger.exception(
+                    "acoustic scheduler close failed for call_id=%s", call_id
+                )
+        try:
+            db.close()
+        except Exception:  # pragma: no cover - defensive
+            _logger.exception("DB session close failed for call_id=%s", call_id)
+        try:
+            session.ring_buffer.reset()
+        except Exception:  # pragma: no cover - defensive
+            _logger.exception("ring buffer reset failed for call_id=%s", call_id)

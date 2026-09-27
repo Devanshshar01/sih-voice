@@ -97,10 +97,17 @@ export async function fetchRisk(callId: string, token?: string): Promise<CallRis
   return asJson<CallRiskResponse>("loading the risk snapshot", response);
 }
 
-export async function requestVerificationCode(callId: string): Promise<VerificationRequestResponse> {
+function bearerHeaders(token?: string): Record<string, string> {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export async function requestVerificationCode(
+  callId: string,
+  token?: string
+): Promise<VerificationRequestResponse> {
   const response = await request("requesting a verification code", `${API_BASE}/verification/request`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...bearerHeaders(token) },
     body: JSON.stringify({ call_id: callId }),
   });
   return asJson<VerificationRequestResponse>("requesting a verification code", response);
@@ -108,11 +115,12 @@ export async function requestVerificationCode(callId: string): Promise<Verificat
 
 export async function submitVerificationCode(
   callId: string,
-  code: string
+  code: string,
+  token?: string
 ): Promise<VerificationChallengeResponse> {
   const response = await request("submitting the verification code", `${API_BASE}/verification/challenge`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...bearerHeaders(token) },
     body: JSON.stringify({ call_id: callId, code }),
   });
   return asJson<VerificationChallengeResponse>("submitting the verification code", response);
@@ -121,11 +129,12 @@ export async function submitVerificationCode(
 export async function attemptAction(
   callId: string,
   action: string,
-  amount?: number
+  amount?: number,
+  token?: string
 ): Promise<CallActionResult> {
   const response = await request("attempting the protected action", `${API_BASE}/call/action`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...bearerHeaders(token) },
     body: JSON.stringify({ call_id: callId, action, amount }),
   });
   const data = await response.json().catch(() => null);
@@ -139,11 +148,12 @@ export async function attemptAction(
 
 export async function registerForensicsEvidence(
   evidenceId: string,
-  payload: object
+  payload: object,
+  token?: string
 ): Promise<Record<string, unknown>> {
   const response = await request("registering evidence", `${API_BASE}/forensics/register`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...bearerHeaders(token) },
     body: JSON.stringify({ evidence_id: evidenceId, payload }),
   });
   return asJson<Record<string, unknown>>("registering evidence", response);
@@ -174,11 +184,13 @@ export async function verifyEvidenceIntegrity(
  * returned in the X-Report-SHA256 header. Never generated client-side.
  */
 export async function downloadForensicReportPdf(
-  evidenceId: string
+  evidenceId: string,
+  token?: string
 ): Promise<{ blob: Blob; reportSha256: string | null }> {
   const response = await request(
     "downloading the forensic report",
-    `${API_BASE}/forensics/merkle/${encodeURIComponent(evidenceId)}/report.pdf`
+    `${API_BASE}/forensics/merkle/${encodeURIComponent(evidenceId)}/report.pdf`,
+    { headers: bearerHeaders(token) }
   );
   if (!response.ok) {
     const data = await response.json().catch(() => null);

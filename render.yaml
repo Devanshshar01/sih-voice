@@ -1,0 +1,62 @@
+# Render Blueprint — SatyaVoice backend
+#
+# Deploy with: Render Dashboard → New → Blueprint → point at this repository
+# (or `render blueprint launch` with the Render CLI). Render applies this
+# file's service definition, then you set the secret values (sync false keys)
+# in the dashboard — they are never committed.
+#
+# The runtime matches the existing Dockerfile exactly:
+#   - python:3.11-slim, non-root user (F11)
+#   - alembic bootstrap + migrate on boot (idempotent, crash-loop safe)
+#   - uvicorn on $PORT (Render injects PORT=10000)
+#   - /health is the liveness probe; /ready validates detector + JWT config
+services:
+  - type: web
+    name: satyavoice-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter          # change to your plan; free tier works but cold-starts
+    healthCheckPath: /health
+    autoDeploy: true       # deploy on every push to the tracked branch
+    branch: main           # set to the branch holding the remediated code
+    envVars:
+      # ---- Runtime identity (required for F6A secret enforcement) ----
+      - key: VOICETRUST_ENVIRONMENT
+        value: production
+      # ---- JWT secret: MUST be set in the dashboard (sync: false) ----
+      # generate with: python -c "import secrets; print(secrets.token_urlsafe(48))"
+      - key: VOICETRUST_WS_JWT_SECRET
+        sync: false
+      # ---- Database (Render PostgreSQL) ----
+      - key: VOICETRUST_DATABASE_URL
+        fromDatabase:
+          name: satyavoice-db
+          property: connectionString
+      - key: VOICETRUST_DB_PERSISTENCE
+        value: required
+      # ---- CORS: exact frontend origin, never '*' in production (B9) ----
+      - key: VOICETRUST_CORS_ORIGINS
+        value: https://sih-voice.vercel.app
+      # ---- Detector (ZeroGPU remote inference) ----
+      - key: VOICETRUST_DETECTOR_MODE
+        value: zerogpu
+      - key: HF_ZERO_GPU_SPACE
+        value: https://devanshshar01-satyavoice-gpu.hf.space/
+      # HF token raises ZeroGPU quota; service account token recommended.
+      - key: HF_TOKEN
+        sync: false
+      # ---- Blockchain anchoring (optional; disabled until keys exist) ----
+      - key: VOICETRUST_BLOCKCHAIN_ANCHORING_ENABLED
+        value: "false"
+      - key: VOICETRUST_BLOCKCHAIN_RPC_URL
+        sync: false
+      - key: VOICETRUST_BLOCKCHAIN_CONTRACT_ADDRESS
+        value: "0xcB5E4E1A318cE5dcaa2B483d020E42f7343cb987"
+      - key: VOICETRUST_BLOCKCHAIN_PRIVATE_KEY
+        sync: false
+
+databases:
+  - name: satyavoice-db
+    databaseName: satyavoice
+    plan: basic-256mb
+    postgresMajorVersion: "16"

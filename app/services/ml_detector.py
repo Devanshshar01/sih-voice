@@ -291,6 +291,9 @@ class RealAntiSpoofDetector(BaseVoiceDetector):
         if samples is None:
             # Degraded result: neutral score with explicit warning, never a
             # confident "genuine" verdict.
+            # F3: carry the risk-engine `degraded: {stage: reason}` provenance
+            # so downstream consumers can tell this apart from a real verdict
+            # without re-deriving it from `status`.
             return {
                 "acoustic_score": 0.5,
                 "details": {
@@ -298,6 +301,7 @@ class RealAntiSpoofDetector(BaseVoiceDetector):
                     "model": self.model_id,
                     "status": "degraded",
                     "warning": warning,
+                    "degraded": {"anti_spoof": warning or "anti_spoof_unavailable"},
                 },
             }
 
@@ -320,6 +324,7 @@ class RealAntiSpoofDetector(BaseVoiceDetector):
         except Exception as exc:
             # Degraded mode (including model-load failure): do not crash the
             # stream and do not fake confidence.
+            # F3: same degraded provenance marker as the input-validation path.
             return {
                 "acoustic_score": 0.5,
                 "details": {
@@ -327,6 +332,9 @@ class RealAntiSpoofDetector(BaseVoiceDetector):
                     "model": self.model_id,
                     "status": "degraded",
                     "error": f"{type(exc).__name__}: {exc}",
+                    "degraded": {
+                        "anti_spoof": f"{type(exc).__name__}: {exc}"
+                    },
                 },
             }
 

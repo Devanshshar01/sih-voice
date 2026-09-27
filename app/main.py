@@ -21,6 +21,10 @@ async def lifespan(app: FastAPI):
     _lifespan_logger = logging.getLogger("satyavoice")
     # Enforce production safety policy before serving any traffic
     config.validate_detector_config()
+    # F6A: production must never sign WS/HTTP JWTs with an insecure default.
+    from app.core.ws_auth import validate_ws_auth_config
+
+    validate_ws_auth_config()
     # B9: Warn if running in production with wildcard CORS (security risk)
     if config.IS_PRODUCTION and config.CORS_ORIGINS == ["*"]:
         _lifespan_logger.warning(
@@ -94,6 +98,14 @@ def readiness_check():
         config.validate_detector_config()
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Detector configuration invalid: {e}")
+
+    # F6A: readiness also reflects a missing/weak production JWT secret.
+    from app.core.ws_auth import validate_ws_auth_config
+
+    try:
+        validate_ws_auth_config()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"WS auth configuration invalid: {e}")
 
     # Check database, but do not fail readiness if the DB is temporarily
     # unavailable. The stream and call endpoints already degrade gracefully
