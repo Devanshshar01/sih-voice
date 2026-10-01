@@ -18,3 +18,8 @@ public/models/*.onnx.data
 
 e2e_test.wav
 
+# Local dev / scan artifacts
+dev-server.log
+.semgrep-full.json
+*.sarif
+

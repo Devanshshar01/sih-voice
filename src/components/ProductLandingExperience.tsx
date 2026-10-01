@@ -24,11 +24,6 @@ import StartCallForm from "./StartCallForm";
 import VerificationModal from "./VerificationModal";
 import ShapeWaves from "./ShapeWaves";
 import { getHeroWaveColors } from "../lib/heroTheme";
-import {
-  verifyForensicsEvidence,
-  verifyEvidenceIntegrity,
-  downloadForensicReportPdf,
-} from "../lib/api";
 import type { RiskStatus } from "../types";
 
 interface ProductLandingExperienceProps {
@@ -48,93 +43,32 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
     requestChallenge,
     setVerificationInput,
     submitVerification,
-    getAuthToken,
   } = session;
 
   // State management
   const [showSetupModal, setShowSetupModal] = useState(false);
-  const [verifyingApi, setVerifyingApi] = useState(false);
   const [verificationResult, setVerificationResult] = useState<any>(null);
   const [showIntegrityResultModal, setShowIntegrityResultModal] = useState(false);
-  const [downloadingReport, setDownloadingReport] = useState(false);
 
 
-  // F9: there is no fabricated demo case ID. Without a real completed call
-  // there is nothing to verify/export — the operator is told so instead of a
-  // silent console.error with fake identifiers.
-  const handleVerifyIntegrityClick = async () => {
-    if (!meta?.callId) {
-      setVerificationResult({
-        error: "No completed call is available to verify. Start and finish a call first — the dossier preview above is illustrative only.",
-      });
-      setShowIntegrityResultModal(true);
-      return;
-    }
-    setVerifyingApi(true);
-    try {
-      const res = await verifyEvidenceIntegrity(meta.callId);
-      setVerificationResult(res);
-      setShowIntegrityResultModal(true);
-    } catch (e) {
-      setVerificationResult({
-        error: e instanceof Error ? e.message : "Integrity verification failed.",
-      });
-      setShowIntegrityResultModal(true);
-    } finally {
-      setVerifyingApi(false);
+  // Forensic actions are owned by ForensicsView, which has the registered
+  // evidence-id state. These preview controls must never send a call ID to a
+  // forensic endpoint before registration succeeds.
+  const showForensicsWorkspaceMessage = () => {
+    setVerificationResult({
+      error: phase === "ended"
+        ? "Use the registered evidence actions in the forensic workspace below."
+        : "Complete a call first, then register its evidence in the forensic workspace before exporting or verifying.",
+    });
+    setShowIntegrityResultModal(true);
+    if (phase === "ended") {
+      document.getElementById("forensics-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
 
-  const handleVerifyChainClick = async () => {
-    if (!meta?.callId) {
-      setVerificationResult({
-        error: "No completed call is available to verify. Start and finish a call first — the dossier preview above is illustrative only.",
-      });
-      setShowIntegrityResultModal(true);
-      return;
-    }
-    setVerifyingApi(true);
-    try {
-      const res = await verifyForensicsEvidence(meta.callId);
-      setVerificationResult(res);
-      setShowIntegrityResultModal(true);
-    } catch (e) {
-      setVerificationResult({
-        error: e instanceof Error ? e.message : "Chain verification failed.",
-      });
-      setShowIntegrityResultModal(true);
-    } finally {
-      setVerifyingApi(false);
-    }
-  };
-
-  const handleDownloadPdf = async () => {
-    if (!meta?.callId) {
-      setVerificationResult({
-        error: "No completed call is available to export. Start and finish a call first — the dossier preview above is illustrative only.",
-      });
-      setShowIntegrityResultModal(true);
-      return;
-    }
-    setDownloadingReport(true);
-    try {
-      const { blob } = await downloadForensicReportPdf(meta.callId, getAuthToken());
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `satya_voice_forensics_${meta.callId}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      // F5: export failures must be visible in the UI, not only the console.
-      setVerificationResult({
-        error: e instanceof Error ? e.message : "The forensic report could not be generated.",
-      });
-      setShowIntegrityResultModal(true);
-    } finally {
-      setDownloadingReport(false);
-    }
-  };
+  const handleVerifyIntegrityClick = () => showForensicsWorkspaceMessage();
+  const handleVerifyChainClick = () => showForensicsWorkspaceMessage();
+  const handleDownloadPdf = () => showForensicsWorkspaceMessage();
 
   // Derive risk numbers from active telemetry or default baseline
   const currentRiskScore = telemetry?.risk_score ?? 18;
@@ -626,11 +560,10 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
             </div>
             <button
               onClick={handleDownloadPdf}
-              disabled={downloadingReport}
               className="flex items-center gap-2 rounded-full bg-[#7C3AED] px-6 py-2.5 text-xs font-bold text-white shadow-md hover:bg-[#6D28D9] transition-all"
             >
               <Download size={14} />
-              <span>{downloadingReport ? "Generating PDF..." : "EXPORT PDF REPORT"}</span>
+              <span>OPEN FORENSIC WORKSPACE</span>
             </button>
           </div>
 
@@ -651,15 +584,15 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
               <div className="grid gap-6 md:grid-cols-3 font-mono text-xs">
                 <div className="space-y-1 bg-slate-50 p-4 rounded-2xl border border-slate-200">
                   <span className="text-slate-500 text-[10px] uppercase font-bold">SHA-256 Digest</span>
-                  <p className="text-[#0F172A] truncate">7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069</p>
+                  <p className="text-slate-500">Available after evidence registration</p>
                 </div>
                 <div className="space-y-1 bg-slate-50 p-4 rounded-2xl border border-slate-200">
                   <span className="text-slate-500 text-[10px] uppercase font-bold">Merkle Root</span>
-                  <p className="text-[#0F172A] truncate">4b89c211a76e9f12d8a5522b109e44319082a5c1d6e7f80b91a2c3d4e5f6a7b8</p>
+                  <p className="text-slate-500">Available after evidence registration</p>
                 </div>
                 <div className="space-y-1 bg-slate-50 p-4 rounded-2xl border border-slate-200">
                   <span className="text-slate-500 text-[10px] uppercase font-bold">Blockchain Anchor</span>
-                  <p className="text-emerald-600 font-bold">Polygon Amoy (Chain 80002)</p>
+                  <p className="text-slate-500">Not yet verified</p>
                 </div>
               </div>
             </div>
@@ -670,21 +603,19 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
             <div>
               <h3 className="text-xl font-bold text-[#0F172A]">Verify Cryptographic Certificate</h3>
               <p className="text-xs text-slate-600 mt-1">
-                Execute independent cryptographic integrity validation against local hashes and on-chain ledgers.
+                Use the registered evidence workspace below to run integrity and chain verification.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <button
                 onClick={handleVerifyIntegrityClick}
-                disabled={verifyingApi}
                 className="flex items-center gap-2 rounded-full bg-[#7C3AED] px-6 py-3 text-xs font-bold text-white shadow-md transition-all hover:bg-[#6D28D9]"
               >
                 <CheckCircle2 size={15} />
-                <span>{verifyingApi ? "Verifying..." : "VERIFY INTEGRITY"}</span>
+                <span>VERIFY INTEGRITY</span>
               </button>
               <button
                 onClick={handleVerifyChainClick}
-                disabled={verifyingApi}
                 className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-6 py-3 text-xs font-bold text-[#0F172A] transition-all hover:border-[#7C3AED]"
               >
                 <Link size={15} className="text-[#7C3AED]" />
@@ -728,11 +659,9 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
               <span>© 2026</span>
             </div>
             <div className="flex items-center gap-4">
-              <span>Polygon Amoy (80002)</span>
-              <span>·</span>
               <span>16 kHz Mono PCM</span>
               <span>·</span>
-              <span className="text-emerald-400 font-bold">ALL SYSTEMS NOMINAL</span>
+              <span className="text-emerald-400 font-bold">VOICE PROTECTION</span>
             </div>
           </footer>
         </div>

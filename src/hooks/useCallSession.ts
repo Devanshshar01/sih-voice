@@ -365,7 +365,8 @@ export function useCallSession() {
         setError(terminateError instanceof Error ? terminateError.message : "Could not terminate the call on the server.");
       }
     }
-    callTokenRef.current = undefined;
+    // Keep the call JWT in memory for the ended-call forensic registration and
+    // report export. It is cleared by startOver() or before the next call.
   }, [meta, teardown]);
 
   const startOver = useCallback(() => {

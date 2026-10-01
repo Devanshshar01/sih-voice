@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertOctagon,
   CheckCircle2,
@@ -158,6 +158,13 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
     startOver,
   } = session;
 
+  const [registeredEvidence, setRegisteredEvidence] = useState<{
+    callId: string;
+    evidenceId: string;
+  } | null>(null);
+  const evidenceId = registeredEvidence && registeredEvidence.callId === meta?.callId
+    ? registeredEvidence.evidenceId
+    : null;
   const [verificationResult, setVerificationResult] =
     useState<ForensicsVerificationResponse | null>(null);
   const [verifyingChain, setVerifyingChain] = useState(false);
@@ -166,6 +173,14 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
   const [integrity, setIntegrity] = useState<ForensicsIntegritySummary | null>(null);
   const [verifyingIntegrity, setVerifyingIntegrity] = useState(false);
   const [integrityError, setIntegrityError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRegisteredEvidence(null);
+    setVerificationResult(null);
+    setIntegrity(null);
+    setVerificationError(null);
+    setIntegrityError(null);
+  }, [meta?.callId]);
 
   const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
@@ -217,13 +232,46 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
         },
       });
 
-      try {
-        await registerForensicsEvidence(meta.callId, buildEvidenceSnapshot(report), session.getAuthToken());
-      } catch (error) {
-        if (!(error instanceof HttpStatusError && error.status === 409)) throw error;
+      const token = session.getAuthToken();
+      if (!token) {
+        throw new Error("The completed call credential is unavailable; evidence registration was not attempted.");
       }
 
-      const { blob } = await downloadForensicReportPdf(meta.callId, session.getAuthToken());
+      let registration: Record<string, unknown>;
+      try {
+        registration = await registerForensicsEvidence(
+          meta.callId,
+          buildEvidenceSnapshot(report),
+          token
+        );
+      } catch (error) {
+        // Registration is the gate for every downstream forensic operation.
+        // A failed registration must never fall through to PDF or verification.
+        if (error instanceof HttpStatusError && error.status === 409) {
+          throw new Error("Evidence registration reported a conflict; the forensic report was not downloaded.");
+        }
+        throw error;
+      }
+
+      const canonicalRegistration = registration.canonical;
+      if (
+        registration.status === "error" ||
+        registration.status === "conflict" ||
+        (canonicalRegistration && typeof canonicalRegistration === "object" &&
+          "status" in canonicalRegistration && canonicalRegistration.status === "error")
+      ) {
+        const message = typeof registration.error === "string"
+          ? registration.error
+          : "Evidence registration did not complete successfully.";
+        throw new Error(message);
+      }
+      const registeredEvidenceId = registration.evidence_id;
+      if (typeof registeredEvidenceId !== "string" || !registeredEvidenceId) {
+        throw new Error("Evidence registration succeeded without returning an evidence ID.");
+      }
+      setRegisteredEvidence({ callId: meta.callId, evidenceId: registeredEvidenceId });
+
+      const { blob } = await downloadForensicReportPdf(registeredEvidenceId, token);
       const url = URL.createObjectURL(blob);
       try {
         const link = document.createElement("a");
@@ -248,10 +296,14 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
 
   const handleVerifyChain = async () => {
     if (!meta || verifyingChain) return;
+    if (!evidenceId) {
+      setVerificationError("Register evidence and export the forensic report before verifying the chain.");
+      return;
+    }
     setVerifyingChain(true);
     setVerificationError(null);
     try {
-      const res = await verifyForensicsEvidence(meta.callId);
+      const res = await verifyForensicsEvidence(evidenceId, session.getAuthToken());
       setVerificationResult(res);
     } catch (error) {
       setVerificationError(
@@ -265,10 +317,14 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
 
   const handleIntegrityCheck = async () => {
     if (!meta || verifyingIntegrity) return;
+    if (!evidenceId) {
+      setIntegrityError("Register evidence and export the forensic report before verifying integrity.");
+      return;
+    }
     setVerifyingIntegrity(true);
     setIntegrityError(null);
     try {
-      const res = await verifyEvidenceIntegrity(meta.callId);
+      const res = await verifyEvidenceIntegrity(evidenceId, session.getAuthToken());
       setIntegrity(res);
     } catch (error) {
       setIntegrityError(
@@ -281,7 +337,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 bg-forensic-bg text-forensic-text">
+    <div id="forensics-workspace" className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 bg-forensic-bg text-forensic-text">
       <div className="mx-auto max-w-[1440px] space-y-6">
         {/* Case Header & Actions Bar */}
         <header className="rounded-3xl border border-forensic-border bg-forensic-panel/80 p-6 sm:p-8 shadow-elevated backdrop-blur">
@@ -310,7 +366,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                 <span>→</span>
                 <span className="text-forensic-muted">{meta?.recipientId ?? "Protected Desk"}</span>
                 <span className="text-forensic-muted/40">·</span>
-                <span>Evidence ID: <span className="font-mono font-bold text-forensic-accent">{meta?.callId ?? "—"}</span></span>
+                <span>Evidence ID: <span className="font-mono font-bold text-forensic-accent">{evidenceId ?? "NOT REGISTERED"}</span></span>
               </div>
             </div>
 
@@ -874,10 +930,10 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
               </div>
             </EvidenceSection>
 
-            {/* Public Blockchain Anchor (Polygon Amoy) */}
+            {/* Public Blockchain Anchor */}
             <EvidenceSection
               eyebrow="Public Ledger Commitment"
-              title="Polygon Amoy Blockchain Anchor"
+              title={verificationResult?.blockchain_network ?? "Blockchain Anchor"}
               icon={<LockKeyhole size={16} />}
               badge={
                 <StatusBadge
@@ -902,7 +958,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
               <div className="space-y-1">
                 <DataField
                   label="Network"
-                  value={verificationResult?.blockchain_network ?? "Polygon Amoy Testnet (Chain ID 80002)"}
+                  value={verificationResult?.blockchain_network ?? "NOT AVAILABLE"}
                   mono
                 />
                 <DataField
@@ -915,7 +971,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                 />
                 <HashDisplay
                   label="Smart Contract Address"
-                  value={verificationResult?.contract_address ?? "0x0000000000000000000000000000000000000000"}
+                  value={verificationResult?.contract_address}
                   truncateLength={{ lead: 12, tail: 8 }}
                 />
                 <HashDisplay
@@ -926,18 +982,24 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                 />
                 <DataField
                   label="Anchor Timestamp"
-                  value={verificationResult?.anchor_timestamp ?? "Pending blockchain confirmation"}
+                  value={verificationResult?.anchor_timestamp ?? "NOT AVAILABLE"}
                   mono
                 />
                 {verificationResult?.tx_hash && (
                   <div className="pt-2.5 border-t border-forensic-border">
                     <a
-                      href={`https://amoy.polygonscan.com/tx/${verificationResult.tx_hash}`}
+                      href={
+                        verificationResult.blockchain_network?.toLowerCase().includes("amoy")
+                          ? `https://amoy.polygonscan.com/tx/${verificationResult.tx_hash}`
+                          : verificationResult.blockchain_network?.toLowerCase().includes("polygon")
+                            ? `https://polygonscan.com/tx/${verificationResult.tx_hash}`
+                            : undefined
+                      }
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-xs font-mono text-forensic-accent hover:underline"
                     >
-                      <span>Inspect on Polygonscan Explorer</span>
+                      <span>Inspect on block explorer</span>
                       <ExternalLink size={13} />
                     </a>
                   </div>
@@ -968,9 +1030,9 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                 Forensic Closeout Protocol:
               </span>
               <p className="mt-1.5 text-forensic-muted leading-relaxed text-xs">
-                Incident closeout requires deterministic agreement across local package hashes,
-                sequential ledger integrity, and Polygon Amoy public anchor confirmation. All
-                reported evidence is frozen upon session closeout and cannot be modified.
+                Incident closeout requires agreement across registered package hashes and
+                sequential ledger integrity. Public-chain confirmation is shown only when the
+                backend returns a confirmed anchor. Reported evidence is frozen upon closeout.
               </p>
             </div>
           </div>

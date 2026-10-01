@@ -160,19 +160,23 @@ export async function registerForensicsEvidence(
 }
 
 export async function verifyForensicsEvidence(
-  evidenceId: string
+  evidenceId: string,
+  token?: string
 ): Promise<ForensicsVerificationResponse> {
-  const response = await request("verifying evidence", `${API_BASE}/forensics/${evidenceId}/verify`, {
+  const response = await request("verifying evidence", `${API_BASE}/forensics/${encodeURIComponent(evidenceId)}/verify`, {
     method: "POST",
+    headers: bearerHeaders(token),
   });
   return asJson<ForensicsVerificationResponse>("verifying evidence", response);
 }
 
 export async function verifyEvidenceIntegrity(
-  evidenceId: string
+  evidenceId: string,
+  token?: string
 ): Promise<ForensicsIntegritySummary> {
-  const response = await request("verifying evidence integrity", `${API_BASE}/forensics/${evidenceId}/verify`, {
+  const response = await request("verifying evidence integrity", `${API_BASE}/forensics/${encodeURIComponent(evidenceId)}/verify`, {
     method: "GET",
+    headers: bearerHeaders(token),
   });
   return asJson<ForensicsIntegritySummary>("verifying evidence integrity", response);
 }
