@@ -45,6 +45,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -317,6 +318,12 @@ class EvidenceAnchorService:
             canonical = _canonical_json(json.loads(serialised))
             evidence_hash = _sha256_hex(canonical)
             evidence_digest = evidence_hash
+
+            # PostgreSQL advisory transaction lock serializes the global ledger
+            # tip read and append. Unlike SELECT FOR UPDATE on the latest row,
+            # this also protects the empty-ledger/first-entry case. SQLite keeps
+            # its existing database-locking behavior for local tests.
+            self._lock_ledger_append()
 
             # --- Identity idempotency (Fix 1): evidence_id is the logical key ---
             # Checked BEFORE any content hash so a re-export of the same case can
@@ -768,6 +775,16 @@ class EvidenceAnchorService:
             )
 
         return _result(True, None, None, None, None)
+
+    def _lock_ledger_append(self) -> None:
+        """Serialize ledger tip reads for the duration of this transaction.
+
+        PostgreSQL advisory transaction locks are released automatically on
+        commit/rollback and do not require a sentinel row, so the first ledger
+        append is protected as well as subsequent appends.
+        """
+        if self.db.bind is not None and self.db.bind.dialect.name == "postgresql":
+            self.db.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": 731042019})
 
     def _get_latest_chain_root(self) -> str:
         latest_record = (
