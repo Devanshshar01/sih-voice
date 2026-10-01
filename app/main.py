@@ -3,6 +3,7 @@ FastAPI application entrypoint: instantiation, CORS, router registration,
 and startup/shutdown hooks (DB init + expired-session cleanup).
 """
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI, HTTPException
 from sqlalchemy import text
@@ -107,22 +108,36 @@ def readiness_check():
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"WS auth configuration invalid: {e}")
 
-    # Check database, but do not fail readiness if the DB is temporarily
-    # unavailable. The stream and call endpoints already degrade gracefully
-    # when persistence is unavailable, so readiness should reflect service
-    # health rather than forcing a hard crash on an optional backing store.
+    # Database persistence is required by default and by the Render production
+    # configuration. Only an explicit best-effort setting permits degraded
+    # readiness; never report a required persistence dependency as ready.
+    readiness_status = "ready"
     db_status = "not_checked"
+    db = None
     try:
         db = SessionLocal()
         db.execute(text("SELECT 1"))
-        db.close()
         db_status = "available"
-    except Exception as e:
+    except Exception:
         db_status = "unavailable"
         logging.getLogger("satyavoice").warning(
-            "Database probe failed during readiness check; continuing in degraded mode. %s",
-            e,
+            "Database probe failed during readiness check.",
+            exc_info=True,
         )
+        if config.PERSISTENCE_REQUIRED:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "status": "not_ready",
+                    "error_code": "DATABASE_UNAVAILABLE",
+                    "dependency": "database",
+                    "required": True,
+                },
+            )
+        readiness_status = "degraded"
+    finally:
+        if db is not None:
+            db.close()
 
     # Check Redis if configured for session store, but do not fail readiness
     # when Redis is unavailable. The session manager already falls back to
@@ -144,7 +159,7 @@ def readiness_check():
             )
 
     return {
-        "status": "ready",
+        "status": readiness_status,
         "environment": config.ENVIRONMENT,
         "detector_mode": config.VOICE_DETECTOR_MODE,
         "mock_disabled": config.IS_PRODUCTION or config.VOICE_DETECTOR_MODE != "mock",
