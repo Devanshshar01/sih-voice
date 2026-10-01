@@ -16,6 +16,7 @@ import type {
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000/api/v1";
 export const WS_BASE = (import.meta.env.VITE_WS_BASE_URL as string | undefined) ?? API_BASE.replace(/^http/, "ws");
 export const REQUEST_TIMEOUT_MS = 30_000;
+const CALL_START_TIMEOUT_MS = 90_000;
 
 function connectionError(operation: string, err: unknown): Error {
   const detail = err instanceof Error ? err.message : String(err);
@@ -27,13 +28,21 @@ function connectionError(operation: string, err: unknown): Error {
   );
 }
 
-async function request(operation: string, url: string, init?: RequestInit): Promise<Response> {
+async function request(
+  operation: string,
+  url: string,
+  init?: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS
+): Promise<Response> {
   let response: Response;
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     response = await fetch(url, { ...init, signal: init?.signal ?? controller.signal });
   } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(`Timed out after ${timeoutMs / 1000}s while ${operation}. Configured API base: ${API_BASE}.`);
+    }
     // fetch() rejects on network/DNS/CORS-blocked failures; translate into a
     // message the operator can act on instead of a bare "Failed to fetch".
     throw connectionError(operation, err);
@@ -81,7 +90,8 @@ export async function startCall(callerId: string, recipientId: string): Promise<
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ caller_id: callerId, recipient_id: recipientId }),
-    }
+    },
+    CALL_START_TIMEOUT_MS
   );
   return asJson<CallStartResponse>("starting the call", response);
 }

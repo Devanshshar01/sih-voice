@@ -3,6 +3,7 @@ import {
   downloadForensicReportPdf,
   fetchRisk,
   registerForensicsEvidence,
+  startCall,
   terminateCall,
   verifyEvidenceIntegrity,
   verifyForensicsEvidence,
@@ -22,6 +23,16 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.resetAllMocks();
+});
+
+it("allows call-start requests up to 90 seconds for a Render cold start", async () => {
+  const timeoutSpy = vi.spyOn(window, "setTimeout");
+  try {
+    await startCall("caller", "recipient");
+    expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 90_000);
+  } finally {
+    timeoutSpy.mockRestore();
+  }
 });
 
 it("sends the call JWT as a bearer token when fetching risk", async () => {
