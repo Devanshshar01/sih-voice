@@ -4,7 +4,7 @@ import type { RiskStatus } from "../types";
 import StatusBadge from "./StatusBadge";
 
 interface ThreatBreakdownProps {
-  acousticScore: number;
+  acousticScore: number | null;
   intentScore: number;
   identityMismatch?: number | null;
   speakerSimilarity?: number | null;
@@ -15,7 +15,7 @@ interface ThreatBreakdownProps {
 interface SignalVectorProps {
   label: string;
   sublabel: string;
-  value: number; // 0 to 1
+  value: number | null; // 0 to 1; null means unavailable
   icon: React.ReactNode;
   weightLabel?: string;
   formatPercent?: boolean;
@@ -29,9 +29,11 @@ function SignalVector({
   weightLabel,
   formatPercent = true,
 }: SignalVectorProps) {
-  const pct = Math.min(100, Math.max(0, Math.round(value * 100)));
+  const pct = value === null ? null : Math.min(100, Math.max(0, Math.round(value * 100)));
   const tone =
-    pct >= 70
+    pct === null
+      ? { text: "text-slate-400", bg: "bg-slate-300", border: "border-slate-200" }
+      : pct >= 70
       ? { text: "text-red-600", bg: "bg-red-500", border: "border-red-200" }
       : pct >= 40
         ? { text: "text-amber-600", bg: "bg-amber-500", border: "border-amber-200" }
@@ -49,7 +51,7 @@ function SignalVector({
         </div>
         <div className="text-right">
           <span className={`tabular font-mono text-sm font-extrabold ${tone.text}`}>
-            {formatPercent ? `${pct}%` : pct}
+            {pct === null ? "Unavailable" : formatPercent ? `${pct}%` : pct}
           </span>
           {weightLabel && (
             <span className="block font-mono text-[10px] text-slate-400">{weightLabel}</span>
@@ -61,7 +63,7 @@ function SignalVector({
       <div className="mt-3 h-2 w-full rounded-full bg-slate-200 overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-500 ease-out ${tone.bg}`}
-          style={{ width: `${pct}%` }}
+          style={{ width: `${pct ?? 0}%` }}
         />
       </div>
     </div>
@@ -125,10 +127,10 @@ export default function ThreatBreakdown({
           ) : (
             <SignalVector
               label="2. Speaker Identity (ECAPA)"
-              sublabel="Neutral baseline (unregistered caller)"
-              value={0}
+              sublabel="No enrolled voice profile available"
+              value={null}
               icon={<UserCheck size={16} />}
-              weightLabel="Neutral"
+              weightLabel="Not evaluated"
             />
           )}
 

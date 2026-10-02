@@ -84,7 +84,7 @@ Rather than acting merely as an isolated audio classification model, SatyaVoice 
     </td>
     <td width="50%" valign="top">
       <h4>🧠 Neural Anti-Spoof Engine</h4>
-      <p>Acoustic deepfake classification powered by the <code>nii-yamagishilab/mms-300m-anti-deepfake</code> SSL model deployed on Hugging Face ZeroGPU for low-latency scoring.</p>
+      <p>The backend includes a remote inference adapter for the <code>nii-yamagishilab/mms-300m-anti-deepfake</code> checkpoint. Current endpoint availability and live inference latency have not been verified from this checkout.</p>
       <sub><b>Tech:</b> MMS-300M SSL • fairseq • Hugging Face ZeroGPU</sub>
     </td>
   </tr>
@@ -256,22 +256,22 @@ flowchart LR
 
 | Pipeline Layer | Model Identifier / Library | Architecture | Operational Status |
 |:---|:---|:---|:---|
-| **Acoustic Anti-Spoof (Prod)** | `nii-yamagishilab/mms-300m-anti-deepfake` | MMS-300M SSL + FC Head | **Active Cloud Production (ZeroGPU)** |
+| **Remote Acoustic Anti-Spoof (Configured)** | `nii-yamagishilab/mms-300m-anti-deepfake` | MMS-300M SSL + FC Head | Provider adapter implemented; live deployment unverified |
 | **Acoustic Anti-Spoof (Legacy)** | `facebook/wav2vec2-xls-r-300m` | XLS-R 300M SSL | Historical Baseline (Deprecated) |
 | **Optional Edge Anti-Spoof** | Local Browser ONNX Model | WebAssembly ONNX Model | Active Edge (Browser Worker Only) |
-| **ASR & Intent Analysis** | `faster-whisper` (`small`) | Transformer Encoder-Decoder | Active Cloud & Local Backend |
-| **Speaker Verification** | `speechbrain/spkrec-ecapa-voxceleb` | ECAPA-TDNN (192-dim) | Active Cloud & Local Backend |
-| **Voice Activity Detection** | `silero-vad` (v6.2+) | PyTorch Deep VAD Filter | Active Pipeline Preprocessor |
+| **ASR & Intent Analysis** | `faster-whisper` (`small`) | Transformer Encoder-Decoder | Implemented; runtime mode and deployment dependent |
+| **Speaker Verification** | `speechbrain/spkrec-ecapa-voxceleb` | ECAPA-TDNN (192-dim) | Implemented; enrolled reference required |
+| **Voice Activity Detection** | `silero-vad` (v6.2+) | PyTorch Deep VAD Filter | Implemented in analysis pipeline |
 
 > [!IMPORTANT]
 > **Model Attribution & Transparency Notice:**  
-> - The production acoustic deepfake model is `nii-yamagishilab/mms-300m-anti-deepfake`, created by **NII / Yamagishi Lab (National Institute of Informatics, Japan)** and distributed under the **CC BY-NC-SA 4.0** license for research and educational purposes.
+> - The configured remote acoustic model is `nii-yamagishilab/mms-300m-anti-deepfake`, created by **NII / Yamagishi Lab (National Institute of Informatics, Japan)** and distributed under the **CC BY-NC-SA 4.0** license for research and educational purposes. Current production deployment is unverified.
 > - SatyaVoice runs this checkpoint **off-the-shelf**. SatyaVoice has **not fine-tuned, re-trained, or created** this checkpoint, and has **not** verified formal Indian-language deepfake benchmarks. SatyaVoice-specific fine-tuning on Indic speech corpora is planned for future phases.
 
 ### Anti-Spoofing Score Semantics
 - **Raw Output:** Softmax probabilities `[fake_probability, real_probability]`.
 - **Score Mapping:** SatyaVoice directly maps `fake_probability` $\rightarrow$ `acoustic_score`. A higher score denotes **higher synthetic/fake risk**.
-- **Failure Degradation:** If the remote GPU endpoint times out or errors, the score degrades to a neutral `0.50` with an explicit `degraded: {"anti_spoof": "unavailable"}` warning flag. It is **never silently classified as genuine**.
+- **Failure Degradation:** If remote inference is unavailable, the acoustic score is `None` and telemetry carries an explicit degraded/unavailable reason. The system does not synthesize a neutral or genuine score.
 
 <br />
 
@@ -456,7 +456,7 @@ The React 18 TypeScript frontend delivers live audio visualizations, risk gauges
 ```mermaid
 flowchart TD
     Mode{"Select Execution Mode"}
-    Mode -- Cloud Mode --> Cloud["Production Cloud Mode\n(Vercel → Render → HF ZeroGPU MMS-300M)"]
+    Mode -- Cloud Mode --> Cloud["Configured Cloud Mode\n(Vercel → Render → HF ZeroGPU; deployment unverified)"]
     Mode -- Hybrid Mode --> Hybrid["Hybrid Mode\n(Local Web Worker ONNX + Remote WS ASR/Speaker)"]
     Mode -- Edge Mode --> Edge["Edge / Local Mode\n(100% On-Device ONNX WASM, No Audio Upload)"]
     Mode -- Kaggle Mode --> Kaggle["Development / Benchmarking Mode\n(Kaggle GPU Environment)"]
@@ -464,7 +464,7 @@ flowchart TD
 
 | Operating Mode | Audio Ingestion | Detection Engine | Network Telemetry | Primary Benefit |
 |:---|:---|:---|:---|:---|
-| **Cloud (Production)** | Streamed via WSS | Remote MMS-300M (ZeroGPU) | WebSocket Telemetry | Full multi-signal classification |
+| **Cloud (Configured)** | Streamed via WSS | Remote MMS-300M (ZeroGPU) | WebSocket Telemetry | Full multi-signal classification when services are available |
 | **Hybrid** | Local + Streamed | Web Worker ONNX + Remote ASR | WSS + Web Worker | Low-latency local anti-spoof + server context |
 | **Edge / Local** | **Kept Local (Strict)**| Browser ONNX Runtime Web (WASM) | REST `/call/start` only | **100% Data Privacy (Zero Audio Upload)** |
 | **Kaggle** | Local WAV Files | Offline GPU Python Scripts | None | Latency profiling & model development |
@@ -650,10 +650,10 @@ sih-voice/
 
 To maintain strict scientific accuracy, SatyaVoice clearly delineates verified compute latencies from production cloud network times:
 
-- **Sliding Decision Cadence:** The ingestion engine buffers 4.0 seconds of audio and evaluates a decision frame every **0.5 seconds (500 ms)**.
-- **Verified In-Process Backend Overhead:** Internal server compute overhead (Codec normalization + Silero VAD + Risk Fusion + WebSocket serialization) is measured at **~56 ms to 63 ms** (p95).
-- **Remote ZeroGPU Inference:** Warm remote inference runs on Hugging Face ZeroGPU take tens to hundreds of milliseconds. Cold starts require multi-second initialization.
-- **Latency Claim Boundary:** Sub-500 ms is an **architectural decision-window target**, not a formally benchmarked production cloud end-to-end latency claim.
+- **Decision Cadence:** The streaming pipeline uses 4.0-second audio windows with a **0.5-second (500 ms) hop**. This is the decision/update cadence, not the remote model's inference latency.
+- **Historical Mock-Mode Measurement:** The latency report records **~56–63 ms p95** for an in-process FastAPI TestClient run using mock anti-spoof inference. This does not measure production cloud inference.
+- **Remote Inference:** The acoustic-evidence scheduler documents ZeroGPU requests taking about **8 seconds per window** in its measured design rationale; actual live latency varies and is not currently verified.
+- **Latency Claim Boundary:** Sub-500 ms end-to-end acoustic detection is not established by the available measurements. Do not present the 500 ms hop cadence as model response time.
 
 <br />
 
@@ -667,7 +667,7 @@ To maintain strict scientific accuracy, SatyaVoice clearly delineates verified c
 | **Codec Normalization** | ✅ Implemented | Native PCM / G.711 μ-law/A-law; Opus/AMR capability-gated |
 | **Sliding Audio Windowing** | ✅ Implemented | 4.0s window / 0.5s hop (500 ms decision cadence) |
 | **Silero VAD Filtering** | ✅ Implemented | Speech coverage gating prior to inference |
-| **Remote Acoustic Anti-Spoof** | ✅ Production | `nii-yamagishilab/mms-300m-anti-deepfake` via ZeroGPU |
+| **Remote Acoustic Anti-Spoof** | ✅ Implemented | Provider adapter for `nii-yamagishilab/mms-300m-anti-deepfake`; live availability unverified |
 | **ASR & Intent Analysis** | ✅ Implemented | faster-whisper `small` + financial keyword scoring |
 | **Speaker Verification** | ✅ Implemented | ECAPA-TDNN voiceprint embedding & vault matching |
 | **Multi-Signal Risk Fusion** | ✅ Implemented | Fused formula ($W_a=0.60, W_i=0.30, W_m=0.10$) |
@@ -677,7 +677,7 @@ To maintain strict scientific accuracy, SatyaVoice clearly delineates verified c
 | **JCS Canonicalization** | ✅ Implemented | RFC 8785 compliant key sorting & float formatting |
 | **SHA-256 Digest Ledger** | ✅ Implemented | Multi-level hashing of all forensic artifacts |
 | **Binary Merkle Tree** | ✅ Implemented | Domain-separated (`0x00`/`0x01`), sorted-leaf Merkle tree |
-| **Polygon Amoy Anchoring** | ✅ Implemented & Validated | Contract `0xcB5E4E...` on Chain ID `80002` |
+| **Polygon Amoy Anchoring** | ✅ Implemented | Integration tests cover anchoring; current live chain state unverified |
 | **Authoritative 5-Page PDF** | ✅ Implemented | ReportLab backend generation with QR verification |
 | **Verification REST API** | ✅ Implemented | Full 8-step cryptographic & blockchain verification |
 | **Native Android Mobile SDK** | ❌ Future Scope | Planned post-SIH development |
@@ -693,7 +693,7 @@ To maintain strict scientific accuracy, SatyaVoice clearly delineates verified c
 ```mermaid
 timeline
     title SatyaVoice Development Roadmap
-    Phase 1 (Current Production) : Active MMS-300M Anti-Deepfake Model : Multi-Signal Risk Engine (Acoustic + Intent + Speaker) : RFC 8785 & Merkle Evidence Tree : Polygon Amoy Blockchain Anchoring : Authoritative 5-Page PDF & QR Portal
+    Phase 1 (Implemented Core; Deployment Unverified) : Remote MMS-300M Provider Adapter : Multi-Signal Risk Engine (Acoustic + Intent + Speaker) : RFC 8785 & Merkle Evidence Tree : Polygon Amoy Blockchain Anchoring : 5-Page PDF & QR Verification Portal
     Phase 2 (Model Optimization) : SatyaVoice Fine-Tuning on Indic Datasets : Telephony Codec-Aware Model Training : Production Cloud E2E Latency Benchmarking
     Phase 3 (Mobile & Telecom) : Native Android & iOS Security SDKs : Telecom Carrier SIP/VoIP Gateway Integration : Contact Center Banking CRM Adapters
     Phase 4 (Enterprise Forensics) : Production Mainnet Ethereum/Polygon Deployment : Hardware Security Module (HSM) Signing : Formal IT Act Section 65B DSC Compliance
@@ -701,7 +701,7 @@ timeline
 
 ### Current Scope (Implemented Today)
 - Real-time streaming voice analysis via WebSockets.
-- Active cloud anti-spoof classification using MMS-300M Anti-Deepfake.
+- Remote anti-spoof provider integration using the MMS-300M Anti-Deepfake checkpoint; live endpoint status is unverified.
 - Multi-signal risk fusion combining acoustic, intent, and speaker identity mismatch.
 - Privacy-preserving audit trail (metadata only, zero raw audio saved).
 - Cryptographically verifiable Merkle evidence packages & Polygon Amoy testnet anchoring.
@@ -775,8 +775,8 @@ npm run dev
 ### 3. Automated Testing
 
 ```bash
-# Run backend pytest suite
-python -m pytest -q
+# Run backend pytest suite (also matches the CI collection scope)
+python -m pytest tests/ -q
 
 # Run frontend typecheck & vitest suite
 npm run typecheck

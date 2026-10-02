@@ -9,7 +9,8 @@ export interface LatencyStageStats {
 export interface RiskTelemetry {
   timestamp: number;
   risk_score: number;
-  acoustic_score: number;
+  /** Null means no usable anti-spoof inference was available for this window. */
+  acoustic_score: number | null;
   intent_score: number;
   status: RiskStatus;
   rationale: string[];
@@ -20,6 +21,12 @@ export interface RiskTelemetry {
   hard_trigger?: boolean;
   /** Stages that failed and fell back to degraded evidence. */
   degraded?: Record<string, string>;
+  inference_available?: boolean;
+  detector_status?: string;
+  /** Actual detector/provider result metadata emitted by the backend. */
+  detector?: Record<string, unknown>;
+  /** Speaker-vault result; null similarity means no identity match was available. */
+  speaker?: Record<string, unknown>;
   /** Weighted contributions per component (audit view of the fusion). */
   fusion?: {
     weights: { acoustic: number; intent: number; identity_mismatch: number };

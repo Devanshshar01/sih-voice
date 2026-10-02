@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fastapi.testclient import TestClient
 
 from app.core.ws_auth import create_access_token, validate_ws_auth_config
+from app.core.session_manager import session_manager
 
 
 @pytest.fixture(scope="module")
@@ -155,8 +156,21 @@ class TestAnonymousRejection:
 
 
 class TestOwnerMatrix:
+    def test_owner_call_action_without_analysis_is_blocked(self, client: TestClient, live_call):
+        call_id, _, token = live_call
+        resp = client.post(
+            "/api/v1/call/action",
+            json={"call_id": call_id, "action": "WIRE_TRANSFER", "amount": 100.0},
+            headers=_bearer(token),
+        )
+        assert resp.status_code == 409
+        assert "no risk analysis" in resp.json()["detail"]
+
     def test_owner_call_action_200(self, client: TestClient, live_call):
         call_id, _, token = live_call
+        session = session_manager.get(call_id)
+        assert session is not None
+        session.record_risk_point({"timestamp": 1, "risk_score": 0, "status": "ALLOW"})
         resp = client.post(
             "/api/v1/call/action",
             json={"call_id": call_id, "action": "WIRE_TRANSFER", "amount": 100.0},
@@ -164,6 +178,33 @@ class TestOwnerMatrix:
         )
         # Owner + low risk => action executes (200); 403 would only be risk gating.
         assert resp.status_code == 200
+
+    def test_owner_call_action_blocks_invalid_latest_score(self, client: TestClient, live_call):
+        call_id, _, token = live_call
+        session = session_manager.get(call_id)
+        assert session is not None
+        session.record_risk_point({"timestamp": 1, "risk_score": "unknown", "status": "ALLOW"})
+
+        resp = client.post(
+            "/api/v1/call/action",
+            json={"call_id": call_id, "action": "WIRE_TRANSFER", "amount": 100.0},
+            headers=_bearer(token),
+        )
+        assert resp.status_code == 409
+        assert "invalid or unavailable" in resp.json()["detail"]
+
+    def test_owner_call_action_honors_lock_status(self, client: TestClient, live_call):
+        call_id, _, token = live_call
+        session = session_manager.get(call_id)
+        assert session is not None
+        session.record_risk_point({"timestamp": 1, "risk_score": 60, "status": "LOCK_VERIFY"})
+
+        resp = client.post(
+            "/api/v1/call/action",
+            json={"call_id": call_id, "action": "WIRE_TRANSFER", "amount": 100.0},
+            headers=_bearer(token),
+        )
+        assert resp.status_code == 403
 
     def test_attacker_call_action_403(self, client: TestClient, live_call):
         call_id, _, _ = live_call

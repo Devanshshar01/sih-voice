@@ -35,6 +35,7 @@ os.environ.setdefault("HF_ZERO_GPU_SPACE", "dummy")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.services.forensic_report import (  # noqa: E402
+    _assemble_report_data,
     build_forensic_report_pdf,
 )
 
@@ -249,6 +250,23 @@ def api_client(tmp_path_factory):
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.pop(get_db, None)
+
+
+def test_report_mapping_uses_call_id_and_finalized_timestamp_from_payload():
+    finalized_at = "2026-10-01T12:34:56+00:00"
+    report = _assemble_report_data(
+        evidence_id=EVIDENCE_ID,
+        verification={"valid": True},
+        payload={
+            "call_id": SESSION_ID,
+            "evidence_finalized_at": finalized_at,
+            "detection": {"risk_score": 58, "model_score": None},
+        },
+    )
+
+    assert report["session_id"] == SESSION_ID
+    assert report["completed_at"] == finalized_at
+    assert report["detection"]["risk_score"] == 58
 
 
 def test_report_pdf_endpoint_renders_payload_model_id(api_client):

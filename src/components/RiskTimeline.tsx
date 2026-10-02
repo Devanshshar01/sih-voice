@@ -116,7 +116,9 @@ export default function RiskTimeline({ points }: RiskTimelineProps) {
                 ({statusLabel(hoveredPoint.status)})
               </span>
               <span className="text-forensic-muted">
-                Acoustic: {Math.round(hoveredPoint.acoustic_score * 100)}% · Intent:{" "}
+                Acoustic: {hoveredPoint.acoustic_score === null
+                  ? "Not available"
+                  : `${Math.round(hoveredPoint.acoustic_score * 100)}%`} · Intent:{" "}
                 {Math.round(hoveredPoint.intent_score * 100)}%
               </span>
             </div>
@@ -143,4 +145,3 @@ export default function RiskTimeline({ points }: RiskTimelineProps) {
 }
 
 export { statusLabel };
-

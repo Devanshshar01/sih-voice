@@ -36,7 +36,6 @@ import {
   verifyForensicsEvidence,
 } from "../lib/api";
 import { buildEvidenceSnapshot, buildTechnicalEvidenceReport } from "../lib/forensicPdf";
-import { PROD_ANTISPOOF_LABEL } from "../lib/modelAttribution";
 import {
   ledgerLabel,
   verificationAnchorText,
@@ -125,24 +124,24 @@ function SignalProgress({
   max = 100,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   max?: number;
 }) {
-  const pct = Math.min(100, Math.max(0, Math.round((value / max) * 100)));
+  const pct = value === null ? null : Math.min(100, Math.max(0, Math.round((value / max) * 100)));
   const tone =
-    pct >= 70 ? "bg-danger text-danger" : pct >= 40 ? "bg-warn text-warn" : "bg-safe text-safe";
+    pct === null ? "bg-forensic-muted text-forensic-muted" : pct >= 70 ? "bg-danger text-danger" : pct >= 40 ? "bg-warn text-warn" : "bg-safe text-safe";
 
   return (
     <div className="space-y-1.5 font-sans">
       <div className="flex justify-between text-xs">
         <span className="text-forensic-muted">{label}</span>
-        <span className="font-mono font-bold">{pct}%</span>
+        <span className="font-mono font-bold">{pct === null ? "Not available" : `${pct}%`}</span>
       </div>
       <div className="h-2 w-full rounded-full bg-forensic-surface overflow-hidden border border-forensic-border/40">
-        <div
+        {pct !== null && <div
           className={`h-full rounded-full transition-all duration-500 ${tone.split(" ")[0]}`}
           style={{ width: `${pct}%` }}
-        />
+        />}
       </div>
     </div>
   );
@@ -152,7 +151,6 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
   const {
     meta,
     telemetryHistory,
-    serverRiskSnapshot,
     durationSeconds,
     liveTranscript,
     startOver,
@@ -191,7 +189,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
     return telemetryHistory.map((p) => ({
       t: Number((p.timestamp - t0).toFixed(1)),
       score: p.risk_score,
-      acoustic: Math.round(p.acoustic_score * 100),
+      acoustic: p.acoustic_score === null ? null : Math.round(p.acoustic_score * 100),
       intent: Math.round(p.intent_score * 100),
     }));
   }, [telemetryHistory]);
@@ -203,7 +201,14 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
   const transitions = telemetryHistory
     .slice(1)
     .filter((point, index) => telemetryHistory[index].status !== point.status);
-  const acousticPeak = telemetryHistory.reduce((max, p) => Math.max(max, p.acoustic_score), 0);
+  const usableAcousticScores = telemetryHistory
+    .map((point) => point.acoustic_score)
+    .filter((score): score is number => typeof score === "number" && Number.isFinite(score));
+  const acousticPeak = usableAcousticScores.length
+    ? Math.max(...usableAcousticScores)
+    : null;
+  const reportedModel = session.telemetry?.detector?.model_version_antispoof
+    ?? session.telemetry?.detector?.model;
 
   /**
    * Export the authoritative forensic report PDF.
@@ -225,10 +230,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
         telemetryHistory,
         modelVersionMetadata: {
           detector_mode: meta.audioMode,
-          audio_pipeline: serverRiskSnapshot
-            ? "WebSocket PCM + sliding windows + server-side risk snapshot"
-            : "WebSocket PCM + sliding windows",
-          server_risk_snapshot: serverRiskSnapshot,
+          audio_pipeline: "WebSocket PCM + sliding windows",
         },
       });
 
@@ -733,25 +735,32 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                 icon={<Waves size={16} />}
               >
                 <div className="space-y-3.5">
-                  <SignalProgress label="Peak Anti-Spoof Signal" value={acousticPeak * 100} />
+                  <SignalProgress
+                    label="Peak Anti-Spoof Signal"
+                    value={acousticPeak === null ? null : acousticPeak * 100}
+                  />
                   <DataField label="Audio Capture" value="16.0 kHz PCM · Silero VAD" mono />
                   <DataField label="Analysis Window" value="4.0s rolling window" mono />
                   <DataField
                     label="Backbone Model"
-                    value={PROD_ANTISPOOF_LABEL}
+                    value={typeof reportedModel === "string" ? reportedModel : "Not reported by detector"}
                     mono
                   />
                   <DataField
                     label="Spectral Assessment"
                     value={
-                      acousticPeak >= 0.7
+                      acousticPeak === null
+                        ? "No usable detector score recorded"
+                        : acousticPeak >= 0.7
                         ? "Critical synthetic vocoder artifacts detected"
                         : acousticPeak >= 0.4
                           ? "Elevated phase dissonance observed"
                           : "Nominal human vocal dynamics"
                     }
                     tone={
-                      acousticPeak >= 0.7
+                      acousticPeak === null
+                        ? "text-forensic-muted"
+                        : acousticPeak >= 0.7
                         ? "text-danger font-bold"
                         : acousticPeak >= 0.4
                           ? "text-warn font-bold"
@@ -1017,7 +1026,7 @@ export default function ForensicsView({ session }: ForensicsViewProps) {
                 <DataField label="Platform Version" value="SatyaVoice Defense Suite v0.1.0" mono />
                 <DataField label="Detector Execution" value={meta?.audioMode ?? "cloud"} mono />
                 <DataField label="Audio Sampling" value="16,000 Hz 16-bit Mono PCM" mono />
-                <DataField label="Acoustic Model" value={PROD_ANTISPOOF_LABEL} mono />
+                <DataField label="Acoustic Model" value={reportedModel ? String(reportedModel) : "Not available from telemetry"} mono />
                 <DataField label="Intent Stage" value="Multilingual ASR + Keyword Extortion Regex" mono />
                 <DataField label="VAD Engine" value="Silero Voice Activity Detector" mono />
                 <DataField label="Auditing Operator" value={meta?.callerId || "SOC-ANALYST-01"} mono />

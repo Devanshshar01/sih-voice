@@ -14,9 +14,6 @@ import {
   User,
   Zap,
 } from "lucide-react";
-import Spectrograph from "./Spectrograph";
-import TrustGauge from "./TrustGauge";
-import ThreatBreakdown from "./ThreatBreakdown";
 import CallDashboard from "./CallDashboard";
 import ForensicsView from "./ForensicsView";
 import StatusBadge from "./StatusBadge";
@@ -24,7 +21,6 @@ import StartCallForm from "./StartCallForm";
 import VerificationModal from "./VerificationModal";
 import ShapeWaves from "./ShapeWaves";
 import { getHeroWaveColors } from "../lib/heroTheme";
-import type { RiskStatus } from "../types";
 
 interface ProductLandingExperienceProps {
   session: ReturnType<typeof import("../hooks/useCallSession").useCallSession>;
@@ -35,8 +31,6 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
     phase,
     meta,
     error,
-    telemetry,
-    analyser,
     verification,
     startNewCall,
     endCall,
@@ -69,18 +63,6 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
   const handleVerifyIntegrityClick = () => showForensicsWorkspaceMessage();
   const handleVerifyChainClick = () => showForensicsWorkspaceMessage();
   const handleDownloadPdf = () => showForensicsWorkspaceMessage();
-
-  // Derive risk numbers from active telemetry or default baseline
-  const currentRiskScore = telemetry?.risk_score ?? 18;
-  const currentRiskStatus: RiskStatus = (telemetry?.status as RiskStatus) || "ALLOW";
-  const acousticScore = telemetry?.acoustic_score ?? 0.14;
-  const intentScore = telemetry?.intent_score ?? 0.12;
-  const speakerSimilarity = telemetry?.speaker_score ?? 0.94;
-  const rationale = telemetry?.rationale ?? [
-    "Acoustic feature distribution within expected human thresholds.",
-    "Speaker voiceprint matches enrolled baseline profile.",
-    "Conversational intent parameters indicate low financial risk.",
-  ];
 
   // Canvas cannot consume CSS var() — resolve the wave colors from the theme.
   const heroWaveColors = getHeroWaveColors();
@@ -331,7 +313,7 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-6 space-y-3">
                 <h3 className="text-xl font-extrabold text-[#0F172A]">Why SatyaVoice?</h3>
                 <p className="text-sm text-slate-600 leading-relaxed">
-                  From sub-second acoustic anti-spoofing to immutable on-chain Merkle audit trails, SatyaVoice provides a complete suite built for modern security teams. Focus on what matters most while we defend the line.
+                  SatyaVoice brings streaming voice-risk analysis and traceable forensic evidence into one workflow, with blockchain anchoring available when the service is configured for it.
                 </p>
               </div>
             </div>
@@ -468,7 +450,7 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
             <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-6 sm:p-10 space-y-8 shadow-sm overflow-hidden">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-slate-200 pb-6">
                 <div className="space-y-2">
-                  <span className="hud-badge hud-badge-safe">LIVE PROTECTION READY</span>
+                  <span className="hud-badge hud-badge-safe">READY TO CONNECT</span>
                   <h3 className="text-2xl sm:text-3xl font-extrabold text-[#0F172A]">
                     Start Monitoring an Incoming Audio Stream
                   </h3>
@@ -484,21 +466,12 @@ export default function ProductLandingExperience({ session }: ProductLandingExpe
                 </button>
               </div>
 
-              {/* Simulated Live Preview Card */}
-              <div className="grid gap-6 lg:grid-cols-12 items-start">
-                <div className="lg:col-span-8 space-y-6">
-                  <Spectrograph analyser={analyser} status={currentRiskStatus} />
-                  <ThreatBreakdown
-                    acousticScore={acousticScore}
-                    intentScore={intentScore}
-                    speakerSimilarity={speakerSimilarity}
-                    rationale={rationale}
-                    status={currentRiskStatus}
-                  />
-                </div>
-                <div className="lg:col-span-4 surface-card p-6 flex flex-col justify-between">
-                  <TrustGauge score={currentRiskScore} status={currentRiskStatus} />
-                </div>
+              <div className="rounded-2xl border border-slate-200 bg-white/80 p-5 text-sm text-slate-600">
+                <p className="font-bold text-slate-900">No live call data yet</p>
+                <p className="mt-1">
+                  Start a call to see measured risk, acoustic evidence, and speaker or context signals.
+                  Values appear only after the backend returns analysis telemetry.
+                </p>
               </div>
             </div>
           )}

@@ -17,6 +17,21 @@ from app.config import REDIS_URL, SESSION_STORE_BACKEND, SESSION_TTL_SECONDS
 from app.services.audio_processor import RingBuffer
 
 
+def _risk_timeline_snapshot(points: object) -> List[Dict]:
+    """Keep only fields required for risk-history reads and action gating."""
+    if not isinstance(points, list):
+        return []
+    return [
+        {
+            key: point[key]
+            for key in ("timestamp", "risk_score", "status")
+            if key in point
+        }
+        for point in points
+        if isinstance(point, dict)
+    ]
+
+
 @dataclass
 class CallSession:
     call_id: str
@@ -108,7 +123,9 @@ class SessionManager:
         for cid in expired:
             self.end_session(cid, status="COMPLETED")
 
-    def _store_session(self, call_id: str, session: CallSession) -> None:
+    def _store_session(
+        self, call_id: str, session: CallSession, *, ttl_seconds: Optional[int] = None
+    ) -> None:
         if self._redis_client is None:
             return
         payload = {
@@ -122,9 +139,10 @@ class SessionManager:
             "verified": session.verified,
             "forced_acoustic_score": session.forced_acoustic_score,
             "persistence_degraded": session.persistence_degraded,
-            "risk_timeline": session.risk_timeline,
+            "risk_timeline": _risk_timeline_snapshot(session.risk_timeline),
         }
-        self._redis_client.setex(f"call:{call_id}", SESSION_TTL_SECONDS, json.dumps(payload))
+        ttl = SESSION_TTL_SECONDS if ttl_seconds is None else max(1, ttl_seconds)
+        self._redis_client.setex(f"call:{call_id}", ttl, json.dumps(payload))
 
     def _load_session(self, call_id: str) -> Optional[CallSession]:
         if self._redis_client is None:
@@ -145,7 +163,20 @@ class SessionManager:
             forced_acoustic_score=data.get("forced_acoustic_score"),
             persistence_degraded=bool(data.get("persistence_degraded", False)),
         )
-        session.risk_timeline = data.get("risk_timeline", [])
+        stored_timeline = data.get("risk_timeline", [])
+        session.risk_timeline = _risk_timeline_snapshot(stored_timeline)
+        if session.risk_timeline != stored_timeline:
+            # Remove sensitive fields from cache entries written by older
+            # versions while preserving their remaining expiration window.
+            try:
+                remaining_ttl = self._redis_client.ttl(f"call:{call_id}")
+            except Exception:
+                remaining_ttl = None
+            self._store_session(
+                call_id,
+                session,
+                ttl_seconds=remaining_ttl if isinstance(remaining_ttl, int) and remaining_ttl > 0 else None,
+            )
         return session
 
     def _delete_session(self, call_id: str) -> None:

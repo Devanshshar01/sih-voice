@@ -1,13 +1,29 @@
-import { AlertTriangle, CheckCircle2, Lock, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Lock, Shield, ShieldCheck } from "lucide-react";
 import type { RiskStatus } from "../types";
 
 interface StatusBannerProps {
-  status: RiskStatus;
+  status: RiskStatus | null;
   rationale: string[];
   verified?: boolean;
 }
 
 export default function StatusBanner({ status, rationale, verified = false }: StatusBannerProps) {
+  if (!status && !verified) {
+    return (
+      <div role="status" className="flex items-start gap-3.5 rounded-2xl border border-forensic-border bg-forensic-surface/70 p-4 font-sans">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-forensic-border bg-forensic-bg text-forensic-muted">
+          <Shield size={16} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <span className="font-mono text-xs font-bold uppercase tracking-wider text-forensic-muted">WAITING FOR ANALYSIS</span>
+          <p className="mt-0.5 text-xs text-forensic-muted leading-relaxed">
+            No backend risk decision has arrived for this session. Sensitive actions remain locked.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (verified) {
     return (
       <div
@@ -107,7 +123,7 @@ export default function StatusBanner({ status, rationale, verified = false }: St
     );
   }
 
-  // ALLOW / NOMINAL
+  // ALLOW decision. This describes the policy result, not proof that every signal was available.
   return (
     <div
       role="status"
@@ -119,16 +135,15 @@ export default function StatusBanner({ status, rationale, verified = false }: St
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-mono text-xs font-bold uppercase tracking-wider text-safe">
-            NOMINAL OPERATIONAL POSTURE
+            LOW RISK POLICY DECISION
           </span>
           <span className="h-1.5 w-1.5 rounded-full bg-safe shadow-[0_0_6px_#10B981]" />
         </div>
         <p className="mt-0.5 text-xs text-forensic-muted leading-relaxed">
-          Biometric acoustics, speaker similarity, and conversational intent remain within verified
-          safe policy parameters.
+          The available analysis signals produced an ALLOW decision for this window. Check the signal
+          breakdown for unavailable or degraded evidence.
         </p>
       </div>
     </div>
   );
 }
-

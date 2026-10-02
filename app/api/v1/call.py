@@ -129,12 +129,34 @@ def execute_action(
     if not session:
         raise HTTPException(status_code=404, detail="Call session not found or expired.")
 
-    if session.current_risk_score >= HIGH_RISK_THRESHOLD and not session.verified:
+    if not session.risk_timeline:
+        raise HTTPException(
+            status_code=409,
+            detail="Action blocked: no risk analysis is available for this call yet.",
+        )
+
+    latest_point = session.risk_timeline[-1]
+    latest_score = latest_point.get("risk_score") if isinstance(latest_point, dict) else None
+    if (
+        isinstance(latest_score, bool)
+        or not isinstance(latest_score, (int, float))
+        or not 0 <= latest_score <= 100
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Action blocked: the latest risk analysis is invalid or unavailable.",
+        )
+
+    latest_status = latest_point.get("status")
+    requires_verification = (
+        latest_score >= HIGH_RISK_THRESHOLD or latest_status == "LOCK_VERIFY"
+    )
+    if requires_verification and not session.verified:
         raise HTTPException(
             status_code=403,
             detail=(
                 f"Action '{payload.action}' blocked: risk score "
-                f"{session.current_risk_score}/100 requires out-of-band verification."
+                f"{latest_score}/100 requires out-of-band verification."
             ),
         )
 

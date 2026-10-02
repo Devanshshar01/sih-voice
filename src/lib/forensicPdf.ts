@@ -11,10 +11,22 @@ export interface AnalysisWindowEvidence {
   timestamp: number;
   relative_time_seconds: number;
   risk_score: number;
-  acoustic_score: number;
+  acoustic_score: number | null;
   intent_score: number;
   status: string;
   rationale: string[];
+  inference_available?: boolean;
+  detector_status?: string;
+  detector?: Record<string, unknown>;
+  degraded?: Record<string, string>;
+  speaker_score?: number | null;
+  intent_indicators?: Array<{
+    category: string;
+    severity: string;
+    speech_act: string;
+    language: string;
+    confidence: number;
+  }>;
   derived_data_hash: string;
   previous_hash: string;
   chain_record_hash: string;
@@ -25,7 +37,16 @@ export interface ForensicsExportReport {
   caller_id: string;
   recipient_id: string;
   duration_seconds: number;
-  max_risk_score: number;
+  max_risk_score: number | null;
+  detection: {
+    risk_score: number | null;
+    risk_status: string | null;
+    model_score: number | null;
+    model_status: string;
+    speaker_match: number | null;
+    contextual: string | null;
+    confidence: null;
+  };
   exported_at: string;
   operator_identity: string;
   evidence_hash?: string | null;
@@ -81,6 +102,60 @@ async function buildPackageSignature(reportWithoutSignature: Omit<ForensicsExpor
   return sha256Hex(`${LOCAL_SIGNING_KEY}:${payload}`);
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function usableAcousticScore(point: RiskTelemetry | undefined): number | null {
+  if (!point || typeof point.acoustic_score !== "number" || !Number.isFinite(point.acoustic_score)) {
+    return null;
+  }
+  const detector = asRecord(point.detector);
+  if (
+    point.inference_available === false ||
+    point.detector_status === "unavailable" ||
+    point.degraded?.anti_spoof ||
+    detector.status === "unavailable" ||
+    detector.status === "degraded" ||
+    detector.evidence_status === "unavailable"
+  ) {
+    return null;
+  }
+  return point.acoustic_score;
+}
+
+function detectorSnapshot(point: RiskTelemetry | undefined): Record<string, unknown> {
+  const detector = asRecord(point?.detector);
+  const fields = [
+    "mode",
+    "model",
+    "model_version_antispoof",
+    "revision",
+    "status",
+    "evidence_status",
+    "fake_probability",
+    "real_probability",
+    "inference_latency_ms",
+    "inference_time_ms",
+    "evidence_age_ms",
+  ];
+  return Object.fromEntries(fields
+    .filter((key) => detector[key] !== undefined)
+    .map((key) => [key, detector[key]]));
+}
+
+function intentIndicatorSnapshot(point: RiskTelemetry): AnalysisWindowEvidence["intent_indicators"] {
+  return (point.intent_risks ?? []).map((risk) => ({
+    category: risk.category,
+    severity: risk.severity,
+    speech_act: risk.speech_act,
+    language: risk.language,
+    confidence: risk.confidence,
+  }));
+}
+
 export async function buildTechnicalEvidenceReport({
   callId,
   callerId,
@@ -107,6 +182,33 @@ export async function buildTechnicalEvidenceReport({
 
   let previousHash = "GENESIS";
 
+  const latestPoint = telemetryHistory[telemetryHistory.length - 1];
+  const highestRiskPoint = telemetryHistory.reduce<RiskTelemetry | undefined>(
+    (highest, point) => !highest || point.risk_score > highest.risk_score ? point : highest,
+    undefined
+  );
+  const latestDetector = detectorSnapshot(latestPoint);
+  const modelIdentityPoint = [...telemetryHistory].reverse().find((point) => {
+    const detector = detectorSnapshot(point);
+    return typeof detector.model === "string" || typeof detector.model_version_antispoof === "string";
+  });
+  const modelIdentity = detectorSnapshot(modelIdentityPoint);
+  const modelId = typeof modelIdentity.model_version_antispoof === "string"
+    ? modelIdentity.model_version_antispoof
+    : typeof modelIdentity.model === "string" ? modelIdentity.model : null;
+  const latestAcousticScore = usableAcousticScore(latestPoint);
+  const latestStatus = typeof latestDetector.evidence_status === "string"
+    ? latestDetector.evidence_status
+    : typeof latestDetector.status === "string"
+      ? latestDetector.status
+      : latestAcousticScore === null ? "unavailable" : "ok";
+  const contextualIndicators = (latestPoint?.intent_risks ?? [])
+    .map((risk) => risk.category)
+    .filter((category, index, categories) => categories.indexOf(category) === index);
+  const contextualSummary = contextualIndicators.length
+    ? contextualIndicators.join(", ")
+    : latestPoint?.transcript?.trim() ? "No contextual indicators recorded" : null;
+
   for (let index = 0; index < telemetryHistory.length; index += 1) {
     const point = telemetryHistory[index];
     const relativeSeconds = Math.max(0, point.timestamp - timeZero);
@@ -116,10 +218,16 @@ export async function buildTechnicalEvidenceReport({
       synchronized_timestamp: point.timestamp,
       relative_time_seconds: Number(relativeSeconds.toFixed(3)),
       risk_score: point.risk_score,
-      acoustic_score: point.acoustic_score,
+      acoustic_score: usableAcousticScore(point),
       intent_score: point.intent_score,
       status: point.status,
       rationale: point.rationale,
+      inference_available: point.inference_available,
+      detector_status: point.detector_status,
+      detector: detectorSnapshot(point),
+      degraded: point.degraded,
+      speaker_score: point.speaker_score ?? null,
+      intent_indicators: intentIndicatorSnapshot(point),
     };
 
     const derivedDataHash = await sha256Hex(JSON.stringify(derivedData));
@@ -146,7 +254,19 @@ export async function buildTechnicalEvidenceReport({
     caller_id: callerId,
     recipient_id: recipientId,
     duration_seconds: durationSeconds,
-    max_risk_score: maxRiskScore,
+    max_risk_score: telemetryHistory.length ? maxRiskScore : null,
+    detection: {
+      risk_score: highestRiskPoint?.risk_score ?? null,
+      risk_status: highestRiskPoint?.status ?? null,
+      model_score: latestAcousticScore,
+      model_status: latestStatus,
+      speaker_match: typeof latestPoint?.speaker_score === "number" && Number.isFinite(latestPoint.speaker_score)
+        ? latestPoint.speaker_score
+        : null,
+      contextual: contextualSummary,
+      // The detector and risk engine do not emit a calibrated confidence value.
+      confidence: null,
+    },
     exported_at: exportedAt,
     operator_identity: operatorIdentity,
     evidence_hash: null,
@@ -160,11 +280,16 @@ export async function buildTechnicalEvidenceReport({
     model_version_metadata: {
       app_name: "SatyaVoice",
       app_version: "0.1.0",
+      ...modelVersionMetadata,
       detector_mode: modelVersionMetadata?.detector_mode ?? "unknown",
+      model_id: modelId,
+      model_version: typeof modelIdentity.revision === "string"
+        ? modelIdentity.revision
+        : typeof modelIdentity.model_version === "string" ? modelIdentity.model_version : null,
+      detector_status: latestStatus,
       audio_pipeline: modelVersionMetadata?.audio_pipeline ?? "WebSocket PCM + sliding windows",
       telemetry_window_count: telemetryHistory.length,
       generated_at: exportedAt,
-      ...modelVersionMetadata,
     },
     policy_state_transitions: policyStateTransitions,
     analysis_windows: analysisWindows,
@@ -200,7 +325,8 @@ const buildPdfText = (report: ForensicsExportReport) => {
     `Caller ID: ${report.caller_id}`,
     `Recipient ID: ${report.recipient_id}`,
     `Duration: ${report.duration_seconds.toFixed(1)}s`,
-    `Peak risk score: ${report.max_risk_score}/100`,
+    `Peak risk score: ${report.max_risk_score === null ? "unavailable" : `${report.max_risk_score}/100`}`,
+    `Detection summary: ${compactJson(report.detection)}`,
     `Exported at: ${report.exported_at}`,
     `Evidence hash: ${report.evidence_hash ?? "pending-registration"}`,
     `Local chain/root: ${report.local_chain_root ?? "pending-registration"}`,
@@ -226,7 +352,7 @@ const buildPdfText = (report: ForensicsExportReport) => {
 
   report.analysis_windows.forEach((window) => {
     lines.push(
-      `- Window ${window.window_index}: t=${window.relative_time_seconds.toFixed(1)}s | risk=${window.risk_score} | acoustic=${window.acoustic_score.toFixed(4)} | intent=${window.intent_score.toFixed(4)} | status=${window.status}`
+      `- Window ${window.window_index}: t=${window.relative_time_seconds.toFixed(1)}s | risk=${window.risk_score} | acoustic=${window.acoustic_score === null ? "unavailable" : window.acoustic_score.toFixed(4)} | intent=${window.intent_score.toFixed(4)} | status=${window.status}`
     );
     lines.push(`  rationale=${window.rationale.join(" | ")}`);
     lines.push(`  derived_data_hash=${window.derived_data_hash}`);

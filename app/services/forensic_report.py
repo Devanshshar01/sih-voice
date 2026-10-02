@@ -568,14 +568,24 @@ def _assemble_report_data(
 
     return {
         "evidence_id": evidence_id,
-        "session_id": session_id or v.get("session_id"),
+        "session_id": (
+            session_id
+            or p.get("session_id")
+            or p.get("call_id")
+            or v.get("session_id")
+            or v.get("call_id")
+        ),
         "report_status": (
             "VERIFIED" if v.get("valid") is True
             else "TAMPERED" if v.get("valid") is False
             else "REGISTERED"
         ),
-        "created_at": v.get("created_at") or s.get("created_at"),
-        "completed_at": v.get("completed_at"),
+        "created_at": p.get("created_at") or v.get("created_at") or s.get("created_at"),
+        "completed_at": (
+            p.get("completed_at")
+            or p.get("evidence_finalized_at")
+            or v.get("completed_at")
+        ),
         "schema_version": s.get("schema_version") or v.get("schema_version") or "phase10-v1",
         "report_identifier": report_identifier(evidence_id),
         "package_hash": s.get("package_sha256") or v.get("package_hash"),

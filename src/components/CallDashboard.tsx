@@ -91,9 +91,9 @@ export default function CallDashboard({ session }: CallDashboardProps) {
   } = session;
 
   const status = telemetry?.status ?? "ALLOW";
-  const score = telemetry?.risk_score ?? 0;
-  const acousticScore = telemetry?.acoustic_score ?? 0;
-  const intentScore = telemetry?.intent_score ?? 0;
+  const score = telemetry?.risk_score ?? null;
+  const acousticScore = telemetry?.acoustic_score ?? null;
+  const intentScore = telemetry?.intent_score ?? null;
   const rationale = telemetry?.rationale ?? [];
   const identityMismatch = telemetry?.identity_mismatch ?? null;
   const speakerSimilarity = telemetry?.speaker_score ?? null;
@@ -118,9 +118,9 @@ export default function CallDashboard({ session }: CallDashboardProps) {
                   : detectedLanguage;
 
   const showVerification = status === "LOCK_VERIFY" && !verified;
-  const currentStatus = verified ? "SAFE" : statusLabel(status);
+  const currentStatus = !telemetry ? "AWAITING DATA" : verified ? "SAFE" : statusLabel(status);
   const statusTone =
-    currentStatus === "LOCKED" ? "danger" : currentStatus === "SUSPICIOUS" ? "warn" : "safe";
+    !telemetry ? "neutral" : currentStatus === "LOCKED" ? "danger" : currentStatus === "SUSPICIOUS" ? "warn" : "safe";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-forensic-bg text-forensic-text">
@@ -133,7 +133,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
             <div>
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-forensic-accent/30 bg-forensic-accentMuted px-2.5 py-0.5 text-[10px] font-bold text-forensic-accent uppercase tracking-wider">
-                  <Radio size={10} className="animate-pulse" /> Live Protection Active
+                  <Radio size={10} className="animate-pulse" /> {telemetry ? "Live Telemetry Active" : "Waiting for Telemetry"}
                 </span>
                 <span className="text-xs text-forensic-muted">
                   Mode: <span className="font-bold text-forensic-text uppercase">{meta?.audioMode ?? "CLOUD"}</span>
@@ -163,7 +163,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
 
           {/* Real-time Status Alert Banner */}
           <StatusBanner
-            status={verified ? "ALLOW" : status}
+            status={telemetry ? (verified ? "ALLOW" : status) : null}
             rationale={rationale}
             verified={verified}
           />
@@ -172,8 +172,8 @@ export default function CallDashboard({ session }: CallDashboardProps) {
           <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
             <MetricTile
               label="Fused Risk Index"
-              value={`${formatRiskScore(score)}%`}
-              detail="Weighted acoustic & intent fusion"
+              value={score === null ? "—" : `${formatRiskScore(score)}%`}
+              detail={telemetry ? "Weighted acoustic & intent fusion" : "No risk result received"}
               tone={statusTone}
               icon={<ShieldAlert size={16} />}
             />
@@ -186,16 +186,18 @@ export default function CallDashboard({ session }: CallDashboardProps) {
             />
             <MetricTile
               label="Acoustic Anti-Spoof"
-              value={`${formatVectorPercent(acousticScore)}%`}
-              detail="MMS-300M synthetic-speech probability"
-              tone={acousticScore >= 0.7 ? "danger" : acousticScore >= 0.4 ? "warn" : "safe"}
+              value={acousticScore === null ? "—" : `${formatVectorPercent(acousticScore)}%`}
+              detail={telemetry?.detector?.model
+                ? `Anti-spoof score · ${String(telemetry.detector.model)}`
+                : "Anti-spoof score unavailable"}
+              tone={acousticScore === null ? "neutral" : acousticScore >= 0.7 ? "danger" : acousticScore >= 0.4 ? "warn" : "safe"}
               icon={<Cpu size={16} />}
             />
             <MetricTile
               label="Conversational Urgency"
-              value={`${formatVectorPercent(intentScore)}%`}
+              value={intentScore === null ? "—" : `${formatVectorPercent(intentScore)}%`}
               detail="Social engineering pressure"
-              tone={intentScore >= 0.7 ? "danger" : intentScore >= 0.4 ? "warn" : "safe"}
+              tone={intentScore === null ? "neutral" : intentScore >= 0.7 ? "danger" : intentScore >= 0.4 ? "warn" : "safe"}
               icon={<Terminal size={16} />}
             />
           </div>
@@ -207,12 +209,12 @@ export default function CallDashboard({ session }: CallDashboardProps) {
               <div>
                 <div className="flex items-center justify-between border-b border-forensic-border pb-3">
                   <p className="eyebrow text-forensic-accent">Decision Engine</p>
-                  <span className="font-mono text-xs text-forensic-muted">Sub-second evaluation</span>
+                  <span className="font-mono text-xs text-forensic-muted">Risk update cadence · 500 ms</span>
                 </div>
 
                 <div className="mt-4 flex flex-col items-center">
                   {telemetry ? (
-                    <TrustGauge score={score} status={status} />
+                    <TrustGauge score={telemetry.risk_score} status={status} />
                   ) : (
                     <div className="flex h-48 flex-col items-center justify-center font-mono text-xs text-forensic-muted">
                       <Activity size={24} className="animate-spin text-forensic-accent mb-2" />
@@ -228,7 +230,7 @@ export default function CallDashboard({ session }: CallDashboardProps) {
                 {rationale.length > 0 ? (
                   <span>{rationale.join("; ")}</span>
                 ) : (
-                  <span>Acoustic features nominal. Zero synthetic voice clone indicators detected.</span>
+                  <span>{telemetry ? "No rationale was reported for this window." : "No telemetry has been received; no risk decision is available."}</span>
                 )}
               </div>
             </section>
@@ -429,18 +431,18 @@ export default function CallDashboard({ session }: CallDashboardProps) {
               </section>
 
               {/* Three-Signal Intelligence Breakdown */}
-              <ThreatBreakdown
+              {telemetry ? <ThreatBreakdown
                 acousticScore={acousticScore}
-                intentScore={intentScore}
+                intentScore={telemetry.intent_score}
                 identityMismatch={identityMismatch}
                 speakerSimilarity={speakerSimilarity}
                 rationale={rationale}
                 status={status}
-              />
+              /> : <section className="rounded-3xl border border-forensic-border bg-forensic-panel/70 p-5 text-sm text-forensic-muted">Signal breakdown is unavailable until the backend returns telemetry.</section>}
 
               {/* 7. Action: Wire Transfer Simulation Panel */}
               <WireTransferPanel
-                locked={showVerification}
+                locked={!telemetry || showVerification}
                 feedback={actionFeedback}
                 pending={actionPending}
                 onAttempt={attemptWireTransfer}
